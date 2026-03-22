@@ -27,36 +27,33 @@ int create_server_socket() {
 int bind_address(int fd, int port) {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
-
     addr.sin_family      = AF_INET;
     addr.sin_port        = htons(port);
     addr.sin_addr.s_addr = INADDR_ANY;
 
-    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-		perror("bind");
-		return -1;
-	}
+    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
+		{ perror("bind"); return -1; }
     return 0;
 }
 
 // ── Étape 4 : accepte UN client de la file d'attente ──────────
-int accept_next_client(int server_fd) {
+void accept_next_client(int server_fd, int epfd) {
     struct sockaddr_in client_addr;
     socklen_t len = sizeof(client_addr);
     int client_fd = accept(server_fd,
                            (struct sockaddr*)&client_addr, &len);
-    if (client_fd == -1) {
-		if (errno == EAGAIN) return -2;
 
-		perror("accept"); return -1;
-	}
-
-    std::cout << "[+] client fd=" << client_fd
-              << " from " << inet_ntoa(client_addr.sin_addr) << "\n";
-	
+	if (client_fd == -1) { perror("accept"); return -1; }
 	fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL) | O_NONBLOCK);
 
-    return client_fd;
+	struct epoll_event ev;
+	ev.events = EPOLLIN;
+	ev.data.fd = client_fd;
+	epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &ev);
+
+	std::cout << "[+] client fd=" << client_fd
+              << " from " << inet_ntoa(client_addr.sin_addr) << "\n";
+	
 }
 
 // ── Étape 5 : lit la requête, envoie la réponse ───────────────
