@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webserv — Cartographie Conceptuelle</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+    --accent-1-dim: rgba(255,107,74,0.12);
+    --accent-2-dim: rgba(74,224,255,0.12);
+    --accent-3-dim: rgba(192,132,252,0.12);
+    --accent-4-dim: rgba(74,222,128,0.12);
+    --accent-5-dim: rgba(250,204,21,0.12);
+    --accent-6-dim: rgba(244,114,182,0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* Grain overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 4rem 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(255,107,74,0.08) 0%, transparent 70%);
+    top: -200px;
+    right: -100px;
+    pointer-events: none;
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(74,224,255,0.06) 0%, transparent 70%);
+    bottom: -150px;
+    left: -100px;
+    pointer-events: none;
+  }
+
+  .hero-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.35em;
+    color: var(--accent-2);
+    margin-bottom: 2rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.2s forwards;
+  }
+
+  .hero h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(3rem, 8vw, 6.5rem);
+    font-weight: 400;
+    line-height: 1.05;
+    text-align: center;
+    max-width: 800px;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.4s forwards;
+  }
+
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent-1);
+  }
+
+  .hero-sub {
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    margin-top: 1.5rem;
+    text-align: center;
+    max-width: 550px;
+    font-weight: 300;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.6s forwards;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 2rem;
+    margin-top: 3rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.8s forwards;
+  }
+
+  .hero-meta-item {
+    text-align: center;
+  }
+
+  .hero-meta-item .number {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2.5rem;
+    color: var(--accent-1);
+  }
+
+  .hero-meta-item .label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 1.2s forwards;
+  }
+
+  .scroll-hint span {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .scroll-hint .arrow {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--accent-1), transparent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  /* Navigation */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .nav-item {
+    padding: 1rem 1.2rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .nav-item:hover, .nav-item.active {
+    color: var(--accent-1);
+    border-bottom-color: var(--accent-1);
+  }
+
+  /* Content */
+  .content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* Section */
+  .section {
+    padding: 5rem 0 3rem;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-number {
+    font-family: 'Instrument Serif', serif;
+    font-size: 3.5rem;
+    color: var(--accent-1);
+    line-height: 1;
+    opacity: 0.6;
+  }
+
+  .section-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2.2rem;
+    font-weight: 400;
+  }
+
+  .section-title em {
+    font-style: italic;
+    color: var(--accent-3);
+  }
+
+  /* Concept Cards */
+  .concepts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--card-accent, var(--accent-1));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .card:hover {
+    border-color: var(--border-glow);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+
+  .card:hover::before {
+    opacity: 1;
+  }
+
+  .card-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--card-accent, var(--accent-1));
+    background: var(--card-accent-dim, var(--accent-1-dim));
+    padding: 0.25rem 0.75rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1rem;
+  }
+
+  .card h3 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.4rem;
+    font-weight: 400;
+    margin-bottom: 0.75rem;
+  }
+
+  .card h3 a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .card h3 a:hover {
+    color: var(--card-accent, var(--accent-1));
+  }
+  .card[data-page]:hover h3 a {
+    color: var(--card-accent, var(--accent-1));
+  }
+
+  .card p {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+    font-weight: 300;
+  }
+
+  .card-quote {
+    margin-top: 1.2rem;
+    padding: 1rem;
+    background: rgba(255,255,255,0.02);
+    border-left: 2px solid var(--card-accent, var(--accent-1));
+    border-radius: 0 8px 8px 0;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-style: italic;
+    font-family: 'Space Mono', monospace;
+    line-height: 1.6;
+  }
+
+  .card-links {
+    margin-top: 1.2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .card-link {
+    font-size: 0.7rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-2);
+    background: var(--accent-2-dim);
+    padding: 0.3rem 0.7rem;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+
+  .card-link:hover {
+    background: rgba(74,224,255,0.25);
+  }
+
+  .card-functions {
+    margin-top: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .fn-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    background: var(--surface-3);
+    color: var(--text-dim);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* Quote block */
+  .quote-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2.5rem;
+    margin: 3rem 0;
+    position: relative;
+  }
+
+  .quote-block::before {
+    content: '"';
+    font-family: 'Instrument Serif', serif;
+    font-size: 6rem;
+    color: var(--accent-1);
+    opacity: 0.2;
+    position: absolute;
+    top: -0.5rem;
+    left: 1.5rem;
+    line-height: 1;
+  }
+
+  .quote-block p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.3rem;
+    font-style: italic;
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  .quote-block cite {
+    display: block;
+    margin-top: 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    font-style: normal;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+
+  /* Warning boxes */
+  .warning-box {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin: 2rem 0;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .warning-box .icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .warning-box p {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  .warning-box strong {
+    color: var(--accent-1);
+  }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 2rem 0;
+    overflow-x: auto;
+    padding: 1rem 0;
+  }
+
+  .flow-step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    min-width: 140px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .flow-step .step-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-2);
+  }
+
+  .flow-step .step-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+  }
+
+  .flow-arrow {
+    color: var(--accent-1);
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    padding: 0 0.3rem;
+  }
+
+  /* Resources section */
+  .resources-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  .resource-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    transition: all 0.3s;
+  }
+
+  .resource-item:hover {
+    border-color: var(--border-glow);
+  }
+
+  .resource-item h4 {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-5);
+    margin-bottom: 0.5rem;
+  }
+
+  .resource-item p {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    font-weight: 300;
+  }
+
+  .resource-item a {
+    color: var(--accent-2);
+    text-decoration: none;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+  }
+
+  .resource-item a:hover {
+    text-decoration: underline;
+  }
+
+  /* Checklist */
+  .checklist {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.75rem;
+    margin: 2rem 0;
+  }
+
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem 1.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .check-item .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-4);
+    flex-shrink: 0;
+    margin-top: 0.35rem;
+  }
+
+  /* Intro text */
+  .intro-text {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    line-height: 1.8;
+    max-width: 750px;
+    font-weight: 300;
+    margin-bottom: 2rem;
+  }
+
+  .highlight {
+    color: var(--accent-2);
+    font-weight: 500;
+  }
+
+  /* Full width card */
+  .full-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2.5rem;
+    margin: 1.5rem 0;
+  }
+
+  .full-card h3 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.6rem;
+    margin-bottom: 1rem;
+  }
+
+  .full-card p {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    line-height: 1.8;
+    font-weight: 300;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 4rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+
+  .footer p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  /* Sub-section titles */
+  .sub-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.5rem;
+    margin: 2.5rem 0 1.5rem;
+    color: var(--text);
+  }
+
+  @media (max-width: 768px) {
+    .concepts-grid { grid-template-columns: 1fr; }
+    .resources-grid { grid-template-columns: 1fr; }
+    .checklist { grid-template-columns: 1fr; }
+    .hero-meta { flex-direction: column; gap: 1rem; }
+    .card { padding: 1.5rem; }
+    .section { padding: 3rem 0 2rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+  <span class="hero-label">42 Project — Cartographie Conceptuelle</span>
+  <h1>Webserv<br><em>Decoded</em></h1>
+  <p class="hero-sub">Tous les concepts, toutes les exigences, toutes les ressources — cartographiés pour guider ta recherche et ta compréhension du projet.</p>
+  <div class="hero-meta">
+    <div class="hero-meta-item">
+      <div class="number">6</div>
+      <div class="label">Domaines clés</div>
+    </div>
+    <div class="hero-meta-item">
+      <div class="number">40+</div>
+      <div class="label">Fonctions système</div>
+    </div>
+    <div class="hero-meta-item">
+      <div class="number">3</div>
+      <div class="label">RFCs à lire</div>
+    </div>
+  </div>
+  <div class="scroll-hint">
+    <span>Explorer</span>
+    <div class="arrow"></div>
+  </div>
+</section>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#vision" class="nav-item active">Vision</a>
+    <a href="#sockets" class="nav-item">Sockets & TCP</a>
+    <a href="#io" class="nav-item">I/O Multiplexing</a>
+    <a href="#http" class="nav-item">Protocole HTTP</a>
+    <a href="#config" class="nav-item">Configuration</a>
+    <a href="#cgi" class="nav-item">CGI</a>
+    <a href="#robustesse" class="nav-item">Robustesse</a>
+    <a href="#ressources" class="nav-item">Ressources</a>
+  </div>
+</nav>
+
+<div class="content">
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 0 : VISION GLOBALE                -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="vision">
+    <div class="section-header">
+      <span class="section-number">00</span>
+      <h2 class="section-title">Vision <em>globale</em></h2>
+    </div>
+
+    <p class="intro-text">
+      Webserv est la construction complète d'un <span class="highlight">serveur HTTP en C++ 98</span>. 
+      Tu vas implémenter le cycle complet : écouter des connexions TCP, parser des requêtes HTTP brutes, 
+      router les URLs vers des fichiers ou des scripts CGI, et renvoyer des réponses conformes au protocole — 
+      le tout sans jamais bloquer, grâce à un unique appel d'I/O multiplexing.
+    </p>
+
+    <div class="quote-block">
+      <p>This project is about writing your own HTTP server. You will be able to test it with an actual browser. HTTP is one of the most widely used protocols on the internet.</p>
+      <cite>— webserv.pdf, Introduction</cite>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">⚠️</span>
+      <p>
+        <strong>Règle absolue :</strong> le programme ne doit jamais crash, même en cas de manque de mémoire.
+        Le sujet précise que si le serveur se termine de manière inattendue, la note est <strong>0</strong>.
+        Cela signifie : chaque allocation, chaque syscall, chaque edge-case doit être géré.
+      </p>
+    </div>
+
+    <h3 class="sub-title">Le cycle de vie d'une requête</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-name">Client</div>
+        <div class="step-desc">Envoie une requête HTTP</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="step-name">epoll_wait()</div>
+        <div class="step-desc">Détecte EPOLLIN</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="step-name">recv()</div>
+        <div class="step-desc">Lit les données brutes</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="step-name">Parse</div>
+        <div class="step-desc">Headers + body</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="step-name">Route</div>
+        <div class="step-desc">Config → location</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="step-name">Traitement</div>
+        <div class="step-desc">Fichier / CGI / erreur</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <div class="step-name">send()</div>
+        <div class="step-desc">Réponse HTTP</div>
+      </div>
+    </div>
+
+    <h3 class="sub-title">Contraintes imposées par le sujet</h3>
+    <div class="checklist">
+      <div class="check-item"><span class="dot"></span>C++ 98 strict — doit compiler avec <code>-std=c++98</code></div>
+      <div class="check-item"><span class="dot"></span>Aucune bibliothèque externe ni Boost autorisée</div>
+      <div class="check-item"><span class="dot"></span>Un seul <code>epoll_wait()</code> (ou équivalent) pour toutes les I/O</div>
+      <div class="check-item"><span class="dot"></span>Jamais de read/write sans passer par <code>epoll_wait()</code> d'abord</div>
+      <div class="check-item"><span class="dot"></span>Interdit de vérifier <code>errno</code> après read/write</div>
+      <div class="check-item"><span class="dot"></span><code>fork()</code> autorisé uniquement pour le CGI</div>
+      <div class="check-item"><span class="dot"></span>Méthodes GET, POST, DELETE minimum</div>
+      <div class="check-item"><span class="dot"></span>Compatible avec un vrai navigateur web</div>
+      <div class="check-item"><span class="dot"></span>Écoute sur plusieurs ports simultanément</div>
+      <div class="check-item"><span class="dot"></span>Upload de fichiers par les clients</div>
+      <div class="check-item"><span class="dot"></span>Pages d'erreur par défaut obligatoires</div>
+      <div class="check-item"><span class="dot"></span>Servir un site statique complet</div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 1 : SOCKETS & TCP                 -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="sockets">
+    <div class="section-header">
+      <span class="section-number">01</span>
+      <h2 class="section-title">Sockets & <em>TCP</em></h2>
+    </div>
+
+    <p class="intro-text">
+      Le fondement de tout serveur réseau. Un socket est un <span class="highlight">file descriptor</span> 
+      qui permet de communiquer sur le réseau. Comprendre le cycle <code>socket → bind → listen → accept</code> 
+      est la première brique indispensable.
+    </p>
+
+    <div class="concepts-grid">
+      <div class="card" data-page="01-sockets-tcp/socket-lifecycle.html" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+        <span class="card-tag">Fondation</span>
+        <h3><a href="01-sockets-tcp/socket-lifecycle.html">Le cycle de vie d'un socket serveur</a></h3>
+        <p>
+          Quatre étapes pour passer d'un fd vide à un serveur qui accepte des clients. 
+          Chaque étape est un appel système distinct avec sa sémantique propre. 
+          Le socket d'écoute reste permanent ; chaque client produit un nouveau fd dédié.
+        </p>
+        <div class="card-functions">
+          <span class="fn-tag">socket()</span>
+          <span class="fn-tag">bind()</span>
+          <span class="fn-tag">listen()</span>
+          <span class="fn-tag">accept()</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/socket.2.html" target="_blank">man 2 socket</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/bind.2.html" target="_blank">man 2 bind</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/listen.2.html" target="_blank">man 2 listen</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/accept.2.html" target="_blank">man 2 accept</a>
+        </div>
+      </div>
+
+      <div class="card" data-page="01-sockets-tcp/network-addressing.html" style="--card-accent: var(--accent-2); --card-accent-dim: var(--accent-2-dim);">
+        <span class="card-tag">Réseau & Configuration</span>
+        <h3><a href="01-sockets-tcp/network-addressing.html">Adressage & options de socket</a></h3>
+        <p>
+          Convertir IP:port en <code>sockaddr</code>, résoudre des adresses avec <code>getaddrinfo()</code>,
+          gérer l'endianness réseau avec <code>htons/htonl</code>, et configurer le socket avec <code>setsockopt()</code> —
+          notamment <code>SO_REUSEADDR</code> pour éviter "Address already in use" au redémarrage.
+        </p>
+        <div class="card-functions">
+          <span class="fn-tag">getaddrinfo()</span>
+          <span class="fn-tag">freeaddrinfo()</span>
+          <span class="fn-tag">htons()</span>
+          <span class="fn-tag">htonl()</span>
+          <span class="fn-tag">ntohs()</span>
+          <span class="fn-tag">ntohl()</span>
+          <span class="fn-tag">getsockname()</span>
+          <span class="fn-tag">setsockopt()</span>
+          <span class="fn-tag">SO_REUSEADDR</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://man7.org/linux/man-pages/man3/getaddrinfo.3.html" target="_blank">man 3 getaddrinfo</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/setsockopt.2.html" target="_blank">man 2 setsockopt</a>
+          <a class="card-link" href="https://beej.us/guide/bgnet/" target="_blank">Beej's Network Guide</a>
+        </div>
+      </div>
+
+      <div class="card" data-page="01-sockets-tcp/recv-send.html" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+        <span class="card-tag">Communication</span>
+        <h3><a href="01-sockets-tcp/recv-send.html">Envoi & réception de données</a></h3>
+        <p>
+          <code>recv()</code> et <code>send()</code> sont les équivalents réseau de <code>read()</code> et <code>write()</code>. 
+          En non-bloquant, ils peuvent renvoyer <code>EAGAIN</code> — c'est normal, 
+          cela signifie qu'il faut réessayer quand <code>epoll_wait()</code> le signalera.
+          Les données peuvent arriver fragmentées : il faut accumuler dans un buffer.
+        </p>
+        <div class="card-functions">
+          <span class="fn-tag">recv()</span>
+          <span class="fn-tag">send()</span>
+          <span class="fn-tag">close()</span>
+          <span class="fn-tag">shutdown()</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/recv.2.html" target="_blank">man 2 recv</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/send.2.html" target="_blank">man 2 send</a>
+        </div>
+      </div>
+
+      <div class="card" data-page="01-sockets-tcp/fcntl-nonblocking.html" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+        <span class="card-tag">Concept clé</span>
+        <h3><a href="01-sockets-tcp/fcntl-nonblocking.html">Blocking vs Non-blocking</a></h3>
+        <p>
+          Par défaut, un socket est <strong>bloquant</strong> : un appel <code>accept()</code> ou <code>recv()</code> 
+          fige le programme tant qu'il n'y a rien. En mode non-bloquant (<code>fcntl(fd, F_SETFL, O_NONBLOCK)</code>), 
+          ces appels retournent immédiatement avec <code>EAGAIN</code> si rien n'est disponible. 
+          C'est ce qui rend le multiplexing possible.
+        </p>
+        <div class="card-quote">
+          « Your server must remain non-blocking at all times and properly handle client disconnections when necessary. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+        <div class="card-functions">
+          <span class="fn-tag">fcntl()</span>
+          <span class="fn-tag">F_SETFL</span>
+          <span class="fn-tag">O_NONBLOCK</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="01-sockets-tcp/fcntl-nonblocking.html">Cours détaillé →</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/fcntl.2.html" target="_blank">man 2 fcntl</a>
+        </div>
+      </div>
+
+      <div class="card" data-page="01-sockets-tcp/multi-port.html" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+        <span class="card-tag">Multi-port</span>
+        <h3><a href="01-sockets-tcp/multi-port.html">Écouter sur plusieurs ports</a></h3>
+        <p>
+          Le sujet exige que le serveur puisse écouter sur plusieurs ports pour servir du contenu différent.
+          Cela signifie créer plusieurs sockets d'écoute et les enregistrer tous dans le même epoll via <code>epoll_ctl()</code>.
+          Chaque socket d'écoute est lié à un bloc serveur de la configuration.
+        </p>
+        <div class="card-quote">
+          « Your server must be able to listen to multiple ports to deliver different content. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 2 : I/O MULTIPLEXING              -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="io">
+    <div class="section-header">
+      <span class="section-number">02</span>
+      <h2 class="section-title">I/O <em>Multiplexing</em></h2>
+    </div>
+
+    <p class="intro-text">
+      Le <span class="highlight">cœur absolu</span> du projet. Le multiplexing permet de surveiller des dizaines
+      de connexions simultanées avec un seul thread, sans jamais bloquer. Nous utilisons <code>epoll</code>
+      — un unique <code>epoll_wait()</code> pour gérer toutes les I/O, y compris le listen.
+    </p>
+
+    <div class="quote-block">
+      <p>It must be non-blocking and use only 1 poll() (or equivalent) for all the I/O operations between the clients and the server (listen included).</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <div class="concepts-grid">
+      <div class="card" data-page="02-io-multiplexing/epoll.html" style="--card-accent: var(--accent-2); --card-accent-dim: var(--accent-2-dim);">
+        <span class="card-tag">Mécanisme central</span>
+        <h3><a href="02-io-multiplexing/epoll.html">epoll — Le surveillant événementiel</a></h3>
+        <p>
+          <code>epoll</code> surveille un ensemble de fds via trois appels : <code>epoll_create1()</code> crée l'instance,
+          <code>epoll_ctl()</code> ajoute/retire/modifie un fd avec ses événements (<code>EPOLLIN</code>, <code>EPOLLOUT</code>, <code>EPOLLERR</code>, <code>EPOLLHUP</code>),
+          et <code>epoll_wait()</code> bloque jusqu'à ce qu'au moins un fd soit prêt — retournant uniquement les fds actifs.
+          Contrairement à <code>poll()</code>, epoll est O(1) : il ne parcourt pas tous les fds à chaque appel.
+        </p>
+        <div class="card-quote">
+          « poll() (or equivalent) must monitor both reading and writing simultaneously. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+        <div class="card-functions">
+          <span class="fn-tag">epoll_create1()</span>
+          <span class="fn-tag">epoll_ctl()</span>
+          <span class="fn-tag">epoll_wait()</span>
+          <span class="fn-tag">EPOLLIN</span>
+          <span class="fn-tag">EPOLLOUT</span>
+          <span class="fn-tag">EPOLLERR</span>
+          <span class="fn-tag">EPOLLHUP</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://man7.org/linux/man-pages/man7/epoll.7.html" target="_blank">man 7 epoll</a>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
+        <span class="card-tag">Contexte</span>
+        <h3>Pourquoi epoll plutôt que poll ou select</h3>
+        <p>
+          <code>select()</code> est limité à 1024 fds et recopie les sets à chaque appel.
+          <code>poll()</code> supprime la limite mais parcourt linéairement tous les fds à chaque retour — O(n).
+          <code>epoll</code> (Linux) maintient une liste interne dans le kernel : <code>epoll_wait()</code> retourne directement
+          les fds actifs, en O(1). C'est le choix approprié pour un serveur web sous Linux avec de nombreuses connexions simultanées.
+        </p>
+        <div class="card-functions">
+          <span class="fn-tag">EPOLLET</span>
+          <span class="fn-tag">EPOLLONESHOT</span>
+          <span class="fn-tag">struct epoll_event</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://man7.org/linux/man-pages/man7/epoll.7.html" target="_blank">man 7 epoll</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/epoll_ctl.2.html" target="_blank">man 2 epoll_ctl</a>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+        <span class="card-tag">Piège mortel</span>
+        <h3>La règle d'or : toujours epoll_wait() avant read/write</h3>
+        <p>
+          Le sujet est catégorique : toute opération de lecture ou écriture sur un socket ou pipe
+          DOIT être précédée d'une vérification de disponibilité via <code>epoll_wait()</code>.
+          Appeler <code>recv()</code> ou <code>send()</code> sans confirmation d'epoll entraîne un <strong>0</strong>.
+          Seuls les fichiers réguliers sur disque sont exemptés de cette règle.
+        </p>
+        <div class="card-quote">
+          « You must never do a read or a write operation without going through poll() (or equivalent). Calling read/recv or write/send on these descriptors without prior readiness will result in a grade of 0. Regular disk files are exempt. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+        <span class="card-tag">Concept</span>
+        <h3>La boucle événementielle (Event Loop)</h3>
+        <p>
+          L'architecture fondamentale : une boucle infinie qui appelle <code>epoll_wait()</code>, puis itère
+          sur les événements retournés et exécute l'action appropriée (<code>accept()</code> pour le socket d'écoute,
+          <code>recv()</code>/<code>send()</code> pour les clients, <code>read()</code> pour les pipes CGI).
+          Aucune requête ne doit jamais bloquer cette boucle.
+        </p>
+        <div class="card-quote">
+          « A request to your server should never hang indefinitely. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+      </div>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">🚫</span>
+      <p>
+        <strong>Interdit :</strong> vérifier <code>errno</code> après un read ou write pour ajuster le comportement du serveur. 
+        Le sujet dit explicitement « Checking the value of errno to adjust the server behaviour is strictly forbidden after performing a read or write operation. »
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 3 : HTTP                           -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="http">
+    <div class="section-header">
+      <span class="section-number">03</span>
+      <h2 class="section-title">Le protocole <em>HTTP</em></h2>
+    </div>
+
+    <p class="intro-text">
+      HTTP est un protocole <span class="highlight">texte, requête/réponse, sans état</span>. 
+      Le client envoie une requête avec une méthode, un chemin, des headers et optionnellement un body. 
+      Le serveur répond avec un status code, des headers et un body. Tout le parsing est à faire à la main.
+    </p>
+
+    <div class="concepts-grid">
+      <div class="card" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+        <span class="card-tag">Parsing</span>
+        <h3>Structure d'une requête HTTP</h3>
+        <p>
+          Une requête se compose de trois parties : la <strong>request line</strong> (<code>GET /index.html HTTP/1.1</code>), 
+          les <strong>headers</strong> (paires clé:valeur séparées par <code>\r\n</code>), et optionnellement un <strong>body</strong>. 
+          La fin des headers est marquée par <code>\r\n\r\n</code>. La taille du body est déterminée par 
+          <code>Content-Length</code> ou le <code>Transfer-Encoding: chunked</code>.
+        </p>
+        <div class="card-links">
+          <a class="card-link" href="https://datatracker.ietf.org/doc/html/rfc7230" target="_blank">RFC 7230 — Message Syntax</a>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+        <span class="card-tag">Méthodes</span>
+        <h3>GET, POST, DELETE</h3>
+        <p>
+          <strong>GET</strong> : récupérer une ressource (fichier, page). Pas de body. 
+          <strong>POST</strong> : envoyer des données au serveur (formulaire, upload). A un body. 
+          <strong>DELETE</strong> : supprimer une ressource. 
+          Chaque route de la config peut restreindre les méthodes autorisées.
+        </p>
+        <div class="card-links">
+          <a class="card-link" href="https://datatracker.ietf.org/doc/html/rfc7231" target="_blank">RFC 7231 — Semantics</a>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-2); --card-accent-dim: var(--accent-2-dim);">
+        <span class="card-tag">Réponse</span>
+        <h3>Status codes & headers de réponse</h3>
+        <p>
+          La réponse commence par <code>HTTP/1.1 200 OK\r\n</code>, suivie des headers 
+          (<code>Content-Type</code>, <code>Content-Length</code>, <code>Connection</code>, etc.) puis du body. 
+          Les status codes doivent être corrects : 200, 201, 204, 301, 400, 403, 404, 405, 413, 500, etc.
+        </p>
+        <div class="card-quote">
+          « Your HTTP response status codes must be accurate. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+        <span class="card-tag">Parsing avancé</span>
+        <h3>Chunked Transfer-Encoding</h3>
+        <p>
+          Quand le client envoie des données en mode "chunked", il n'y a pas de Content-Length. 
+          Les données arrivent en morceaux, chacun précédé de sa taille en hexadécimal. 
+          Un chunk de taille 0 marque la fin. Le serveur doit recombiner ces morceaux 
+          avant de les passer au CGI (qui attend un flux continu terminé par EOF).
+        </p>
+        <div class="card-quote">
+          « For chunked requests, your server needs to un-chunk them, the CGI will expect EOF as the end of the body. »
+          — webserv.pdf, IV.3
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
+        <span class="card-tag">Contenu</span>
+        <h3>MIME Types & Content-Type</h3>
+        <p>
+          Le serveur doit identifier le type de fichier servi et envoyer le bon <code>Content-Type</code> : 
+          <code>text/html</code>, <code>image/png</code>, <code>application/json</code>, etc. 
+          Sans cela, le navigateur ne sait pas comment interpréter la réponse. 
+          Typiquement implémenté via une map extension → MIME type.
+        </p>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+        <span class="card-tag">Upload</span>
+        <h3>Upload de fichiers (multipart/form-data)</h3>
+        <p>
+          Les uploads passent par un POST avec un <code>Content-Type: multipart/form-data</code>. 
+          Le body contient des "parts" séparées par un boundary. Chaque part a ses propres headers 
+          (nom du champ, nom de fichier, type MIME) suivis du contenu binaire.
+        </p>
+        <div class="card-quote">
+          « Clients must be able to upload files. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+        <span class="card-tag">Concept critique</span>
+        <h3>Données fragmentées sur un socket</h3>
+        <p>
+          Un <code>recv()</code> ne retourne pas forcément la requête entière d'un coup. 
+          Les données TCP arrivent en fragments imprévisibles. Il faut <strong>accumuler</strong> dans un buffer, 
+          détecter <code>\r\n\r\n</code> pour la fin des headers, puis lire exactement 
+          <code>Content-Length</code> octets (ou décoder le chunked) pour le body.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 4 : CONFIGURATION                  -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="config">
+    <div class="section-header">
+      <span class="section-number">04</span>
+      <h2 class="section-title">Fichier de <em>configuration</em></h2>
+    </div>
+
+    <p class="intro-text">
+      Le sujet demande un système de configuration inspiré de NGINX. 
+      Le serveur prend un fichier en argument et doit parser des blocs serveur et location 
+      pour déterminer le comportement de chaque route.
+    </p>
+
+    <div class="quote-block">
+      <p>You can take inspiration from the 'server' section of the NGINX configuration file.</p>
+      <cite>— webserv.pdf, IV.3 Configuration file</cite>
+    </div>
+
+    <div class="concepts-grid">
+      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
+        <span class="card-tag">Parsing</span>
+        <h3>Parser un fichier de config structuré</h3>
+        <p>
+          Implémenter un lexer/parser pour lire des blocs imbriqués (server, location). 
+          Gérer les accolades, les directives, les valeurs, les commentaires. 
+          Le format n'est pas imposé mais NGINX est la référence suggérée. 
+          Validation des valeurs : ports valides, chemins existants, méthodes HTTP connues.
+        </p>
+        <div class="card-links">
+          <a class="card-link" href="https://nginx.org/en/docs/beginners_guide.html" target="_blank">NGINX Beginner Guide</a>
+          <a class="card-link" href="https://nginx.org/en/docs/http/ngx_http_core_module.html" target="_blank">NGINX Core Module</a>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+        <span class="card-tag">Directives</span>
+        <h3>Ce que la config doit supporter</h3>
+        <p>
+          Le sujet liste explicitement : paires interface:port, pages d'erreur par défaut, 
+          taille max du body client, et par route : méthodes autorisées, redirections, 
+          racine du répertoire, directory listing, fichier index par défaut, 
+          upload autorisé avec chemin de stockage, et exécution CGI par extension.
+        </p>
+        <div class="card-quote">
+          « Directory where the requested file should be located (e.g., if URL /kapouet is rooted to /tmp/www, URL /kapouet/pouic/toto/pouet will search for /tmp/www/pouic/toto/pouet). »
+          — webserv.pdf, IV.3
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+        <span class="card-tag">Routing</span>
+        <h3>Matching de routes (sans regex)</h3>
+        <p>
+          Quand une requête arrive, le serveur doit trouver quel bloc <code>location</code> 
+          correspond à l'URI demandée. Le sujet précise explicitement qu'aucune regex n'est requise — 
+          un matching par préfixe suffit. Il faut ensuite combiner le root de la location 
+          avec le reste du chemin pour trouver le fichier.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 5 : CGI                            -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="cgi">
+    <div class="section-header">
+      <span class="section-number">05</span>
+      <h2 class="section-title"><em>CGI</em> — Common Gateway Interface</h2>
+    </div>
+
+    <p class="intro-text">
+      Le CGI permet au serveur d'exécuter des scripts externes (Python, PHP...) et de renvoyer leur sortie au client. 
+      C'est le seul cas où <code>fork()</code> est autorisé. La communication se fait via 
+      <span class="highlight">variables d'environnement + stdin/stdout</span>.
+    </p>
+
+    <div class="concepts-grid">
+      <div class="card" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+        <span class="card-tag">Mécanisme</span>
+        <h3>fork() + execve() + pipe()</h3>
+        <p>
+          Le serveur <code>fork()</code> un processus fils, redirige stdin/stdout via <code>pipe()</code> + <code>dup2()</code>, 
+          puis <code>execve()</code> l'interpréteur. Le body de la requête est envoyé sur stdin du CGI, 
+          et la sortie du CGI (sur stdout) est lue par le serveur via le pipe.
+        </p>
+        <div class="card-functions">
+          <span class="fn-tag">fork()</span>
+          <span class="fn-tag">execve()</span>
+          <span class="fn-tag">pipe()</span>
+          <span class="fn-tag">dup2()</span>
+          <span class="fn-tag">waitpid()</span>
+          <span class="fn-tag">kill()</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/fork.2.html" target="_blank">man 2 fork</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/execve.2.html" target="_blank">man 2 execve</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/pipe.2.html" target="_blank">man 2 pipe</a>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+        <span class="card-tag">Protocole</span>
+        <h3>Variables d'environnement CGI</h3>
+        <p>
+          Le serveur doit passer au CGI toute l'information de la requête via des variables d'environnement : 
+          <code>REQUEST_METHOD</code>, <code>CONTENT_LENGTH</code>, <code>CONTENT_TYPE</code>, 
+          <code>PATH_INFO</code>, <code>QUERY_STRING</code>, <code>SERVER_NAME</code>, <code>SERVER_PORT</code>, 
+          <code>SCRIPT_NAME</code>, les headers HTTP préfixés par <code>HTTP_</code>.
+        </p>
+        <div class="card-quote">
+          « Have a careful look at the environment variables involved in the web server-CGI communication. The full request and arguments provided by the client must be available to the CGI. »
+          — webserv.pdf, IV.3
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://datatracker.ietf.org/doc/html/rfc3875" target="_blank">RFC 3875 — CGI/1.1</a>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-2); --card-accent-dim: var(--accent-2-dim);">
+        <span class="card-tag">Pièges</span>
+        <h3>EOF, chunked, et répertoire de travail</h3>
+        <p>
+          Trois points critiques : les requêtes chunked doivent être dé-chunkées avant d'être envoyées au CGI 
+          (il attend EOF, pas des chunks). Si le CGI ne retourne pas de Content-Length, 
+          c'est EOF qui marque la fin de sa sortie. Et le CGI doit être exécuté dans le bon répertoire 
+          (<code>chdir()</code>) pour que les chemins relatifs fonctionnent.
+        </p>
+        <div class="card-quote">
+          « The CGI should be run in the correct directory for relative path file access. »
+          — webserv.pdf, IV.3
+        </div>
+        <div class="card-functions">
+          <span class="fn-tag">chdir()</span>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+        <span class="card-tag">Non-bloquant</span>
+        <h3>Intégrer le CGI dans l'event loop</h3>
+        <p>
+          Le pipe du CGI doit être enregistré dans epoll via <code>epoll_ctl()</code> comme n'importe quel autre fd.
+          Le processus fils peut prendre du temps — il faut un timeout et <code>waitpid(WNOHANG)</code> 
+          pour ne pas bloquer. Le pipe de sortie du CGI doit être en mode non-bloquant.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 6 : ROBUSTESSE                     -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="robustesse">
+    <div class="section-header">
+      <span class="section-number">06</span>
+      <h2 class="section-title">Robustesse & <em>résilience</em></h2>
+    </div>
+
+    <p class="intro-text">
+      Le sujet insiste lourdement sur la résilience. Le serveur ne doit <span class="highlight">jamais</span> crash, 
+      jamais bloquer, jamais leak. Il doit supporter des stress tests et rester opérationnel en permanence.
+    </p>
+
+    <div class="concepts-grid">
+      <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+        <span class="card-tag">Stabilité</span>
+        <h3>Gestion des erreurs exhaustive</h3>
+        <p>
+          Chaque appel système peut échouer. Chaque allocation peut rater. 
+          Le programme ne doit jamais crash, même en cas de manque de mémoire. 
+          Pages d'erreur par défaut obligatoires si non configurées.
+          Signaux à gérer proprement (SIGPIPE, SIGCHLD pour les CGI).
+        </p>
+        <div class="card-quote">
+          « Your program must not crash under any circumstances (even if it runs out of memory) or terminate unexpectedly. »
+          — webserv.pdf, General rules
+        </div>
+        <div class="card-functions">
+          <span class="fn-tag">signal()</span>
+          <span class="fn-tag">strerror()</span>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+        <span class="card-tag">Performance</span>
+        <h3>Stress testing</h3>
+        <p>
+          Le sujet demande explicitement de stress tester le serveur. 
+          Outils courants : <code>siege</code>, <code>ab</code> (Apache Bench), scripts Python avec <code>requests</code>. 
+          Le serveur doit gérer des connexions simultanées massives, des déconnexions brutales, 
+          des requêtes malformées, sans jamais tomber.
+        </p>
+        <div class="card-quote">
+          « Stress test your server to ensure it remains available at all times. Resilience is key. »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
+        <span class="card-tag">Timeout</span>
+        <h3>Timeouts & déconnexions</h3>
+        <p>
+          Un client qui ne finit jamais d'envoyer sa requête ne doit pas bloquer le serveur. 
+          Il faut implémenter des timeouts sur les connexions clientes, 
+          gérer proprement les déconnexions (<code>EPOLLHUP</code>, recv retournant 0),
+          et fermer les fds pour éviter les fuites.
+        </p>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+        <span class="card-tag">Compilation</span>
+        <h3>Contraintes C++ 98 & Makefile</h3>
+        <p>
+          Le code doit compiler avec <code>c++ -Wall -Wextra -Werror -std=c++98</code>. 
+          Pas de fonctionnalités C++11+. Le Makefile doit contenir les règles 
+          <code>$(NAME)</code>, <code>all</code>, <code>clean</code>, <code>fclean</code>, <code>re</code> 
+          et ne pas relinker inutilement.
+        </p>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-2); --card-accent-dim: var(--accent-2-dim);">
+        <span class="card-tag">Fichiers</span>
+        <h3>Opérations sur le système de fichiers</h3>
+        <p>
+          Pour servir des fichiers statiques, lister des répertoires, vérifier les permissions. 
+          Ces opérations sur fichiers réguliers sont exemptées de la contrainte epoll —
+          on peut faire <code>read()</code>/<code>write()</code> directement sur des fichiers disque.
+        </p>
+        <div class="card-functions">
+          <span class="fn-tag">open()</span>
+          <span class="fn-tag">read()</span>
+          <span class="fn-tag">write()</span>
+          <span class="fn-tag">close()</span>
+          <span class="fn-tag">stat()</span>
+          <span class="fn-tag">access()</span>
+          <span class="fn-tag">opendir()</span>
+          <span class="fn-tag">readdir()</span>
+          <span class="fn-tag">closedir()</span>
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+        <span class="card-tag">Validation</span>
+        <h3>Tester avec NGINX comme référence</h3>
+        <p>
+          Le sujet suggère d'utiliser NGINX pour comparer les headers et comportements de réponse. 
+          C'est ta meilleure référence pour les edge-cases HTTP. 
+          Utilise aussi <code>telnet</code> pour envoyer des requêtes brutes et vérifier le parsing.
+        </p>
+        <div class="card-quote">
+          « NGINX may be used to compare headers and answer behaviours (pay attention to differences between HTTP versions). »
+          — webserv.pdf, IV.1 Requirements
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 7 : RESSOURCES                     -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="ressources">
+    <div class="section-header">
+      <span class="section-number">07</span>
+      <h2 class="section-title"><em>Ressources</em> d'étude</h2>
+    </div>
+
+    <p class="intro-text">
+      Une sélection organisée des ressources les plus utiles pour chaque domaine du projet. 
+      Commence par les RFCs et man pages, puis approfondis avec les guides.
+    </p>
+
+    <h3 class="sub-title">RFCs & Standards</h3>
+    <div class="resources-grid">
+      <div class="resource-item">
+        <h4>RFC 7230</h4>
+        <p>HTTP/1.1 Message Syntax and Routing — La structure exacte des requêtes et réponses HTTP.</p>
+        <a href="https://datatracker.ietf.org/doc/html/rfc7230" target="_blank">datatracker.ietf.org/rfc7230</a>
+      </div>
+      <div class="resource-item">
+        <h4>RFC 7231</h4>
+        <p>HTTP/1.1 Semantics and Content — Méthodes, status codes, headers de contenu.</p>
+        <a href="https://datatracker.ietf.org/doc/html/rfc7231" target="_blank">datatracker.ietf.org/rfc7231</a>
+      </div>
+      <div class="resource-item">
+        <h4>RFC 3875</h4>
+        <p>The Common Gateway Interface (CGI) Version 1.1 — Variables d'environnement, protocole de communication.</p>
+        <a href="https://datatracker.ietf.org/doc/html/rfc3875" target="_blank">datatracker.ietf.org/rfc3875</a>
+      </div>
+    </div>
+
+    <h3 class="sub-title">Man pages essentielles</h3>
+    <div class="resources-grid">
+      <div class="resource-item">
+        <h4>Sockets</h4>
+        <p>man 2 socket, bind, listen, accept, recv, send, setsockopt, getsockname</p>
+        <a href="https://man7.org/linux/man-pages/man7/socket.7.html" target="_blank">man7.org — socket(7)</a>
+      </div>
+      <div class="resource-item">
+        <h4>I/O Multiplexing</h4>
+        <p>man 7 epoll, man 2 epoll_create1, epoll_ctl, epoll_wait</p>
+        <a href="https://man7.org/linux/man-pages/man7/epoll.7.html" target="_blank">man7.org — epoll(7)</a>
+      </div>
+      <div class="resource-item">
+        <h4>Processus & Pipes</h4>
+        <p>man 2 fork, execve, pipe, dup2, waitpid, kill, signal</p>
+        <a href="https://man7.org/linux/man-pages/man2/fork.2.html" target="_blank">man7.org — fork(2)</a>
+      </div>
+      <div class="resource-item">
+        <h4>Résolution DNS</h4>
+        <p>man 3 getaddrinfo, freeaddrinfo, gai_strerror</p>
+        <a href="https://man7.org/linux/man-pages/man3/getaddrinfo.3.html" target="_blank">man7.org — getaddrinfo(3)</a>
+      </div>
+    </div>
+
+    <h3 class="sub-title">Guides & Tutoriels</h3>
+    <div class="resources-grid">
+      <div class="resource-item">
+        <h4>Beej's Guide to Network Programming</h4>
+        <p>LE guide de référence pour la programmation réseau en C. Couvre tout le cycle socket, avec des exemples concrets.</p>
+        <a href="https://beej.us/guide/bgnet/" target="_blank">beej.us/guide/bgnet</a>
+      </div>
+      <div class="resource-item">
+        <h4>NGINX Documentation</h4>
+        <p>Pour comprendre le format de configuration et comparer le comportement HTTP de ton serveur.</p>
+        <a href="https://nginx.org/en/docs/" target="_blank">nginx.org/en/docs</a>
+      </div>
+      <div class="resource-item">
+        <h4>MDN — HTTP</h4>
+        <p>Documentation claire et moderne sur le protocole HTTP : méthodes, headers, status codes, MIME types.</p>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP" target="_blank">developer.mozilla.org — HTTP</a>
+      </div>
+      <div class="resource-item">
+        <h4>The Linux Programming Interface</h4>
+        <p>Livre de Michael Kerrisk — chapitres sur les sockets, poll/epoll, fork/exec. La bible des syscalls.</p>
+        <a href="https://man7.org/tlpi/" target="_blank">man7.org/tlpi</a>
+      </div>
+    </div>
+
+    <h3 class="sub-title">Outils de test</h3>
+    <div class="resources-grid">
+      <div class="resource-item">
+        <h4>telnet / curl / nc</h4>
+        <p>Envoyer des requêtes HTTP brutes manuellement pour débugger le parsing et les réponses.</p>
+      </div>
+      <div class="resource-item">
+        <h4>siege / ab (Apache Bench)</h4>
+        <p>Stress testing — envoyer des centaines de requêtes simultanées pour tester la résilience.</p>
+      </div>
+      <div class="resource-item">
+        <h4>Scripts Python (requests)</h4>
+        <p>Le sujet recommande d'écrire des tests dans un langage adapté. Python avec la lib requests est idéal.</p>
+      </div>
+      <div class="resource-item">
+        <h4>Navigateur web</h4>
+        <p>Le test final : ton serveur doit fonctionner avec un vrai navigateur. DevTools pour inspecter les échanges.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- BONUS -->
+  <section class="section" id="bonus">
+    <div class="section-header">
+      <span class="section-number">++</span>
+      <h2 class="section-title">Bonus <em>optionnels</em></h2>
+    </div>
+    <div class="concepts-grid">
+      <div class="card" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+        <span class="card-tag">Bonus</span>
+        <h3>Cookies & Sessions</h3>
+        <p>
+          Implémenter le header <code>Set-Cookie</code> côté serveur et lire le header <code>Cookie</code> 
+          des requêtes clientes. Gérer des sessions avec un identifiant unique stocké côté serveur.
+        </p>
+      </div>
+      <div class="card" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+        <span class="card-tag">Bonus</span>
+        <h3>Multiple CGI types</h3>
+        <p>
+          Supporter plusieurs interpréteurs CGI : Python et PHP par exemple, 
+          configurés par extension de fichier dans le fichier de configuration.
+        </p>
+      </div>
+    </div>
+    <div class="warning-box">
+      <span class="icon">💡</span>
+      <p>
+        Les bonus ne sont évalués que si la partie obligatoire est <strong>parfaitement fonctionnelle</strong>. 
+        Ne commence les bonus qu'une fois que tout le mandatory est solide et testé.
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>Webserv Decoded — Cartographie conceptuelle pour le projet 42</p>
+  <p style="margin-top: 0.5rem; opacity: 0.5;">Document d'étude — Pas un guide pas-à-pas, mais une carte pour orienter ta recherche. eahmeti.</p>
+</footer>
+
+<script>
+  // Page fade-in + scroll restoration
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    const savedScroll = sessionStorage.getItem('mindmap-scroll');
+    if (savedScroll !== null) {
+      window.scrollTo(0, parseInt(savedScroll, 10));
+      sessionStorage.removeItem('mindmap-scroll');
+    }
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  // Clickable cards with data-page: save scroll + fade-out
+  document.querySelectorAll('.card[data-page]').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.card-links')) return;
+      e.preventDefault();
+      sessionStorage.setItem('mindmap-scroll', window.scrollY);
+      document.body.style.opacity = '0';
+      setTimeout(() => { window.location.href = card.dataset.page; }, 140);
+    });
+  });
+
+  // Smooth scroll for nav
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+
+  // Update active nav on scroll
+  const sections = document.querySelectorAll('.section[id]');
+  const navItems = document.querySelectorAll('.nav-item');
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navItems.forEach(n => n.classList.remove('active'));
+        const active = document.querySelector(`.nav-item[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+
+  // Animate cards on scroll
+  const cards = document.querySelectorAll('.card, .full-card, .resource-item, .quote-block');
+  const cardObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, { threshold: 0.1 });
+
+  cards.forEach(card => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(20px)';
+    card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    cardObserver.observe(card);
+  });
+</script>
+</body>
+</html>

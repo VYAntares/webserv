@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Le cycle de vie d'un socket serveur</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-2); background: rgba(74,224,255,0.07); }
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-1);
+    background: rgba(255,107,74,0.1);
+    border: 1px solid rgba(255,107,74,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-1); }
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active {
+    background: rgba(255,107,74,0.12);
+    color: var(--accent-1);
+  }
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 10px;
+  }
+
+  /* MAIN */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* STEP SECTION */
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-1));
+  }
+  .step-title-block {}
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-1));
+    margin-bottom: 0.3rem;
+  }
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* TWO COLUMN LAYOUT */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .progress-inner { overflow-x: auto; }
+  }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-1));
+    opacity: 0.6;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-1));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+  .panel p strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ANALOGY PANEL */
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+  }
+  .analogy-icon {
+    font-size: 2.5rem;
+    flex-shrink: 0;
+    line-height: 1;
+    margin-top: 0.1rem;
+  }
+  .analogy-text {}
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* CODE PANEL */
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .code-dots {
+    display: flex;
+    gap: 0.35rem;
+  }
+  .code-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-1));
+    background: rgba(255,107,74,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+  /* Syntax colors */
+  .kw { color: #c084fc; }       /* keywords: int, return, if */
+  .fn-name { color: #4ae0ff; }  /* function names */
+  .type { color: #4ade80; }     /* types */
+  .str { color: #facc15; }      /* strings */
+  .num { color: #fb923c; }      /* numbers */
+  .cmt { color: #4a4a6a; font-style: italic; } /* comments */
+  .macro { color: #f472b6; }    /* macros / constants */
+  .var { color: #e8e6f0; }      /* variables */
+  .punct { color: #5c5a72; }    /* punctuation */
+  .highlight-line {
+    display: block;
+    background: rgba(255,107,74,0.06);
+    border-left: 2px solid var(--step-color, var(--accent-1));
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+
+  /* KEY POINTS */
+  .key-points {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .key-point {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .key-point-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  /* WARNING */
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .warning strong { color: var(--accent-1); }
+
+  /* INFO BOX */
+  .info-box {
+    background: rgba(74,224,255,0.04);
+    border: 1px solid rgba(74,224,255,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .info-box strong { color: var(--accent-2); }
+
+  /* DIVIDER */
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* FLOW MINI */
+  .flow-mini {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    margin: 1.5rem 0;
+    padding: 1.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .flow-mini-step {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    border: 1px solid;
+  }
+  .flow-mini-arrow {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    padding: 0 0.3rem;
+  }
+  .flow-mini-step.done { border-color: var(--accent-4); color: var(--accent-4); background: rgba(74,222,128,0.06); }
+  .flow-mini-step.current { border-color: var(--accent-1); color: var(--accent-1); background: rgba(255,107,74,0.1); }
+  .flow-mini-step.next { border-color: var(--border); color: var(--text-muted); }
+
+  /* FD TABLE */
+  .fd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    font-family: 'Space Mono', monospace;
+    margin-top: 1rem;
+  }
+  .fd-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .fd-table td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .fd-table td:first-child { color: var(--accent-2); }
+  .fd-table tr:last-child td { border-bottom: none; }
+  .fd-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 1.5rem;
+  }
+
+  /* SUMMARY SECTION */
+  .summary-section {
+    margin-top: 4rem;
+    padding: 3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-1), var(--accent-3), var(--accent-2), var(--accent-4));
+  }
+  .summary-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+  .summary-title em { font-style: italic; color: var(--accent-3); }
+  .summary-subtitle {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    font-weight: 300;
+    margin-bottom: 2rem;
+  }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 1.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  .summary-card-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color);
+    margin-bottom: 0.2rem;
+  }
+  .summary-card-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .summary-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+  .footer p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+  .footer a {
+    color: var(--accent-2);
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#socket" class="step-pill active" id="nav-socket">
+      <span class="step-dot"></span>socket()
+    </a>
+    <div class="step-connector"></div>
+    <a href="#bind" class="step-pill" id="nav-bind">
+      <span class="step-dot"></span>bind()
+    </a>
+    <div class="step-connector"></div>
+    <a href="#listen" class="step-pill" id="nav-listen">
+      <span class="step-dot"></span>listen()
+    </a>
+    <div class="step-connector"></div>
+    <a href="#accept" class="step-pill" id="nav-accept">
+      <span class="step-dot"></span>accept()
+    </a>
+    <div class="step-connector"></div>
+    <a href="#recv-send" class="step-pill" id="nav-recv-send">
+      <span class="step-dot"></span>recv/send
+    </a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Sockets & TCP — Fondation</div>
+  <h1>Le cycle de vie<br>d'un socket <em>serveur</em></h1>
+  <p class="header-desc">
+    Quatre appels système. Quatre étapes. De zéro à un serveur qui accepte des connexions TCP réelles.
+    Chaque fonction est expliquée avec son code, sa sémantique, et son analogie.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- STEP 1 : socket()             -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="socket" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div class="step-title-block">
+        <div class="step-fn">socket()</div>
+        <div class="step-subtitle">Créer la prise réseau</div>
+      </div>
+    </div>
+
+    <div class="flow-mini">
+      <div class="flow-mini-step current">socket()</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">bind()</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">listen()</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">accept()</div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça fait techniquement</div>
+        <p>
+          <code style="color:var(--accent-1)">socket()</code> demande au <strong>kernel</strong> de créer
+          un point de communication réseau. Il retourne un simple <strong>entier</strong> — le file descriptor (fd).
+          <br><br>
+          <strong>AF_INET</strong> = protocole IPv4.<br>
+          <strong>SOCK_STREAM</strong> = connexion TCP (fiable, ordonné).<br>
+          <strong>0</strong> = protocole par défaut (TCP pour STREAM).
+          <br><br>
+          Ce fd n'a encore <strong>aucune adresse, aucun port</strong>. C'est juste une entrée dans la table
+          des file descriptors du processus — exactement comme <code>open()</code> retourne un fd pour un fichier.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🏗️</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Tu construis un <strong>bâtiment vide</strong>. Il existe physiquement,
+            les murs sont posés — mais il n'a pas encore d'adresse postale.
+            Personne ne peut t'y envoyer du courrier pour l'instant.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">socket()</div>
+      </div>
+<pre><span class="cmt">// Crée le socket TCP/IPv4 — retourne un file descriptor</span>
+<span class="kw">int</span> <span class="fn-name">create_server_socket</span><span class="punct">()</span> <span class="punct">{</span>
+<span class="highlight-line">    <span class="kw">int</span> <span class="var">server_fd</span> <span class="punct">=</span> <span class="fn-name">socket</span><span class="punct">(</span><span class="macro">AF_INET</span><span class="punct">,</span> <span class="macro">SOCK_STREAM</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span></span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">server_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="fn-name">std::cerr</span> <span class="punct">&lt;&lt;</span> <span class="str">"socket() failed: "</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">strerror</span><span class="punct">(</span><span class="macro">errno</span><span class="punct">)</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="cmt">// SO_REUSEADDR : évite "Address already in use" au redémarrage</span>
+    <span class="kw">int</span> <span class="var">opt</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+    <span class="fn-name">setsockopt</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="macro">SOL_SOCKET</span><span class="punct">,</span> <span class="macro">SO_REUSEADDR</span><span class="punct">,</span> <span class="punct">&amp;</span><span class="var">opt</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">opt</span><span class="punct">));</span>
+
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"socket() ok — fd = "</span> <span class="punct">&lt;&lt;</span> <span class="var">server_fd</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="var">server_fd</span><span class="punct">;</span>  <span class="cmt">// souvent 3 (après stdin=0, stdout=1, stderr=2)</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📌</span><span>Le fd retourné est typiquement <strong>3</strong> (après stdin=0, stdout=1, stderr=2) si c'est le premier socket créé.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔗</span><span>En Unix, <strong>tout est fichier</strong>. Ce fd peut être passé à <code>read()</code>, <code>write()</code>, <code>close()</code> comme n'importe quel fichier.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚙️</span><span><code>setsockopt</code> avec <code>SO_REUSEADDR</code> est quasi obligatoire en développement pour éviter d'attendre 30s entre deux lancements.</span></div>
+    </div>
+
+    <div id="socket-deepdive" style="scroll-margin-top:60px; margin-top:1.5rem; padding:1.2rem 1.5rem; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.2); border-radius:10px; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+      <div>
+        <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-3); margin-bottom:0.35rem; opacity:0.8">Creuser plus loin</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); line-height:1.5;">
+          Qu'est-ce qu'il y a vraiment derrière ce fd ? Trois couches de structures kernel, le chemin complet du syscall, et comment tout observer avec <code>/proc</code> et <code>strace</code>.
+        </div>
+      </div>
+      <a href="socket-internals/socket-internals.html" style="font-family:'Space Mono',monospace; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.15em; color:var(--accent-3); background:rgba(192,132,252,0.1); border:1px solid rgba(192,132,252,0.25); padding:0.5rem 1rem; border-radius:8px; text-decoration:none; white-space:nowrap; transition:all 0.2s;" onmouseover="this.style.background='rgba(192,132,252,0.18)'" onmouseout="this.style.background='rgba(192,132,252,0.1)'">socket() internals →</a>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- STEP 2 : bind()               -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="bind" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-2)">bind()</div>
+        <div class="step-subtitle">Attacher une adresse au socket</div>
+      </div>
+    </div>
+
+    <div class="flow-mini">
+      <div class="flow-mini-step done">socket() ✓</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step current" style="border-color:var(--accent-2);color:var(--accent-2);background:rgba(74,224,255,0.1)">bind()</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">listen()</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">accept()</div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label" style="color:var(--accent-2)">Ce que ça fait techniquement</div>
+        <p>
+          <code style="color:var(--accent-2)">bind()</code> associe une <strong>adresse IP + port</strong>
+          au socket. Le kernel sait maintenant que les paquets TCP arrivant sur ce port t'appartiennent.
+          <br><br>
+          <strong>INADDR_ANY (0.0.0.0)</strong> = écoute sur toutes les interfaces de la machine
+          (localhost ET l'IP réseau locale).
+          <br><br>
+          <strong>htons(8080)</strong> convertit le port en <strong>network byte order</strong>
+          (big-endian), car le réseau a ses propres conventions d'encodage des entiers.
+          <br><br>
+          <code>memset(&amp;addr, 0, sizeof(addr))</code> est crucial — sans ça, le champ
+          <code>sin_zero</code> contient des données aléatoires qui peuvent causer des bugs obscurs.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📮</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Tu donnes une <strong>adresse postale</strong> à ton bâtiment.
+            Maintenant les gens savent où t'envoyer du courrier — ils peuvent écrire
+            <em>"Port 8080, Rue INADDR_ANY"</em> sur l'enveloppe.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">bind()</div>
+      </div>
+<pre><span class="kw">int</span> <span class="fn-name">bind_address</span><span class="punct">(</span><span class="kw">int</span> <span class="var">server_fd</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">port</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+
+    <span class="cmt">// Initialiser à zéro — TOUJOURS faire ça avant de remplir sockaddr</span>
+<span class="highlight-line">    <span class="fn-name">memset</span><span class="punct">(&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span></span>
+
+    <span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>       <span class="cmt">// IPv4</span>
+<span class="highlight-line">    <span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="var">port</span><span class="punct">);</span>     <span class="cmt">// host→network byte order</span></span>
+<span class="highlight-line">    <span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="macro">INADDR_ANY</span><span class="punct">;</span>    <span class="cmt">// 0.0.0.0 = toutes les interfaces</span></span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">bind</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span>
+             <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)</span><span class="punct">&amp;</span><span class="var">addr</span><span class="punct">,</span>
+             <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">))</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="fn-name">std::cerr</span> <span class="punct">&lt;&lt;</span> <span class="str">"bind() failed: "</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">strerror</span><span class="punct">(</span><span class="macro">errno</span><span class="punct">)</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"bind() ok — port "</span> <span class="punct">&lt;&lt;</span> <span class="var">port</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="num">0</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔢</span><span><strong>htons()</strong> = Host TO Network Short. Les ports sont sur 16 bits. Le réseau attend du big-endian, ton CPU est peut-être little-endian.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌐</span><span><strong>INADDR_ANY</strong> signifie que le serveur écoute sur toutes les IP de la machine — parfait pour un serveur local.</span></div>
+      <div class="key-point"><span class="key-point-icon">⛔</span><span>Erreur fréquente : <em>"Address already in use"</em>. <code>SO_REUSEADDR</code> dans socket() résout ça. Sinon attendre ~30 secondes (TIME_WAIT TCP).</span></div>
+    </div>
+
+    <div id="bind-deepdive" style="scroll-margin-top:60px; margin-top:1.5rem; padding:1.2rem 1.5rem; background:rgba(74,224,255,0.04); border:1px solid rgba(74,224,255,0.2); border-radius:10px; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+      <div>
+        <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-2); margin-bottom:0.35rem; opacity:0.8">Creuser plus loin</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); line-height:1.5;">
+          <code>htons()</code>, <code>INADDR_ANY</code>, <code>SO_REUSEADDR</code>, TIME_WAIT — tout ce qui se passe sous le capot quand tu attaches une adresse à un socket.
+        </div>
+      </div>
+      <a href="socket-internals/bind-internals.html" style="font-family:'Space Mono',monospace; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.15em; color:var(--accent-2); background:rgba(74,224,255,0.08); border:1px solid rgba(74,224,255,0.25); padding:0.5rem 1rem; border-radius:8px; text-decoration:none; white-space:nowrap; transition:all 0.2s;" onmouseover="this.style.background='rgba(74,224,255,0.15)'" onmouseout="this.style.background='rgba(74,224,255,0.08)'">bind() internals →</a>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- STEP 3 : listen()             -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="listen" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-3)">listen()</div>
+        <div class="step-subtitle">Ouvrir les portes et installer la salle d'attente</div>
+      </div>
+    </div>
+
+    <div class="flow-mini">
+      <div class="flow-mini-step done">socket() ✓</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step done">bind() ✓</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step current" style="border-color:var(--accent-3);color:var(--accent-3);background:rgba(192,132,252,0.1)">listen()</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">accept()</div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label" style="color:var(--accent-3)">Ce que ça fait techniquement</div>
+        <p>
+          <code style="color:var(--accent-3)">listen()</code> marque le socket comme <strong>passif</strong>
+          — il ne se connectera jamais lui-même à quelqu'un, il attend qu'on vienne le voir.
+          <br><br>
+          Il crée une <strong>file d'attente</strong> (backlog) dans le kernel pour les connexions entrantes.
+          Le <code>backlog = 10</code> signifie que jusqu'à 10 connexions peuvent attendre d'être acceptées.
+          <br><br>
+          Si la file est pleine quand un nouveau client arrive, le client reçoit
+          <strong>ECONNREFUSED</strong> ou sa tentative de connexion est simplement ignorée.
+          <br><br>
+          Après <code>listen()</code>, le socket est prêt à recevoir des connexions —
+          mais aucune n'est encore traitée. C'est <code>accept()</code> qui les traite.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🚪</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Tu <strong>ouvres la porte</strong> du bâtiment et tu installes une
+            <strong>salle d'attente</strong> avec 10 chaises (backlog=10).
+            Les gens peuvent maintenant faire la queue —
+            mais personne n'est encore servi.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">listen()</div>
+      </div>
+<pre><span class="cmt">// Dans main(), après socket() et bind() :</span>
+<span class="kw">const int</span> <span class="var">BACKLOG</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>  <span class="cmt">// taille de la file d'attente</span>
+
+<span class="highlight-line"><span class="kw">if</span> <span class="punct">(</span><span class="fn-name">listen</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="var">BACKLOG</span><span class="punct">)</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="punct">{</span></span>
+    <span class="fn-name">std::cerr</span> <span class="punct">&lt;&lt;</span> <span class="str">"listen() failed: "</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">strerror</span><span class="punct">(</span><span class="macro">errno</span><span class="punct">)</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+    <span class="fn-name">close</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>
+<span class="punct">}</span>
+<span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"listen() ok — backlog = "</span> <span class="punct">&lt;&lt;</span> <span class="var">BACKLOG</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+<span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"Serveur en écoute sur http://localhost:8080"</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+
+<span class="cmt">// À partir d'ici, le kernel accepte les connexions TCP entrantes</span>
+<span class="cmt">// et les place dans la file. Notre code doit maintenant appeler accept().</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📋</span><span>Le <strong>backlog</strong> est la file d'attente DANS le kernel, pas le nombre max de connexions. Il représente les connexions établies en attente d'être acceptées.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Après <code>listen()</code>, le TCP handshake (SYN/SYN-ACK/ACK) se fait <strong>automatiquement</strong> côté kernel. Tu n'as pas à t'en occuper.</span></div>
+    </div>
+
+    <div id="listen-deepdive" style="scroll-margin-top:60px; margin-top:1.5rem; padding:1.2rem 1.5rem; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.2); border-radius:10px; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+      <div>
+        <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-3); margin-bottom:0.35rem; opacity:0.8">Creuser plus loin</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); line-height:1.5;">
+          Backlog, TCP handshake automatique, file d'attente dans le kernel — tout ce qui se passe quand le socket passe en état LISTEN.
+        </div>
+      </div>
+      <a href="socket-internals/listen-internals.html" style="font-family:'Space Mono',monospace; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.15em; color:var(--accent-3); background:rgba(192,132,252,0.1); border:1px solid rgba(192,132,252,0.25); padding:0.5rem 1rem; border-radius:8px; text-decoration:none; white-space:nowrap; transition:all 0.2s;" onmouseover="this.style.background='rgba(192,132,252,0.18)'" onmouseout="this.style.background='rgba(192,132,252,0.1)'">listen() internals →</a>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- STEP 4 : accept()             -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="accept" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-4)">accept()</div>
+        <div class="step-subtitle">Prendre en charge un client</div>
+      </div>
+    </div>
+
+    <div class="flow-mini">
+      <div class="flow-mini-step done">socket() ✓</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step done">bind() ✓</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step done">listen() ✓</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step current" style="border-color:var(--accent-4);color:var(--accent-4);background:rgba(74,222,128,0.1)">accept()</div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label" style="color:var(--accent-4)">Ce que ça fait techniquement</div>
+        <p>
+          <code style="color:var(--accent-4)">accept()</code> extrait le premier client de la file d'attente
+          du kernel et crée un <strong>nouveau socket dédié</strong> à ce client. Il retourne un nouveau fd.
+          <br><br>
+          Le socket d'écoute original (<code>server_fd</code>) reste <strong>inchangé</strong> —
+          il continue d'accepter d'autres clients. C'est ce qui permet de gérer plusieurs connexions.
+          <br><br>
+          <strong>Mode bloquant</strong> (défaut) : si aucun client n'attend, <code>accept()</code>
+          se <em>fige</em> jusqu'à l'arrivée d'un client.
+          <br><br>
+          <strong>Mode non-bloquant</strong> : retourne immédiatement <code>EAGAIN</code>/<code>EWOULDBLOCK</code>
+          si personne n'attend. C'est ce qu'on voudra pour Webserv avec <code>epoll</code>.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🏦</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Un <strong>guichetier</strong> prend en charge <em>un seul client</em> de la salle d'attente
+            et lui ouvre une fenêtre dédiée. Le bâtiment reste ouvert pendant ce temps —
+            d'autres clients peuvent arriver et s'asseoir.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">accept()</div>
+      </div>
+<pre><span class="kw">int</span> <span class="fn-name">accept_client</span><span class="punct">(</span><span class="kw">int</span> <span class="var">server_fd</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="type">struct sockaddr_in</span> <span class="var">client_addr</span><span class="punct">;</span>
+    <span class="type">socklen_t</span>          <span class="var">client_len</span> <span class="punct">=</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">client_addr</span><span class="punct">);</span>
+
+    <span class="cmt">// Bloque jusqu'à ce qu'un client arrive (mode bloquant par défaut)</span>
+    <span class="cmt">// Retourne un NOUVEAU fd dédié au client</span>
+<span class="highlight-line">    <span class="kw">int</span> <span class="var">client_fd</span> <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span></span>
+<span class="highlight-line">                           <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)</span><span class="punct">&amp;</span><span class="var">client_addr</span><span class="punct">,</span></span>
+<span class="highlight-line">                           <span class="punct">&amp;</span><span class="var">client_len</span><span class="punct">);</span></span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">client_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="fn-name">std::cerr</span> <span class="punct">&lt;&lt;</span> <span class="str">"accept() failed"</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="cmt">// client_addr contient l'IP et port du client connecté</span>
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"Nouveau client — fd="</span> <span class="punct">&lt;&lt;</span> <span class="var">client_fd</span>
+              <span class="punct">&lt;&lt;</span> <span class="str">" ip="</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">inet_ntoa</span><span class="punct">(</span><span class="var">client_addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">)</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="var">client_fd</span><span class="punct">;</span>  <span class="cmt">// fd dédié à CE client uniquement</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="fd-table-wrap">
+      <table class="fd-table">
+        <tr><th>File Descriptor</th><th>Rôle</th><th>Créé par</th></tr>
+        <tr>
+          <td>server_fd (ex: 3)</td>
+          <td>La devanture — fixe, attend toujours les connexions. Ne sert qu'à accept().</td>
+          <td>socket() + bind() + listen()</td>
+        </tr>
+        <tr>
+          <td>client_fd (ex: 4, 5, 6…)</td>
+          <td>Le guichet dédié à UN client. recv()/send() se font sur ce fd. Fermé quand la connexion se termine.</td>
+          <td>accept()</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Le problème du blocking :</strong> Dans notre code actuel, si <code>accept()</code> bloque,
+        le serveur ne peut plus rien faire d'autre — ni traiter d'autres connexions, ni faire autre chose.
+        C'est précisément pour ça que <strong>Webserv utilise epoll</strong> : on vérifie d'abord via <code>epoll_wait()</code>
+        que <code>server_fd</code> a un client en attente (<code>EPOLLIN</code>), puis seulement on appelle <code>accept()</code>.
+      </div>
+    </div>
+
+    <div id="accept-deepdive" style="scroll-margin-top:60px; margin-top:1.5rem; padding:1.2rem 1.5rem; background:rgba(74,222,128,0.04); border:1px solid rgba(74,222,128,0.2); border-radius:10px; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+      <div>
+        <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-4); margin-bottom:0.35rem; opacity:0.8">Creuser plus loin</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); line-height:1.5;">
+          Les deux fd, pourquoi <code>accept()</code> bloque, et comment <code>poll()</code> résout le problème — tout ce qui se passe sous le capot.
+        </div>
+      </div>
+      <a href="socket-internals/accept-internals.html" style="font-family:'Space Mono',monospace; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.15em; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.25); padding:0.5rem 1rem; border-radius:8px; text-decoration:none; white-space:nowrap; transition:all 0.2s;" onmouseover="this.style.background='rgba(74,222,128,0.15)'" onmouseout="this.style.background='rgba(74,222,128,0.08)'">accept() internals →</a>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- STEP 5 : recv() / send()      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="recv-send" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-5)">recv() + send()</div>
+        <div class="step-subtitle">Lire la requête, envoyer la réponse</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label" style="color:var(--accent-5)">Ce que ça fait techniquement</div>
+        <p>
+          <code style="color:var(--accent-5)">recv()</code> lit les données envoyées par le client
+          depuis le buffer réseau du kernel. <code>send()</code> envoie des données vers le client.
+          <br><br>
+          <strong>Piège critique</strong> : un seul <code>recv()</code> ne retourne pas forcément
+          <em>toute</em> la requête HTTP. TCP est un flux d'octets — les données arrivent en fragments.
+          Il faut <strong>accumuler dans un buffer</strong> jusqu'à trouver <code>\r\n\r\n</code>
+          (fin des headers).
+          <br><br>
+          De même, <code>send()</code> peut envoyer <em>moins</em> que demandé.
+          Il faut boucler jusqu'à avoir tout envoyé.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📨</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Le guichetier <strong>lit la lettre</strong> du client (recv) et lui
+            <strong>remet sa réponse écrite</strong> (send).
+            Mais la lettre peut arriver en plusieurs enveloppes séparées — il faut
+            attendre d'avoir tout reçu avant de répondre.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">recv() + send()</div>
+      </div>
+<pre><span class="kw">void</span> <span class="fn-name">handle_client</span><span class="punct">(</span><span class="kw">int</span> <span class="var">client_fd</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">char</span> <span class="var">buf</span><span class="punct">[</span><span class="num">4096</span><span class="punct">];</span>
+
+    <span class="cmt">// recv() retourne le nombre d'octets lus</span>
+    <span class="cmt">// 0 = client a fermé la connexion, -1 = erreur</span>
+<span class="highlight-line">    <span class="kw">int</span> <span class="var">n</span> <span class="punct">=</span> <span class="fn-name">recv</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">buf</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">buf</span><span class="punct">)</span> <span class="num">- 1</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span></span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">n</span> <span class="punct">&lt;=</span> <span class="num">0</span><span class="punct">)</span> <span class="punct">{</span> <span class="fn-name">close</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span> <span class="kw">return</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="var">buf</span><span class="punct">[</span><span class="var">n</span><span class="punct">]</span> <span class="punct">=</span> <span class="str">'\0'</span><span class="punct">;</span>
+
+    <span class="cmt">// Affichage de la requête HTTP brute reçue</span>
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"--- REQUETE HTTP ---\n"</span> <span class="punct">&lt;&lt;</span> <span class="var">buf</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>
+
+    <span class="cmt">// Construction de la réponse HTTP/1.1</span>
+    <span class="kw">const char</span><span class="punct">*</span> <span class="var">body</span>     <span class="punct">=</span> <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;"</span><span class="punct">;</span>
+    <span class="kw">const char</span><span class="punct">*</span> <span class="var">response</span> <span class="punct">=</span>
+        <span class="str">"HTTP/1.1 200 OK\r\n"</span>
+        <span class="str">"Content-Type: text/html\r\n"</span>  <span class="cmt">// ← corrigé : text/html pas text</span>
+        <span class="str">"Content-Length: 21\r\n"</span>
+        <span class="str">"Connection: close\r\n"</span>
+        <span class="str">"\r\n"</span>                          <span class="cmt">// ← ligne vide obligatoire fin des headers</span>
+        <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;"</span><span class="punct">;</span>
+
+<span class="highlight-line">    <span class="fn-name">send</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">response</span><span class="punct">,</span> <span class="fn-name">strlen</span><span class="punct">(</span><span class="var">response</span><span class="punct">),</span> <span class="num">0</span><span class="punct">);</span></span>
+    <span class="fn-name">close</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span>  <span class="cmt">// fermer le fd client après réponse</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>🐛</span>
+      <div>
+        <strong>Bug dans le code original :</strong> <code>Content-Type: text</code> est invalide —
+        un navigateur ne peut pas interpréter la réponse. La valeur correcte est
+        <code>text/html</code> pour du HTML, ou <code>text/plain</code> pour du texte brut.
+        Le navigateur affichait probablement le HTML comme du texte brut.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📦</span><span>En Webserv, <code>recv()</code> sera appelé <strong>après que <code>epoll_wait()</code> a signalé <code>EPOLLIN</code></strong> sur ce fd — garanti qu'il y a des données à lire.</span></div>
+      <div class="key-point"><span class="key-point-icon">↔️</span><span>Le <strong>\r\n\r\n</strong> entre headers et body est obligatoire en HTTP/1.1. Sans lui, aucun navigateur ne pourra parser la réponse.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔒</span><span>Toujours <code>close(client_fd)</code> après la connexion. Sinon : fuite de file descriptors. Le kernel a une limite (typiquement 1024).</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- CODE COMPLET                  -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="full-code" style="--step-color: var(--accent-6)">
+    <div style="margin-bottom:1.5rem">
+      <div class="step-fn" style="color:var(--accent-6); font-family:'Space Mono',monospace; font-size:1rem">Code complet</div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp — complet</div>
+        </div>
+      </div>
+<pre><span class="kw">#include</span> <span class="punct">&lt;</span><span class="type">sys/socket.h</span><span class="punct">&gt;</span>
+<span class="kw">#include</span> <span class="punct">&lt;</span><span class="type">arpa/inet.h</span><span class="punct">&gt;</span>
+<span class="kw">#include</span> <span class="punct">&lt;</span><span class="type">sys/types.h</span><span class="punct">&gt;</span>
+<span class="kw">#include</span> <span class="punct">&lt;</span><span class="type">unistd.h</span><span class="punct">&gt;</span>
+<span class="kw">#include</span> <span class="punct">&lt;</span><span class="type">cstring</span><span class="punct">&gt;</span>
+<span class="kw">#include</span> <span class="punct">&lt;</span><span class="type">cerrno</span><span class="punct">&gt;</span>
+<span class="kw">#include</span> <span class="punct">&lt;</span><span class="type">iostream</span><span class="punct">&gt;</span>
+
+<span class="kw">static const int</span> <span class="var">PORT</span>    <span class="punct">=</span> <span class="num">8080</span><span class="punct">;</span>
+<span class="kw">static const int</span> <span class="var">BACKLOG</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>
+
+<span class="cmt">// ── Étape 1 : crée le socket TCP/IPv4 ──────────────────────────</span>
+<span class="kw">int</span> <span class="fn-name">create_server_socket</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">int</span> <span class="var">fd</span> <span class="punct">=</span> <span class="fn-name">socket</span><span class="punct">(</span><span class="macro">AF_INET</span><span class="punct">,</span> <span class="macro">SOCK_STREAM</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="punct">{</span> <span class="fn-name">perror</span><span class="punct">(</span><span class="str">"socket"</span><span class="punct">);</span> <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="kw">int</span> <span class="var">opt</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+    <span class="fn-name">setsockopt</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="macro">SOL_SOCKET</span><span class="punct">,</span> <span class="macro">SO_REUSEADDR</span><span class="punct">,</span> <span class="punct">&amp;</span><span class="var">opt</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">opt</span><span class="punct">));</span>
+    <span class="kw">return</span> <span class="var">fd</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="cmt">// ── Étape 2 : associe IP:port au socket ───────────────────────</span>
+<span class="kw">int</span> <span class="fn-name">bind_address</span><span class="punct">(</span><span class="kw">int</span> <span class="var">fd</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">port</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+    <span class="fn-name">memset</span><span class="punct">(&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span>
+    <span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>
+    <span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="var">port</span><span class="punct">);</span>
+    <span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="macro">INADDR_ANY</span><span class="punct">;</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">bind</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">))</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span>
+        <span class="punct">{</span> <span class="fn-name">perror</span><span class="punct">(</span><span class="str">"bind"</span><span class="punct">);</span> <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="kw">return</span> <span class="num">0</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="cmt">// ── Étape 4 : accepte UN client de la file d'attente ──────────</span>
+<span class="kw">int</span> <span class="fn-name">accept_next_client</span><span class="punct">(</span><span class="kw">int</span> <span class="var">server_fd</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="type">struct sockaddr_in</span> <span class="var">client_addr</span><span class="punct">;</span>
+    <span class="type">socklen_t</span> <span class="var">len</span> <span class="punct">=</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">client_addr</span><span class="punct">);</span>
+    <span class="kw">int</span> <span class="var">client_fd</span> <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span>
+                           <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)&amp;</span><span class="var">client_addr</span><span class="punct">, &amp;</span><span class="var">len</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">client_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="punct">{</span> <span class="fn-name">perror</span><span class="punct">(</span><span class="str">"accept"</span><span class="punct">);</span> <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"[+] client fd="</span> <span class="punct">&lt;&lt;</span> <span class="var">client_fd</span>
+              <span class="punct">&lt;&lt;</span> <span class="str">" from "</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">inet_ntoa</span><span class="punct">(</span><span class="var">client_addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">)</span> <span class="punct">&lt;&lt;</span> <span class="str">"\n"</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="var">client_fd</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="cmt">// ── Étape 5 : lit la requête, envoie la réponse ───────────────</span>
+<span class="kw">void</span> <span class="fn-name">handle_client</span><span class="punct">(</span><span class="kw">int</span> <span class="var">client_fd</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">char</span> <span class="var">buf</span><span class="punct">[</span><span class="num">4096</span><span class="punct">];</span>
+    <span class="kw">int</span>  <span class="var">n</span> <span class="punct">=</span> <span class="fn-name">recv</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">buf</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">buf</span><span class="punct">)</span> <span class="num">- 1</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">n</span> <span class="punct">&lt;=</span> <span class="num">0</span><span class="punct">)</span> <span class="punct">{</span> <span class="fn-name">close</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span> <span class="kw">return</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="var">buf</span><span class="punct">[</span><span class="var">n</span><span class="punct">]</span> <span class="punct">=</span> <span class="str">'\0'</span><span class="punct">;</span>
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="var">buf</span><span class="punct">;</span>
+
+    <span class="kw">const char</span><span class="punct">*</span> <span class="var">response</span> <span class="punct">=</span>
+        <span class="str">"HTTP/1.1 200 OK\r\n"</span>
+        <span class="str">"Content-Type: text/html\r\n"</span>  <span class="cmt">// ← text/html, pas text</span>
+        <span class="str">"Content-Length: 22\r\n"</span>
+        <span class="str">"Connection: close\r\n"</span>
+        <span class="str">"\r\n"</span>
+        <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span><span class="punct">;</span>
+
+    <span class="fn-name">send</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">response</span><span class="punct">,</span> <span class="fn-name">strlen</span><span class="punct">(</span><span class="var">response</span><span class="punct">),</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="fn-name">close</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="cmt">// ── main : assemble les 4 étapes ──────────────────────────────</span>
+<span class="kw">int</span> <span class="fn-name">main</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">int</span> <span class="var">server_fd</span> <span class="punct">=</span> <span class="fn-name">create_server_socket</span><span class="punct">();</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">server_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">bind_address</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="var">PORT</span><span class="punct">)</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">listen</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="var">BACKLOG</span><span class="punct">)</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span>
+        <span class="punct">{</span> <span class="fn-name">perror</span><span class="punct">(</span><span class="str">"listen"</span><span class="punct">);</span> <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span> <span class="punct">}</span>
+
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"Serveur sur http://localhost:"</span> <span class="punct">&lt;&lt;</span> <span class="var">PORT</span> <span class="punct">&lt;&lt;</span> <span class="str">"\n"</span><span class="punct">;</span>
+
+    <span class="cmt">// Boucle principale — séquentiel (un client à la fois)</span>
+    <span class="cmt">// → Prochaine étape : remplacer par epoll + non-blocking</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">int</span> <span class="var">client_fd</span> <span class="punct">=</span> <span class="fn-name">accept_next_client</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">client_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="kw">continue</span><span class="punct">;</span>
+        <span class="fn-name">handle_client</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="num">0</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Prochaine étape :</strong> Ce serveur est séquentiel — il traite un client à la fois et bloque sur
+        <code>accept()</code>. Pour Webserv, on devra passer à <code>epoll</code> : créer un epoll fd via <code>epoll_create1()</code>,
+        enregistrer server_fd + tous les client_fd avec <code>epoll_ctl()</code>, et mettre les sockets en mode non-bloquant
+        avec <code>fcntl(fd, F_SETFL, O_NONBLOCK)</code>.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- RÉSUMÉ                        -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">Récapitulatif <em>complet</em></div>
+    <div class="summary-subtitle">Les 4 étapes du cycle de vie d'un socket serveur</div>
+    <div class="summary-grid">
+      <div class="summary-card" style="--step-color: var(--accent-1)">
+        <div class="summary-icon">🏗️</div>
+        <div>
+          <div class="summary-card-fn">socket(AF_INET, SOCK_STREAM, 0)</div>
+          <div class="summary-card-desc">Crée une prise réseau vide dans le kernel. Retourne un fd. Aucune adresse encore.</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-2)">
+        <div class="summary-icon">📮</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-2)">bind(fd, &amp;addr, sizeof(addr))</div>
+          <div class="summary-card-desc">Attache IP + port au socket. Le kernel route les paquets vers ce fd.</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-3)">
+        <div class="summary-icon">🚪</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-3)">listen(fd, backlog)</div>
+          <div class="summary-card-desc">Marque le socket passif. Installe une file d'attente. TCP handshake géré par le kernel.</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-4)">
+        <div class="summary-icon">🏦</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-4)">accept(fd, &amp;addr, &amp;len)</div>
+          <div class="summary-card-desc">Extrait un client de la file. Retourne un nouveau fd dédié. server_fd reste intact.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — Socket lifecycle explainer. eahmeti</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on navigation (back button + footer link)
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  // Animate sections on scroll
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+
+  // Update nav pills on scroll
+  const navIds = ['socket','bind','listen','accept','recv-send'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+
+  sectionEls.forEach(s => s && navObserver.observe(s));
+
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

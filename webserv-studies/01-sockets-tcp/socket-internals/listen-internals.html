@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>listen() internals — Ouvrir la file d'attente</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999;
+  }
+
+  /* HEADER */
+  .header { padding: 3rem 2rem 2rem; max-width: 900px; margin: 0 auto; border-bottom: 1px solid var(--border); }
+  .back-link {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase;
+    letter-spacing: 0.2em; color: var(--text-muted); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.5rem; border-radius: 6px; white-space: nowrap;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-3); background: rgba(192,132,252,0.07); }
+  .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
+  .header-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase;
+    letter-spacing: 0.3em; color: var(--accent-3); background: rgba(192,132,252,0.08);
+    border: 1px solid rgba(192,132,252,0.2); padding: 0.3rem 0.8rem;
+    border-radius: 100px; display: inline-block; margin-bottom: 1.2rem;
+  }
+  .header h1 { font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 1rem; }
+  .header h1 em { font-style: italic; color: var(--accent-3); }
+  .header-desc { font-size: 1rem; color: var(--text-dim); font-weight: 300; max-width: 600px; line-height: 1.7; }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,10,15,0.9); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0.75rem 2rem;
+  }
+  .progress-inner { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 0; overflow-x: auto; }
+  .step-pill {
+    display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.8rem;
+    border-radius: 100px; font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted);
+    cursor: pointer; transition: all 0.3s; text-decoration: none; white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(192,132,252,0.1); color: var(--accent-3); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 10px; }
+
+  /* MAIN */
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; }
+
+  /* STEP SECTION */
+  .step-section { padding: 4rem 0 2rem; opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .step-section.visible { opacity: 1; transform: translateY(0); }
+  .step-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .step-number-badge { font-family: 'Instrument Serif', serif; font-size: 4rem; line-height: 1; opacity: 0.15; flex-shrink: 0; color: var(--step-color, var(--accent-3)); }
+  .step-fn { font-family: 'Space Mono', monospace; font-size: 1.4rem; font-weight: 700; color: var(--step-color, var(--accent-3)); margin-bottom: 0.3rem; }
+  .step-subtitle { font-family: 'Instrument Serif', serif; font-size: 1.8rem; font-weight: 400; color: var(--text); }
+
+  /* TWO COLUMN */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* PANEL */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.8rem; position: relative; overflow: hidden; }
+  .panel::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--step-color, var(--accent-3)); opacity: 0.6; }
+  .panel-label { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--step-color, var(--accent-3)); margin-bottom: 1rem; opacity: 0.8; }
+  .panel p { font-size: 0.88rem; color: var(--text-dim); line-height: 1.75; font-weight: 300; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+
+  /* CODE PANEL */
+  .code-panel { background: #0d0d14; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem; }
+  .code-header { background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 0.7rem 1.2rem; display: flex; align-items: center; justify-content: space-between; }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); }
+  .code-tag { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.2em; padding: 0.2rem 0.6rem; border-radius: 4px; }
+  pre { padding: 1.5rem; overflow-x: auto; font-family: 'Space Mono', monospace; font-size: 0.75rem; line-height: 1.8; color: #c9c7de; }
+  .kw { color: #c084fc; } .fn-name { color: #4ae0ff; } .type { color: #4ade80; }
+  .str { color: #facc15; } .num { color: #fb923c; } .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; } .var { color: #e8e6f0; } .punct { color: #5c5a72; }
+  .highlight-line { display: block; background: rgba(192,132,252,0.06); border-left: 2px solid var(--step-color, var(--accent-3)); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; }
+
+  /* KEY POINTS */
+  .key-points { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; margin-top: 1.5rem; }
+  .key-point { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .key-point strong { color: var(--text); }
+
+  /* INFO BOX */
+  .info-box { background: rgba(192,132,252,0.04); border: 1px solid rgba(192,132,252,0.15); border-radius: 10px; padding: 1.2rem 1.5rem; margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .info-box strong { color: var(--accent-3); }
+  .info-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* DIVIDER */
+  .step-divider { height: 1px; background: linear-gradient(to right, transparent, var(--border), transparent); margin: 1rem 0; }
+
+  /* ══════════════════════════════════════════ */
+  /* BACKLOG DIAGRAM                            */
+  /* ══════════════════════════════════════════ */
+  .backlog-diagram {
+    margin: 1.5rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+  }
+  .backlog-header {
+    background: var(--surface-3);
+    border-bottom: 1px solid var(--border);
+    padding: 0.8rem 1.2rem;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .backlog-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); }
+  .backlog-badge { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent-3); background: rgba(192,132,252,0.1); border: 1px solid rgba(192,132,252,0.2); padding: 0.2rem 0.7rem; border-radius: 100px; }
+  .backlog-body { padding: 1.5rem; }
+  .backlog-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); margin-bottom: 0.7rem; }
+  .backlog-queue {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .queue-slot {
+    flex: 0 0 auto;
+    width: 72px;
+    height: 52px;
+    border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.2rem;
+    font-size: 0.6rem;
+    border: 1px solid;
+  }
+  .slot-filled { background: rgba(192,132,252,0.1); border-color: rgba(192,132,252,0.35); color: var(--accent-3); }
+  .slot-empty { background: var(--surface-2); border-color: var(--border); border-style: dashed; color: var(--text-muted); }
+  .slot-overflow { background: rgba(255,107,74,0.08); border-color: rgba(255,107,74,0.3); color: var(--accent-1); }
+  .slot-icon { font-size: 1rem; line-height: 1; }
+  .slot-label { font-size: 0.55rem; }
+  .backlog-flow {
+    display: flex; align-items: center; gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .flow-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: var(--text-dim); }
+  .flow-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .flow-arrow { color: var(--text-muted); font-size: 0.9rem; }
+
+  /* HANDSHAKE DIAGRAM */
+  .handshake-diagram {
+    margin: 1.5rem 0;
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+  }
+  .handshake-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.8rem 1.2rem;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .handshake-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); }
+  .handshake-badge { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent-4); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 0.2rem 0.7rem; border-radius: 100px; }
+  .handshake-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid rgba(42,42,66,0.5);
+  }
+  .hs-col-header {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.2em;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .hs-col-header:first-child { border-right: 1px solid rgba(42,42,66,0.5); color: var(--accent-5); }
+  .hs-col-header:last-child { color: var(--accent-4); }
+  .hs-col-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .handshake-body { padding: 1.2rem; display: flex; flex-direction: column; gap: 0; }
+  .hs-step {
+    display: grid;
+    grid-template-columns: 1fr 40px 1fr;
+    align-items: center;
+    padding: 0.5rem 0;
+    gap: 0;
+  }
+  .hs-step + .hs-step { border-top: 1px solid rgba(42,42,66,0.3); }
+  .hs-client { text-align: right; padding-right: 0.5rem; }
+  .hs-kernel { text-align: left; padding-left: 0.5rem; }
+  .hs-arrow-col { display: flex; align-items: center; justify-content: center; }
+  .hs-msg {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.68rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .hs-msg-send { background: rgba(250,204,21,0.1); color: var(--accent-5); border: 1px solid rgba(250,204,21,0.2); }
+  .hs-msg-recv { background: rgba(74,222,128,0.08); color: var(--accent-4); border: 1px solid rgba(74,222,128,0.2); }
+  .hs-msg-kernel { background: rgba(74,224,255,0.08); color: var(--accent-2); border: 1px solid rgba(74,224,255,0.2); }
+  .hs-arrow { font-size: 1rem; }
+  .hs-arrow-right { color: var(--accent-5); }
+  .hs-arrow-left { color: var(--accent-2); }
+  .hs-note { grid-column: 1 / -1; font-size: 0.65rem; color: var(--text-muted); font-style: italic; padding: 0.4rem 0; text-align: center; border-top: 1px solid rgba(42,42,66,0.4); }
+  .hs-final { grid-column: 1 / -1; padding: 0.6rem; background: rgba(74,222,128,0.06); border: 1px solid rgba(74,222,128,0.15); border-radius: 8px; font-size: 0.72rem; color: var(--accent-4); text-align: center; margin-top: 0.5rem; }
+
+  /* BEFORE/AFTER STATE */
+  .state-comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+  }
+  @media (max-width: 600px) { .state-comparison { grid-template-columns: 1fr; } }
+  .state-block { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .state-block-header { padding: 0.7rem 1rem; font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; }
+  .state-before .state-block-header { color: var(--accent-1); background: rgba(255,107,74,0.05); }
+  .state-after .state-block-header { color: var(--accent-4); background: rgba(74,222,128,0.05); }
+  .state-fields { padding: 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .state-field { display: flex; align-items: baseline; gap: 0.5rem; font-family: 'Space Mono', monospace; font-size: 0.72rem; }
+  .sf-name { color: var(--accent-5); min-width: 100px; flex-shrink: 0; }
+  .sf-eq { color: var(--text-muted); }
+  .sf-val-before { color: var(--accent-1); }
+  .sf-val-after { color: var(--accent-4); }
+  .sf-comment { font-size: 0.62rem; color: var(--text-muted); font-style: italic; }
+
+  /* SUMMARY TABLE */
+  .summary-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 1.5rem 0; }
+  .summary-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .summary-table th { text-align: left; padding: 0.7rem 1.2rem; background: var(--surface-3); color: var(--text-muted); font-family: 'Space Mono', monospace; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.15em; border-bottom: 1px solid var(--border); }
+  .summary-table td { padding: 0.75rem 1.2rem; border-bottom: 1px solid var(--border); color: var(--text-dim); line-height: 1.5; font-size: 0.82rem; }
+  .summary-table td:first-child { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--accent-3); font-weight: 700; white-space: nowrap; }
+  .summary-table td:nth-child(2) { color: var(--accent-1); }
+  .summary-table td:nth-child(3) { color: var(--accent-4); }
+  .summary-table tr:last-child td { border-bottom: none; }
+  .summary-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* FOOTER */
+  .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); margin-top: 4rem; }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-3); text-decoration: none; }
+  .footer a:hover { color: var(--accent-2); }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../socket-lifecycle.html#listen-deepdive" class="back-link">← socket lifecycle</a>
+    <div class="progress-back-divider"></div>
+    <a href="#what" class="step-pill active" id="nav-01"><span class="step-dot"></span>01 · deux effets</a>
+    <div class="step-connector"></div>
+    <a href="#backlog" class="step-pill" id="nav-02"><span class="step-dot"></span>02 · backlog</a>
+    <div class="step-connector"></div>
+    <a href="#handshake" class="step-pill" id="nav-03"><span class="step-dot"></span>03 · TCP handshake</a>
+    <div class="step-connector"></div>
+    <a href="#kernel-state" class="step-pill" id="nav-04"><span class="step-dot"></span>04 · état kernel</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">listen() internals — Kernel deep dive</div>
+  <h1>Ouvrir la file<br>d'<em>attente</em></h1>
+  <p class="header-desc">
+    Backlog, TCP handshake automatique, et l'état LISTEN dans le kernel —
+    ce que fait vraiment ce seul appel système.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 01 : deux effets      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="what" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div class="step-title-block">
+        <div class="step-fn">listen()</div>
+        <div class="step-subtitle">Deux effets, un seul appel</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">listen()</div>
+      </div>
+<pre><span class="fn-name">listen</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="num">10</span><span class="punct">);</span>
+<span class="cmt">//               ^^</span>
+<span class="cmt">//               backlog — taille de la file d'attente</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Effet 1 — Socket passif</div>
+        <p>
+          Avant <code style="color:var(--accent-3)">listen()</code>, le socket peut théoriquement
+          initier une connexion (mode <strong>actif</strong>).
+          <br><br>
+          Après <code>listen()</code>, il ne peut plus que <strong>recevoir</strong> des connexions entrantes.
+          Ce changement est <strong>irréversible</strong> — tu ne peux pas désactiver le mode passif.
+          <br><br>
+          C'est ce qui distingue un socket serveur d'un socket client.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Effet 2 — File d'attente kernel</div>
+        <p>
+          Le kernel va maintenant <strong>accepter automatiquement</strong> les connexions TCP entrantes
+          et les stocker dans une file interne.
+          <br><br>
+          Ton code peut être occupé ailleurs — les clients arrivent quand même,
+          le kernel les met en attente jusqu'à ce que tu appelles <code>accept()</code>.
+          <br><br>
+          C'est le <strong>découplage</strong> fondamental entre réseau et application.
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔒</span><span><strong>Irréversible</strong> — un socket en mode listen ne peut pas revenir en mode actif. Si tu veux changer, tu fermes et tu recrées.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span>Le kernel commence à répondre aux SYN entrants <strong>immédiatement</strong> après listen() — sans attendre ton accept().</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 02 : backlog           -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="backlog" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-5)">Le backlog</div>
+        <div class="step-subtitle">La salle d'attente, pas le nombre de clients</div>
+      </div>
+    </div>
+
+    <div class="backlog-diagram">
+      <div class="backlog-header">
+        <span class="backlog-title">File d'attente kernel — listen(fd, 10)</span>
+        <span class="backlog-badge">backlog = 10</span>
+      </div>
+      <div class="backlog-body">
+        <div class="backlog-label">Connexions TCP établies attendant accept()</div>
+        <div class="backlog-queue">
+          <div class="queue-slot slot-filled">
+            <span class="slot-icon">🖥️</span>
+            <span class="slot-label">client A</span>
+          </div>
+          <div class="queue-slot slot-filled">
+            <span class="slot-icon">🖥️</span>
+            <span class="slot-label">client B</span>
+          </div>
+          <div class="queue-slot slot-filled">
+            <span class="slot-icon">🖥️</span>
+            <span class="slot-label">client C</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-overflow">
+            <span class="slot-icon">✕</span>
+            <span class="slot-label">client 11</span>
+          </div>
+        </div>
+        <div class="backlog-flow">
+          <div class="flow-item"><div class="flow-dot" style="background:var(--accent-3)"></div>handshake terminé — connexion établie</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-item"><div class="flow-dot" style="background:var(--accent-5)"></div>stocké dans la file</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-item"><div class="flow-dot" style="background:var(--accent-4)"></div>accept() récupère</div>
+          <span style="margin-left:auto; font-size:0.65rem; color:var(--accent-1)">11e client → ECONNREFUSED ou ignoré</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">💡</span>
+      <div>
+        Le backlog n'est <strong>pas</strong> le nombre maximum de clients simultanés.
+        C'est le nombre de connexions <strong>déjà établies</strong> qui peuvent attendre en file
+        pendant que ton code est occupé ailleurs — dans un <code>recv()</code> ou un traitement long.
+        Dès que <code>accept()</code> les récupère, un slot se libère.
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">En pratique pour Webserv</div>
+        <p>
+          <code>10</code> ou <code>128</code> — peu importe pour un projet d'étude.
+          <code>poll()</code> sera bien plus rapide que la file ne se remplit.
+          <br><br>
+          Le noyau Linux <strong>ignore les valeurs trop grandes</strong> et applique
+          le plafond système <code>/proc/sys/net/core/somaxconn</code> (souvent 128 ou 4096).
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Deux queues en réalité</div>
+        <p>
+          Linux maintient en fait <strong>deux files</strong> :
+          <br><br>
+          <strong>SYN queue</strong> — connexions dont le handshake est en cours (SYN reçu, SYN-ACK envoyé, ACK pas encore arrivé).
+          <br><br>
+          <strong>Accept queue</strong> — connexions dont le handshake est <strong>terminé</strong>,
+          prêtes pour <code>accept()</code>. C'est ce que le backlog contrôle.
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📋</span><span>Backlog plein → le kernel répond <code>ECONNREFUSED</code> ou ignore silencieusement le SYN, selon <code>tcp_abort_on_overflow</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔢</span><span>Le kernel peut arrondir le backlog à la puissance de 2 supérieure. <code>listen(fd, 10)</code> peut donner une file de 16.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 03 : TCP handshake    -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="handshake" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-4)">TCP handshake</div>
+        <div class="step-subtitle">Le kernel s'en occupe seul</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; margin-bottom:1.5rem; line-height:1.75">
+      Tu n'écris pas une ligne pour le SYN / SYN-ACK / ACK.
+      Tout se passe <strong style="color:var(--text)">sans que ton code intervienne</strong>,
+      dès que <code style="color:var(--accent-3)">listen()</code> est appelé.
+    </p>
+
+    <div class="handshake-diagram">
+      <div class="handshake-header">
+        <span class="handshake-title">TCP three-way handshake</span>
+        <span class="handshake-badge">automatique après listen()</span>
+      </div>
+      <div class="handshake-cols">
+        <div class="hs-col-header">
+          <span class="hs-col-dot"></span>CLIENT
+        </div>
+        <div class="hs-col-header">
+          <span class="hs-col-dot" style="background:var(--accent-4)"></span>KERNEL (pour toi)
+        </div>
+      </div>
+      <div class="handshake-body">
+        <div class="hs-step">
+          <div class="hs-client" style="text-align:right">
+            <span class="hs-msg hs-msg-send">SYN</span>
+          </div>
+          <div class="hs-arrow-col"><span class="hs-arrow hs-arrow-right">→</span></div>
+          <div class="hs-kernel">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted); font-style:italic">"je veux me connecter"</span>
+          </div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-client">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted); font-style:italic">"ok, j'accepte"</span>
+          </div>
+          <div class="hs-arrow-col"><span class="hs-arrow hs-arrow-left">←</span></div>
+          <div class="hs-kernel">
+            <span class="hs-msg hs-msg-kernel">SYN-ACK</span>
+          </div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-client" style="text-align:right">
+            <span class="hs-msg hs-msg-send">ACK</span>
+          </div>
+          <div class="hs-arrow-col"><span class="hs-arrow hs-arrow-right">→</span></div>
+          <div class="hs-kernel">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted); font-style:italic">"parfait, c'est établi"</span>
+          </div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-note">connexion placée dans la file d'attente — état ESTABLISHED côté kernel</div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-note" style="color:var(--text-muted); border-top:none">· · · ton code appelle accept() · · ·</div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-client" style="text-align:center; grid-column:1/-1">
+            <div class="hs-final">échange de données via recv() / send() — connexion ESTABLISHED des deux côtés</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">🔑</span>
+      <div>
+        Ton <code>accept()</code> arrive <strong>après</strong> le handshake — la connexion est déjà
+        établie quand tu la récupères. Tu reçois un fd vers un socket <strong>déjà connecté</strong>,
+        prêt pour <code>recv()</code> et <code>send()</code>.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🤝</span><span>Le kernel répond aux SYN <strong>en microsecondes</strong>. Ton application n'est pas sur le chemin critique du handshake.</span></div>
+      <div class="key-point"><span class="key-point-icon">🛡️</span><span>Le kernel gère aussi les <strong>retransmissions</strong> si un SYN-ACK est perdu — transparent pour ton code.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 04 : état kernel      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="kernel-state" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-2)">L'état dans le kernel</div>
+        <div class="step-subtitle">Avant et après listen()</div>
+      </div>
+    </div>
+
+    <div class="state-comparison">
+      <div class="state-block state-before">
+        <div class="state-block-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-1);flex-shrink:0;display:inline-block"></span>
+          Avant listen()
+        </div>
+        <div class="state-fields">
+          <div class="state-field">
+            <span class="sf-name">state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">SS_UNCONNECTED</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">tcp_state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">CLOSE (07)</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">accept_q</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">NULL</span>
+            <span class="sf-comment">pas de file</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">SYN entrants</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">ignorés</span>
+          </div>
+        </div>
+      </div>
+      <div class="state-block state-after">
+        <div class="state-block-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-4);flex-shrink:0;display:inline-block"></span>
+          Après listen()
+        </div>
+        <div class="state-fields">
+          <div class="state-field">
+            <span class="sf-name">state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">SS_UNCONNECTED</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">tcp_state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">LISTEN (0A)</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">accept_q</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">allouée</span>
+            <span class="sf-comment">backlog slots</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">SYN entrants</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">traités auto</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">/proc/net/tcp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">observer l'état</div>
+      </div>
+<pre><span class="fn-name">cat</span> /proc/net/tcp <span class="punct">|</span> <span class="fn-name">grep</span> <span class="str">1F90</span>
+
+<span class="cmt">#  local_address   rem_address  st  ...  inode</span>
+<span class="highlight-line">   <span class="str">00000000:1F90</span>  <span class="str">00000000:0000</span>  <span class="macro">0A</span>  ...  <span class="num">49051</span></span>
+<span class="cmt">#                               ^^</span>
+<span class="cmt">#                               0A = 10 = TCP_LISTEN ← c'est nous</span>
+
+<span class="cmt"># Vérifier la taille de la file d'attente en direct :</span>
+<span class="fn-name">ss</span> <span class="str">-tlnp</span> <span class="punct">|</span> <span class="fn-name">grep</span> <span class="num">8080</span>
+<span class="cmt"># LISTEN  0  10  0.0.0.0:8080  0.0.0.0:*  users:(("webserv",pid=5358,fd=3))</span>
+<span class="cmt">#          ^   ^</span>
+<span class="cmt">#          |   backlog configuré</span>
+<span class="cmt">#          connexions actuellement en attente dans la file</span></pre>
+    </div>
+
+    <!-- Recap table -->
+    <div style="font-family:'Space Mono',monospace; font-size:0.58rem; text-transform:uppercase; letter-spacing:0.2em; color:var(--text-muted); margin:2rem 0 0.7rem;">Récapitulatif</div>
+    <div class="summary-table-wrap">
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>État</th>
+            <th>Avant listen()</th>
+            <th>Après listen()</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Mode socket</td>
+            <td>actif (peut connecter)</td>
+            <td>passif (attend connexions)</td>
+          </tr>
+          <tr>
+            <td>SYN entrants</td>
+            <td>ignorés</td>
+            <td>traités automatiquement</td>
+          </tr>
+          <tr>
+            <td>File d'attente</td>
+            <td>inexistante</td>
+            <td>allouée (backlog slots)</td>
+          </tr>
+          <tr>
+            <td>État TCP</td>
+            <td>CLOSE (07)</td>
+            <td>LISTEN (0A)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔍</span><span>Le changement d'état vers <strong>LISTEN (0A)</strong> est ce qui autorise le kernel à traiter les SYN — visible dans <code>/proc/net/tcp</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">📡</span><span><code>ss -tlnp</code> affiche les connexions en attente dans la file (<code>Recv-Q</code>) et le backlog configuré (<code>Send-Q</code>) en mode LISTEN.</span></div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../socket-lifecycle.html#listen-deepdive">Retour à Socket Lifecycle</a> &nbsp;·&nbsp; <a href="bind-internals.html">bind() internals</a> &nbsp;·&nbsp; <a href="socket-internals.html">socket() internals</a> &nbsp;·&nbsp; <a href="../../webserv-mindmap.html">Cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — listen() internals. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../socket-lifecycle.html#listen-deepdive"], a[href="bind-internals.html"], a[href="socket-internals.html"], a[href="../../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  sections.forEach(s => observer.observe(s));
+
+  const sectionIds = ['what','backlog','handshake','kernel-state'];
+  const navPills   = document.querySelectorAll('.step-pill');
+
+  function updateNav() {
+    let current = 0;
+    sectionIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.getBoundingClientRect().top < window.innerHeight * 0.4) current = i;
+    });
+    navPills.forEach((p, i) => p.classList.toggle('active', i === current));
+  }
+  window.addEventListener('scroll', updateNav, { passive: true });
+  updateNav();
+</script>
+</body>
+</html>

@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blocking vs Non-blocking — fcntl & epoll</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-5); background: rgba(250,204,21,0.07); }
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-5);
+    background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-5); }
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active {
+    background: rgba(250,204,21,0.1);
+    color: var(--accent-5);
+  }
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 10px;
+  }
+
+  /* MAIN */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* STEP SECTION */
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-5));
+  }
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-5));
+    margin-bottom: 0.3rem;
+  }
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* TWO COLUMN LAYOUT */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+    .progress-inner { overflow-x: auto; }
+  }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-5));
+    opacity: 0.6;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-5));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+  .panel p + p { margin-top: 0.8rem; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+  .panel p code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-5));
+    background: rgba(250,204,21,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  /* ANALOGY PANEL */
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+  }
+  .analogy-icon { font-size: 2.5rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* CODE PANEL */
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--accent-5);
+    background: rgba(250,204,21,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+  .kw  { color: #c084fc; }
+  .fn-name { color: #4ae0ff; }
+  .type { color: #4ade80; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; }
+  .var { color: #e8e6f0; }
+  .punct { color: #5c5a72; }
+  .ok   { color: #4ade80; }
+  .bad  { color: #ff6b4a; }
+  .highlight-line {
+    display: block;
+    background: rgba(250,204,21,0.05);
+    border-left: 2px solid var(--accent-5);
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+  /* Lines that are NEW additions vs the original code */
+  .new-line {
+    display: block;
+    background: rgba(74,222,128,0.08);
+    border-left: 2px solid var(--accent-4);
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+    position: relative;
+  }
+  .new-line::after {
+    content: '+ nouveau';
+    position: absolute;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.55rem;
+    font-family: 'Space Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent-4);
+    opacity: 0.6;
+  }
+  /* Badge for new-line legend */
+  .diff-legend {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.6rem 1.2rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+  }
+  .diff-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-muted);
+  }
+  .diff-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .diff-swatch.original { background: rgba(74,224,255,0.15); border: 1px solid var(--accent-2); }
+  .diff-swatch.added    { background: rgba(74,222,128,0.2);  border: 1px solid var(--accent-4); }
+
+  /* KEY POINTS */
+  .key-points {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .key-point {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .key-point code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-5);
+  }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* WARNING / INFO BOX */
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .warning strong { color: var(--accent-1); }
+  .info-box {
+    background: rgba(250,204,21,0.04);
+    border: 1px solid rgba(250,204,21,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .info-box strong { color: var(--accent-5); }
+  .info-box code, .warning code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-5);
+  }
+
+  /* STEP DIVIDER */
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* BYTE TABLE */
+  .byte-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .byte-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    font-family: 'Space Mono', monospace;
+  }
+  .byte-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .byte-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    line-height: 1.4;
+    font-size: 0.8rem;
+  }
+  .byte-table tr:last-child td { border-bottom: none; }
+  .byte-table td:first-child { color: var(--accent-5); font-weight: 700; }
+  .byte-table td code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  /* STATE COMPARISON CARDS */
+  .state-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .state-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .state-card.bad::before  { background: var(--accent-1); }
+  .state-card.mid::before  { background: var(--accent-5); }
+  .state-card.good::before { background: var(--accent-4); }
+  .state-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .state-card.bad  .state-title { color: var(--accent-1); }
+  .state-card.mid  .state-title { color: var(--accent-5); }
+  .state-card.good .state-title { color: var(--accent-4); }
+  .state-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+  }
+  .state-props {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .state-prop {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .state-prop.ok  { color: var(--accent-4); }
+  .state-prop.bad { color: var(--accent-1); }
+
+  /* QUOTE BOX */
+  .quote-box {
+    border-left: 3px solid var(--accent-5);
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    background: rgba(250,204,21,0.03);
+    border-radius: 0 8px 8px 0;
+  }
+  .quote-box p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 0.3rem;
+  }
+  .quote-box cite {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* GLOSSARY */
+  .glossary {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .glossary-item {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .glossary-item:last-child { border-bottom: none; }
+  .glossary-term {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--accent-5);
+    padding: 0.9rem 1.2rem;
+    background: var(--surface-2);
+    min-width: 160px;
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .glossary-def {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    padding: 0.9rem 1.2rem;
+    line-height: 1.55;
+    background: var(--surface);
+  }
+
+  /* SUMMARY SECTION */
+  .summary-section {
+    margin-top: 4rem;
+    padding: 3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-5), var(--accent-3), var(--accent-4), var(--accent-2));
+  }
+  .summary-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+  .summary-title em { font-style: italic; color: var(--accent-5); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 1.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  .summary-card-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--accent-5);
+    margin-bottom: 0.2rem;
+  }
+  .summary-card-desc { font-size: 0.8rem; color: var(--text-muted); }
+  .summary-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-5); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#blocking" class="step-pill active" id="nav-blocking">
+      <span class="step-dot"></span>Blocking
+    </a>
+    <div class="step-connector"></div>
+    <a href="#fcntl" class="step-pill" id="nav-fcntl">
+      <span class="step-dot"></span>fcntl
+    </a>
+    <div class="step-connector"></div>
+    <a href="#etats" class="step-pill" id="nav-etats">
+      <span class="step-dot"></span>3 États
+    </a>
+    <div class="step-connector"></div>
+    <a href="#epoll" class="step-pill" id="nav-epoll">
+      <span class="step-dot"></span>epoll
+    </a>
+    <div class="step-connector"></div>
+    <a href="#cloexec" class="step-pill" id="nav-cloexec">
+      <span class="step-dot"></span>FD_CLOEXEC
+    </a>
+    <div class="step-connector"></div>
+    <a href="#transformation" class="step-pill" id="nav-transformation">
+      <span class="step-dot"></span>Code +fcntl
+    </a>
+    <div class="step-connector"></div>
+    <a href="#glossaire" class="step-pill" id="nav-glossaire">
+      <span class="step-dot"></span>Glossaire
+    </a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Concept clé — I/O</div>
+  <h1>Blocking vs <em>Non-blocking</em></h1>
+  <p class="header-desc">
+    Pourquoi un socket bloque le programme, ce que fait vraiment <code style="font-family:'Space Mono',monospace;color:var(--accent-5)">fcntl()</code>,
+    comment <code style="font-family:'Space Mono',monospace;color:var(--accent-5)">EAGAIN</code> s'inscrit dans le multiplex,
+    et pourquoi <code style="font-family:'Space Mono',monospace;color:var(--accent-5)">fcntl</code> reste obligatoire même avec epoll.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 1 : LE PROBLÈME      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="blocking" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">accept() / recv()</div>
+        <div class="step-subtitle">Le problème du blocking</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Par défaut</div>
+        <p>
+          Un socket est <strong>bloquant</strong> à sa création. Cela signifie que certains appels système
+          <strong>suspendent le processus entier</strong> jusqu'à obtenir une réponse, peu importe le temps que ça prend.
+        </p>
+        <p>
+          Les deux appels concernés dans un serveur HTTP :
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🧍</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Un caissier qui fixe la porte d'entrée sans bouger, refusant de servir quiconque jusqu'à ce qu'un nouveau client entre.
+            Les clients déjà dans le magasin attendent indéfiniment.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">blocking_problem.cpp</span>
+        </div>
+        <span class="code-tag">Problème</span>
+      </div>
+      <pre><span class="cmt">// Ces deux appels GÈLENT le programme jusqu'à réponse</span>
+
+<span class="fn-name">accept</span><span class="punct">(</span>server_fd<span class="punct">, ...);</span>   <span class="cmt">// ← suspend jusqu'à ce qu'un client arrive</span>
+<span class="fn-name">recv</span><span class="punct">(</span>client_fd<span class="punct">,</span> buf<span class="punct">,</span> size<span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>  <span class="cmt">// ← suspend jusqu'à recevoir des données</span></pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1)">
+      <div class="panel-label">Ce qui se passe au niveau du kernel</div>
+      <p>
+        Quand <code>recv()</code> est appelé sur un socket bloquant sans données disponibles :
+      </p>
+      <div class="key-points" style="margin-top: 1rem;">
+        <div class="key-point">
+          <span class="key-point-icon" style="color:var(--accent-5)">💤</span>
+          <span>Le kernel met le processus en état <strong>SLEEPING</strong></span>
+        </div>
+        <div class="key-point">
+          <span class="key-point-icon" style="color:var(--accent-4)">✅</span>
+          <span>Le processus ne consomme plus de CPU</span>
+        </div>
+        <div class="key-point">
+          <span class="key-point-icon" style="color:var(--accent-1)">❌</span>
+          <span>Mais il ne fait <strong>rien d'autre</strong> non plus</span>
+        </div>
+        <div class="key-point">
+          <span class="key-point-icon" style="color:var(--accent-2)">🔔</span>
+          <span>Le kernel le réveille quand des données arrivent</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <span>
+        <strong>À l'échelle :</strong> avec 1000 clients simultanés en mode bloquant → il faudrait
+        <strong>1000 threads</strong>, un par client. C'est lourd, consomme de la mémoire, et ne scale pas.
+      </span>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- SECTION 2 : FCNTL & O_NONBLOCK  -->
+  <!-- ══════════════════════════════════ -->
+  <section class="step-section" id="fcntl" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">fcntl() + O_NONBLOCK</div>
+        <div class="step-subtitle">La solution partielle</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que fait fcntl littéralement</div>
+        <p>
+          <code>fcntl</code> signifie <strong>"file control"</strong>. C'est une fonction générique qui
+          manipule un file descriptor déjà ouvert. Elle fait des choses différentes selon le <code>cmd</code> passé.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Ce que fait O_NONBLOCK exactement</div>
+        <p>
+          <code>fcntl</code> ne fait qu'<strong>écrire un seul bit</strong> dans une structure interne du
+          kernel associée au fd. Ce bit change le comportement de tous les appels suivants sur ce fd.
+        </p>
+      </div>
+    </div>
+
+    <div class="byte-table-wrap">
+      <table class="byte-table">
+        <thead>
+          <tr>
+            <th>cmd</th>
+            <th>Rôle</th>
+            <th>Exemple d'utilisation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>F_GETFL</td>
+            <td>Lire les flags de statut actuels du fd</td>
+            <td>Toujours faire ça <em>avant</em> F_SETFL pour préserver les autres flags</td>
+          </tr>
+          <tr>
+            <td>F_SETFL</td>
+            <td>Écrire de nouveaux flags de statut</td>
+            <td>Activer O_NONBLOCK sur le fd</td>
+          </tr>
+          <tr>
+            <td>F_SETFD</td>
+            <td>Écrire les flags du fd lui-même</td>
+            <td>Utiliser <code>FD_CLOEXEC</code> pour fermer auto à execve()</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">set_nonblocking.cpp</span>
+        </div>
+        <span class="code-tag">Bonne pratique</span>
+      </div>
+      <pre><span class="cmt">// Étape 1 : lire les flags actuels (IMPORTANT : préserve les autres flags)</span>
+<span class="type">int</span> flags <span class="punct">=</span> <span class="fn-name">fcntl</span><span class="punct">(</span>fd<span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">);</span>
+
+<span class="cmt">// Étape 2 : ajouter O_NONBLOCK avec un OR bitwise</span>
+<span class="highlight-line"><span class="fn-name">fcntl</span><span class="punct">(</span>fd<span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> flags <span class="punct">|</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span>  <span class="cmt">// ← LE bit qui change tout</span></span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <span>
+        <strong>Pourquoi le F_GETFL d'abord ?</strong> Si on fait juste <code>fcntl(fd, F_SETFL, O_NONBLOCK)</code>,
+        on écrase TOUS les flags existants (lecture, écriture...). Le <code>|</code> ajoute <code>O_NONBLOCK</code>
+        sans toucher au reste.
+      </span>
+    </div>
+
+    <div class="step-divider" style="margin-top: 2rem;"></div>
+
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.4rem; font-weight:400; color:var(--text); margin: 1.5rem 0 1rem;">
+      EAGAIN : la réponse non-bloquante
+    </h3>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Quand il n'y a rien à lire</div>
+        <p>
+          En mode non-bloquant, au lieu de geler le programme, le kernel retourne immédiatement
+          <code>-1</code> avec <code>errno</code> positionné à <code>EAGAIN</code>.
+        </p>
+        <p>
+          <code>EAGAIN</code> signifie littéralement <strong>"Try Again"</strong> —
+          "rien pour l'instant, réessaie plus tard". <strong>C'est normal, pas une erreur.</strong>
+        </p>
+      </div>
+      <div class="code-panel" style="margin-bottom:0">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots">
+              <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+            </div>
+            <span class="code-filename">handle_eagain.cpp</span>
+          </div>
+        </div>
+        <pre><span class="type">int</span> n <span class="punct">=</span> <span class="fn-name">recv</span><span class="punct">(</span>client_fd<span class="punct">,</span> buf<span class="punct">,</span> size<span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+<span class="kw">if</span> <span class="punct">(</span>n <span class="punct">== -</span><span class="num">1</span> <span class="punct">&amp;&amp;</span> errno <span class="punct">==</span> <span class="macro">EAGAIN</span><span class="punct">) {</span>
+    <span class="cmt">// Pas de données disponibles MAINTENANT</span>
+    <span class="cmt">// C'est NORMAL — pas une erreur</span>
+    <span class="cmt">// On reviendra plus tard</span>
+    <span class="kw">return</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+      </div>
+    </div>
+
+    <div class="step-divider" style="margin-top: 2rem;"></div>
+
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.4rem; font-weight:400; color:var(--text); margin: 1.5rem 0 1rem;">
+      Piège classique : chaque fd individuellement
+    </h3>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">server_setup.cpp</span>
+        </div>
+        <span class="code-tag">Erreur fréquente</span>
+      </div>
+      <pre><span class="cmt">// ✅ Au démarrage : server_fd non-bloquant</span>
+<span class="type">int</span> server_fd <span class="punct">=</span> <span class="fn-name">socket</span><span class="punct">(</span><span class="macro">AF_INET</span><span class="punct">,</span> <span class="macro">SOCK_STREAM</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+<span class="fn-name">fcntl</span><span class="punct">(</span>server_fd<span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span>server_fd<span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span>
+
+<span class="cmt">// Dans la boucle principale...</span>
+<span class="type">int</span> client_fd <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span>server_fd<span class="punct">, ...);</span>
+
+<span class="cmt">// ⚠️ ATTENTION : client_fd est BLOQUANT par défaut !</span>
+<span class="cmt">// accept() crée un NOUVEAU fd — il ne hérite PAS du mode non-bloquant</span>
+<span class="highlight-line"><span class="fn-name">fcntl</span><span class="punct">(</span>client_fd<span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span>client_fd<span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span>  <span class="cmt">// ← CRUCIAL</span></span></pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <span>
+        <strong>L'erreur la plus fréquente :</strong> oublier de mettre le <code>client_fd</code> en non-bloquant après
+        <code>accept()</code>. Le <code>server_fd</code> en non-bloquant ne suffit pas — chaque nouveau fd issu de
+        <code>accept()</code> commence en mode bloquant.
+      </span>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 3 : LES TROIS ÉTATS  -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="etats" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">Blocking → Non-blocking → epoll</div>
+        <div class="step-subtitle">Les trois états comparés</div>
+      </div>
+    </div>
+
+    <div class="three-col">
+      <div class="state-card bad">
+        <div class="state-title">État 1 — Bloquant</div>
+        <div class="state-desc">Sans fcntl — comportement par défaut</div>
+        <div class="state-props">
+          <div class="state-prop ok">✅ CPU = 0% en attente</div>
+          <div class="state-prop bad">❌ 1 client à la fois</div>
+          <div class="state-prop bad">❌ Programme suspendu indéfiniment</div>
+        </div>
+      </div>
+      <div class="state-card mid">
+        <div class="state-title">État 2 — Non-bloquant seul</div>
+        <div class="state-desc">fcntl sans epoll — busy-wait</div>
+        <div class="state-props">
+          <div class="state-prop ok">✅ Ne gèle jamais</div>
+          <div class="state-prop ok">✅ Peut gérer N clients</div>
+          <div class="state-prop bad">❌ CPU = 100% en permanence</div>
+        </div>
+      </div>
+      <div class="state-card good">
+        <div class="state-title">État 3 — fcntl + epoll</div>
+        <div class="state-desc">La solution finale</div>
+        <div class="state-props">
+          <div class="state-prop ok">✅ Ne gèle jamais (fcntl)</div>
+          <div class="state-prop ok">✅ CPU ≈ 0% en attente (epoll)</div>
+          <div class="state-prop ok">✅ N clients simultanément</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">states_comparison.cpp</span>
+        </div>
+        <span class="code-tag">Visualisation</span>
+      </div>
+      <pre><span class="cmt">// ─── État 1 : Bloquant ───────────────────────────────────────────────</span>
+<span class="kw">while</span><span class="punct">(</span><span class="num">1</span><span class="punct">) {</span>
+    <span class="fn-name">accept</span><span class="punct">()</span>   <span class="cmt">← PROGRAMME GELÉ (CPU=0%, mais rien d'autre ne tourne)</span>
+               <span class="cmt">   ... client arrive ...</span>
+    <span class="fn-name">recv</span><span class="punct">()</span>     <span class="cmt">← PROGRAMME GELÉ À NOUVEAU</span>
+               <span class="cmt">   ... données arrivent ...</span>
+    <span class="fn-name">send</span><span class="punct">()</span>
+<span class="punct">}</span>
+
+<span class="cmt">// ─── État 2 : Non-bloquant seul (busy-wait) ──────────────────────────</span>
+<span class="kw">while</span><span class="punct">(</span><span class="num">1</span><span class="punct">) {</span>
+    <span class="fn-name">accept</span><span class="punct">()</span>  <span class="cmt">→ EAGAIN → continue</span>   <span class="cmt">← retourne immédiatement</span>
+    <span class="fn-name">accept</span><span class="punct">()</span>  <span class="cmt">→ EAGAIN → continue</span>
+    <span class="fn-name">accept</span><span class="punct">()</span>  <span class="cmt">→ client dispo !</span>
+    <span class="fn-name">recv</span><span class="punct">()</span>    <span class="cmt">→ EAGAIN → continue</span>   <span class="cmt">← boucle tourne en permanence</span>
+<span class="punct">}</span>                                   <span class="cmt">← CPU = 100% même sans trafic</span>
+
+<span class="cmt">// ─── État 3 : fcntl + epoll ──────────────────────────────────────────</span>
+<span class="kw">while</span><span class="punct">(</span><span class="num">1</span><span class="punct">) {</span>
+    <span class="fn-name">epoll_wait</span><span class="punct">()</span>  <span class="cmt">← DORT jusqu'à ce qu'un fd soit prêt (CPU≈0%)</span>
+                   <span class="cmt">   fd prêt → on se réveille</span>
+<span class="highlight-line">    <span class="fn-name">accept</span><span class="punct">()</span> <span class="cmt">ou</span> <span class="fn-name">recv</span><span class="punct">()</span>  <span class="cmt">← garanti d'avoir quelque chose, EAGAIN rare</span></span>
+    <span class="fn-name">send</span><span class="punct">()</span>
+<span class="punct">}</span></pre>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : FCNTL + EPOLL ENSEMBLE   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="epoll" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">fcntl + epoll_wait</div>
+        <div class="step-subtitle">Complémentaires, pas alternatifs</div>
+      </div>
+    </div>
+
+    <div class="byte-table-wrap">
+      <table class="byte-table">
+        <thead>
+          <tr>
+            <th>Outil</th>
+            <th>Problème résolu</th>
+            <th>Sans lui</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>fcntl + O_NONBLOCK</td>
+            <td>Empêche le <strong style="color:var(--accent-1)">gel</strong> du programme</td>
+            <td><code>recv()</code> suspend le programme indéfiniment</td>
+          </tr>
+          <tr>
+            <td>epoll_wait()</td>
+            <td>Empêche le <strong style="color:var(--accent-5)">gaspillage CPU</strong></td>
+            <td>Boucle tourne pour rien (busy-wait)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <span>
+        <strong>epoll dit <em>quand</em> agir. fcntl garantit que quand on agit, ça ne bloque jamais.</strong>
+        <br>
+        <code>epoll_wait()</code> te dit "ce fd est prêt" — mais si le fd est encore bloquant, <code>recv()</code>
+        peut quand même bloquer dans des cas limites (données fragmentées, conditions de course).
+        <code>fcntl</code> est le filet de sécurité absolu.
+      </span>
+    </div>
+
+    <div class="code-panel" style="margin-top: 1.5rem;">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_pattern.cpp</span>
+        </div>
+        <span class="code-tag">Pattern correct</span>
+      </div>
+      <pre><span class="cmt">// Pattern correct : fcntl TOUJOURS, même avec epoll</span>
+<span class="type">int</span> client_fd <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span>server_fd<span class="punct">, ...);</span>
+
+<span class="highlight-line"><span class="fn-name">fcntl</span><span class="punct">(</span>client_fd<span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span>client_fd<span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span>  <span class="cmt">// ← toujours</span></span>
+
+<span class="kw">struct</span> <span class="type">epoll_event</span> ev<span class="punct">;</span>
+ev<span class="punct">.</span>events  <span class="punct">=</span> <span class="macro">EPOLLIN</span><span class="punct">;</span>
+ev<span class="punct">.</span>data<span class="punct">.</span>fd <span class="punct">=</span> client_fd<span class="punct">;</span>
+<span class="fn-name">epoll_ctl</span><span class="punct">(</span>epoll_fd<span class="punct">,</span> <span class="macro">EPOLL_CTL_ADD</span><span class="punct">,</span> client_fd<span class="punct">, &amp;</span>ev<span class="punct">);</span></pre>
+    </div>
+
+    <div class="step-divider" style="margin-top: 2rem;"></div>
+
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.4rem; font-weight:400; color:var(--text); margin: 1.5rem 0 1rem;">
+      Version minimale avec fcntl seul
+    </h3>
+    <p style="font-size:0.88rem; color:var(--text-dim); margin-bottom: 1rem; font-weight:300;">
+      Code de base transformé avec fcntl — modifications minimales commentées.
+      <strong style="color:var(--text)">Note :</strong> ce code fait du busy-waiting. La prochaine étape = remplacer par <code style="font-family:'Space Mono',monospace; color:var(--accent-5); font-size:0.82rem;">epoll_wait()</code>.
+    </p>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">minimal_nonblocking.cpp</span>
+        </div>
+        <span class="code-tag">Étape intermédiaire</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;fcntl.h&gt;</span>   <span class="cmt">// pour fcntl()</span>
+<span class="macro">#include</span> <span class="str">&lt;errno.h&gt;</span>   <span class="cmt">// pour EAGAIN</span>
+
+<span class="cmt">// Au démarrage : server_fd non-bloquant</span>
+<span class="fn-name">fcntl</span><span class="punct">(</span>server_fd<span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span>server_fd<span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span>
+
+<span class="kw">while</span> <span class="punct">(</span><span class="num">1</span><span class="punct">) {</span>
+    <span class="type">int</span> client_fd <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span>server_fd<span class="punct">, ...);</span>
+
+    <span class="kw">if</span> <span class="punct">(</span>client_fd <span class="punct">== -</span><span class="num">1</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span>errno <span class="punct">==</span> <span class="macro">EAGAIN</span><span class="punct">)</span>
+            <span class="kw">continue</span><span class="punct">;</span>  <span class="cmt">// pas de client pour l'instant → reboucle</span>
+        <span class="kw">break</span><span class="punct">;</span>         <span class="cmt">// vraie erreur</span>
+    <span class="punct">}</span>
+
+    <span class="cmt">// CRUCIAL : client_fd est bloquant par défaut après accept()</span>
+<span class="highlight-line">    <span class="fn-name">fcntl</span><span class="punct">(</span>client_fd<span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span>client_fd<span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span></span>
+
+    <span class="type">int</span> n <span class="punct">=</span> <span class="fn-name">recv</span><span class="punct">(</span>client_fd<span class="punct">,</span> buf<span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span>buf<span class="punct">) -</span> <span class="num">1</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span>n <span class="punct">== -</span><span class="num">1</span> <span class="punct">&amp;&amp;</span> errno <span class="punct">==</span> <span class="macro">EAGAIN</span><span class="punct">) {</span>
+        <span class="cmt">// Pas de données encore → dans un vrai serveur,</span>
+        <span class="cmt">// on mettrait ce client en attente via epoll</span>
+        <span class="fn-name">close</span><span class="punct">(</span>client_fd<span class="punct">);</span>
+        <span class="kw">continue</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="cmt">// traiter la requête...</span>
+<span class="punct">}</span>
+<span class="cmt">// Note : ce code fait du busy-waiting (CPU 100%)</span>
+<span class="cmt">// La prochaine étape = remplacer par epoll_wait()</span></pre>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 5 : FD_CLOEXEC      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="cloexec" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">F_SETFD + FD_CLOEXEC</div>
+        <div class="step-subtitle">Le bonus pour le CGI</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Le problème sans FD_CLOEXEC</div>
+        <p>
+          Pour le CGI, on fait <code>fork()</code> + <code>execve()</code>. Sans <code>FD_CLOEXEC</code>,
+          tous les file descriptors ouverts (sockets clients, pipes...) sont <strong>hérités par le processus enfant</strong>.
+        </p>
+        <p>
+          Résultat : <strong>fuite garantie</strong> sur tous tes sockets ouverts. Le processus CGI garde des
+          références à des connexions qu'il n'a pas à toucher.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">La solution</div>
+        <p>
+          <code>FD_CLOEXEC</code> marque un fd pour qu'il soit <strong>fermé automatiquement</strong>
+          lors d'un <code>execve()</code>. Il reste ouvert dans le processus parent, mais le fils n'en hérite pas.
+        </p>
+        <p>
+          Note : c'est <code>F_SETFD</code> (flag du fd lui-même) et non <code>F_SETFL</code>
+          (flag de statut d'accès).
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">cgi_pipes.cpp</span>
+        </div>
+        <span class="code-tag">CGI</span>
+      </div>
+      <pre><span class="cmt">// Sur les pipes du CGI — fermeture automatique lors de execve()</span>
+<span class="highlight-line"><span class="fn-name">fcntl</span><span class="punct">(</span>pipe_fd<span class="punct">,</span> <span class="macro">F_SETFD</span><span class="punct">,</span> <span class="macro">FD_CLOEXEC</span><span class="punct">);</span></span>
+<span class="cmt">// Quand execve() tourne dans le fils, ce fd se ferme automatiquement</span>
+<span class="cmt">// Le processus CGI ne voit jamais ce fd</span></pre>
+    </div>
+
+    <div class="step-divider" style="margin-top: 2rem;"></div>
+
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.4rem; font-weight:400; color:var(--text); margin: 1.5rem 0 1rem;">
+      Résumé des appels fcntl dans Webserv
+    </h3>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">fcntl_cheatsheet.cpp</span>
+        </div>
+        <span class="code-tag">Référence rapide</span>
+      </div>
+      <pre><span class="cmt">// 1. Rendre un socket non-bloquant (server_fd ET chaque client_fd)</span>
+<span class="fn-name">fcntl</span><span class="punct">(</span>fd<span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span>fd<span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span>
+
+<span class="cmt">// 2. Protéger les pipes CGI contre la fuite lors d'execve()</span>
+<span class="fn-name">fcntl</span><span class="punct">(</span>fd<span class="punct">,</span> <span class="macro">F_SETFD</span><span class="punct">,</span> <span class="macro">FD_CLOEXEC</span><span class="punct">);</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>📋</span>
+      <span>
+        <strong>Extrait du sujet Webserv (MacOS) :</strong>
+        <em>"You are allowed to use fcntl() only with the following flags: F_SETFL, O_NONBLOCK and FD_CLOEXEC.
+        Any other flag is forbidden."</em>
+        — webserv.pdf, IV.2
+      </span>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 6 : CITATIONS SUJET  -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="sujet" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">webserv.pdf</div>
+        <div class="step-subtitle">Ce que dit le sujet</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>« Your server must remain non-blocking at all times and properly handle client disconnections when necessary. »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+    <div class="quote-box">
+      <p>« It must be non-blocking and use only 1 poll() (or equivalent) for all the I/O operations between the clients and the server (listen included). »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+    <div class="quote-box">
+      <p>« You must never do a read or a write operation without going through poll() (or equivalent). »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+    <div class="quote-box">
+      <p>« You are allowed to use fcntl() only with the following flags: F_SETFL, O_NONBLOCK and FD_CLOEXEC. Any other flag is forbidden. »</p>
+      <cite>— webserv.pdf, IV.2 For MacOS only</cite>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SECTION 7 : TRANSFORMATION DU CODE          -->
+  <!-- ══════════════════════════════════════════════ -->
+  <section class="step-section" id="transformation" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">07</div>
+      <div>
+        <div class="step-fn">server.cpp — avant / après fcntl</div>
+        <div class="step-subtitle">Le code de socket-lifecycle, transformé</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); margin-bottom: 1.5rem; font-weight:300; line-height:1.7;">
+      Voici le <strong style="color:var(--text)">code complet issu de socket-lifecycle</strong> — serveur séquentiel de base —
+      auquel on ajoute les appels <code style="font-family:'Space Mono',monospace; font-size:0.8rem; color:var(--accent-4)">fcntl()</code>
+      nécessaires pour le rendre non-bloquant.
+      Le code original est intact ; les <span style="color:var(--accent-4); font-weight:600">lignes vertes</span> sont les ajouts.
+    </p>
+
+    <!-- ÉTAPE 1 : create_server_socket + fcntl -->
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.2rem; font-weight:400; color:var(--text); margin-bottom: 0.75rem;">
+      1 — Création du socket → rendre non-bloquant immédiatement
+    </h3>
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">server.cpp — create_server_socket()</span>
+        </div>
+        <span class="code-tag">+fcntl</span>
+      </div>
+      <div class="diff-legend">
+        <div class="diff-legend-item"><div class="diff-swatch original"></div>code original</div>
+        <div class="diff-legend-item"><div class="diff-swatch added"></div>ajout fcntl</div>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/socket.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;arpa/inet.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;unistd.h&gt;</span>
+<span class="new-line"><span class="macro">#include</span> <span class="str">&lt;fcntl.h&gt;</span>    <span class="cmt">// ← nouveau : pour fcntl() et O_NONBLOCK</span></span>
+<span class="new-line"><span class="macro">#include</span> <span class="str">&lt;cerrno&gt;</span>     <span class="cmt">// ← nouveau : pour errno et EAGAIN</span></span>
+<span class="macro">#include</span> <span class="str">&lt;iostream&gt;</span>
+
+<span class="kw">static const int</span> <span class="var">PORT</span>    <span class="punct">=</span> <span class="num">8080</span><span class="punct">;</span>
+<span class="kw">static const int</span> <span class="var">BACKLOG</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>
+
+<span class="cmt">// ── Étape 1 : crée le socket TCP/IPv4 ──────────────────────────</span>
+<span class="kw">int</span> <span class="fn-name">create_server_socket</span><span class="punct">() {</span>
+    <span class="kw">int</span> <span class="var">fd</span> <span class="punct">=</span> <span class="fn-name">socket</span><span class="punct">(</span><span class="macro">AF_INET</span><span class="punct">,</span> <span class="macro">SOCK_STREAM</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">) {</span> <span class="fn-name">perror</span><span class="punct">(</span><span class="str">"socket"</span><span class="punct">);</span> <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="kw">int</span> <span class="var">opt</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+    <span class="fn-name">setsockopt</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="macro">SOL_SOCKET</span><span class="punct">,</span> <span class="macro">SO_REUSEADDR</span><span class="punct">, &amp;</span><span class="var">opt</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">opt</span><span class="punct">));</span>
+<span class="new-line">    <span class="fn-name">fcntl</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span>  <span class="cmt">// ← server_fd non-bloquant</span></span>
+    <span class="kw">return</span> <span class="var">fd</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <!-- ÉTAPE 2 : accept + fcntl sur client_fd -->
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.2rem; font-weight:400; color:var(--text); margin: 1.5rem 0 0.75rem;">
+      2 — accept() → rendre le client_fd non-bloquant
+    </h3>
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">server.cpp — accept_next_client()</span>
+        </div>
+        <span class="code-tag">+fcntl</span>
+      </div>
+      <div class="diff-legend">
+        <div class="diff-legend-item"><div class="diff-swatch original"></div>code original</div>
+        <div class="diff-legend-item"><div class="diff-swatch added"></div>ajout fcntl</div>
+      </div>
+      <pre><span class="cmt">// ── Étape 4 : accepte UN client de la file d'attente ──────────</span>
+<span class="kw">int</span> <span class="fn-name">accept_next_client</span><span class="punct">(</span><span class="kw">int</span> <span class="var">server_fd</span><span class="punct">) {</span>
+    <span class="type">struct sockaddr_in</span> <span class="var">client_addr</span><span class="punct">;</span>
+    <span class="type">socklen_t</span> <span class="var">len</span> <span class="punct">=</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">client_addr</span><span class="punct">);</span>
+    <span class="kw">int</span> <span class="var">client_fd</span> <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span>
+                           <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)&amp;</span><span class="var">client_addr</span><span class="punct">, &amp;</span><span class="var">len</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">client_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">) {</span>
+<span class="new-line">        <span class="kw">if</span> <span class="punct">(</span>errno <span class="punct">==</span> <span class="macro">EAGAIN</span><span class="punct">)</span> <span class="kw">return</span> <span class="num">-2</span><span class="punct">;</span>  <span class="cmt">// ← nouveau : pas d'erreur, juste rien à accepter</span></span>
+        <span class="fn-name">perror</span><span class="punct">(</span><span class="str">"accept"</span><span class="punct">);</span> <span class="kw">return</span> <span class="num">-1</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"[+] client fd="</span> <span class="punct">&lt;&lt;</span> <span class="var">client_fd</span>
+              <span class="punct">&lt;&lt;</span> <span class="str">" from "</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">inet_ntoa</span><span class="punct">(</span><span class="var">client_addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">) &lt;&lt;</span> <span class="str">"\n"</span><span class="punct">;</span>
+
+<span class="new-line">    <span class="cmt">// ← nouveau : client_fd ne hérite PAS du mode non-bloquant du server_fd</span></span>
+<span class="new-line">    <span class="fn-name">fcntl</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="macro">F_SETFL</span><span class="punct">,</span> <span class="fn-name">fcntl</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="macro">F_GETFL</span><span class="punct">) |</span> <span class="macro">O_NONBLOCK</span><span class="punct">);</span></span>
+    <span class="kw">return</span> <span class="var">client_fd</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <!-- ÉTAPE 3 : handle_client + EAGAIN -->
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.2rem; font-weight:400; color:var(--text); margin: 1.5rem 0 0.75rem;">
+      3 — handle_client() → gérer EAGAIN sur recv()
+    </h3>
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">server.cpp — handle_client()</span>
+        </div>
+        <span class="code-tag">+EAGAIN</span>
+      </div>
+      <div class="diff-legend">
+        <div class="diff-legend-item"><div class="diff-swatch original"></div>code original</div>
+        <div class="diff-legend-item"><div class="diff-swatch added"></div>ajout fcntl</div>
+      </div>
+      <pre><span class="cmt">// ── Étape 5 : lit la requête, envoie la réponse ───────────────</span>
+<span class="kw">void</span> <span class="fn-name">handle_client</span><span class="punct">(</span><span class="kw">int</span> <span class="var">client_fd</span><span class="punct">) {</span>
+    <span class="kw">char</span> <span class="var">buf</span><span class="punct">[</span><span class="num">4096</span><span class="punct">];</span>
+    <span class="kw">int</span>  <span class="var">n</span><span class="punct">;</span>
+<span class="new-line">    <span class="kw">do</span> <span class="punct">{</span>
+        <span class="var">n</span> <span class="punct">=</span> <span class="fn-name">recv</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">buf</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">buf</span><span class="punct">) -</span> <span class="num">1</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="punct">}</span> <span class="kw">while</span> <span class="punct">(</span><span class="var">n</span> <span class="punct">== -</span><span class="num">1</span> <span class="punct">&amp;&amp;</span> errno <span class="punct">==</span> <span class="macro">EAGAIN</span><span class="punct">);</span>  <span class="cmt">// ← retry jusqu'à avoir quelque chose</span></span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">n</span> <span class="punct">== -</span><span class="num">1</span> <span class="punct">&amp;&amp;</span> errno <span class="punct">==</span> <span class="macro">EAGAIN</span><span class="punct">) {</span> <span class="kw">return</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">n</span> <span class="punct">&lt;=</span> <span class="num">0</span><span class="punct">) {</span> <span class="fn-name">close</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span> <span class="kw">return</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="var">buf</span><span class="punct">[</span><span class="var">n</span><span class="punct">]</span> <span class="punct">=</span> <span class="str">'\0'</span><span class="punct">;</span>
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="var">buf</span><span class="punct">;</span>
+
+    <span class="kw">const char</span><span class="punct">*</span> <span class="var">response</span> <span class="punct">=</span>
+        <span class="str">"HTTP/1.1 200 OK\r\n"</span>
+        <span class="str">"Content-Type: text/html\r\n"</span>
+        <span class="str">"Content-Length: 22\r\n"</span>
+        <span class="str">"Connection: close\r\n"</span>
+        <span class="str">"\r\n"</span>
+        <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span><span class="punct">;</span>
+
+    <span class="fn-name">send</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">response</span><span class="punct">,</span> <span class="fn-name">strlen</span><span class="punct">(</span><span class="var">response</span><span class="punct">),</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="fn-name">close</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <!-- ÉTAPE 4 : main() avec boucle non-bloquante -->
+    <h3 style="font-family:'Instrument Serif',serif; font-size:1.2rem; font-weight:400; color:var(--text); margin: 1.5rem 0 0.75rem;">
+      4 — main() → boucle non-bloquante avec gestion EAGAIN
+    </h3>
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">server.cpp — main()</span>
+        </div>
+        <span class="code-tag">+fcntl / busy-wait</span>
+      </div>
+      <div class="diff-legend">
+        <div class="diff-legend-item"><div class="diff-swatch original"></div>code original</div>
+        <div class="diff-legend-item"><div class="diff-swatch added"></div>ajout fcntl</div>
+      </div>
+      <pre><span class="cmt">// ── main : assemble les étapes ────────────────────────────────</span>
+<span class="kw">int</span> <span class="fn-name">main</span><span class="punct">() {</span>
+    <span class="kw">int</span> <span class="var">server_fd</span> <span class="punct">=</span> <span class="fn-name">create_server_socket</span><span class="punct">();</span>  <span class="cmt">// fcntl déjà appelé à l'intérieur</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">server_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">bind_address</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="var">PORT</span><span class="punct">) ==</span> <span class="num">-1</span><span class="punct">)</span> <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">listen</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="var">BACKLOG</span><span class="punct">) ==</span> <span class="num">-1</span><span class="punct">)</span> <span class="punct">{</span> <span class="fn-name">perror</span><span class="punct">(</span><span class="str">"listen"</span><span class="punct">);</span> <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span> <span class="punct">}</span>
+
+    <span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"Serveur sur http://localhost:"</span> <span class="punct">&lt;&lt;</span> <span class="var">PORT</span> <span class="punct">&lt;&lt;</span> <span class="str">"\n"</span><span class="punct">;</span>
+
+    <span class="cmt">// Boucle principale — non-bloquante, mais toujours séquentielle (busy-wait)</span>
+<span class="new-line">    <span class="cmt">// → accept() et recv() retournent EAGAIN au lieu de bloquer</span></span>
+<span class="new-line">    <span class="cmt">// → CPU = 100% même sans trafic (busy-wait) — prochaine étape : epoll_wait()</span></span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">client_fd</span> <span class="punct">=</span> <span class="fn-name">accept_next_client</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">);</span>
+<span class="new-line">        <span class="kw">if</span> <span class="punct">(</span><span class="var">client_fd</span> <span class="punct">==</span> <span class="num">-2</span><span class="punct">)</span> <span class="kw">continue</span><span class="punct">;</span>  <span class="cmt">// ← EAGAIN — pas de client pour l'instant</span></span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">client_fd</span> <span class="punct">==</span> <span class="num">-1</span><span class="punct">)</span> <span class="kw">continue</span><span class="punct">;</span>
+        <span class="fn-name">handle_client</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="num">0</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <span>
+        <strong>Ce code est une étape intermédiaire.</strong> Il ne gèle plus (fcntl ✅) mais tourne en
+        permanence même sans clients (busy-wait ❌). La vraie solution finale remplace la boucle
+        <code>while(true)</code> par <code>epoll_wait()</code> qui dort intelligemment jusqu'à ce qu'un
+        fd soit prêt.
+      </span>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 8 : GLOSSAIRE        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="glossaire" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">08</div>
+      <div>
+        <div class="step-fn">Termes & Définitions</div>
+        <div class="step-subtitle">Glossaire rapide</div>
+      </div>
+    </div>
+
+    <div class="glossary">
+      <div class="glossary-item">
+        <div class="glossary-term">fd</div>
+        <div class="glossary-def">Entier retourné par le kernel pour identifier une ressource ouverte (socket, fichier, pipe…). Toutes les opérations I/O passent par lui.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">bloquant</div>
+        <div class="glossary-def">L'appel suspend le processus jusqu'à obtenir une réponse. Mode par défaut de tous les sockets et fichiers.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">non-bloquant</div>
+        <div class="glossary-def">L'appel retourne immédiatement, avec EAGAIN si rien n'est disponible. Activé via fcntl(fd, F_SETFL, O_NONBLOCK).</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">EAGAIN</div>
+        <div class="glossary-def">Code d'erreur signifiant "pas de données maintenant, réessaie plus tard". C'est normal — pas une vraie erreur, juste un état temporaire.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">busy-wait</div>
+        <div class="glossary-def">Boucle qui tourne sans s'arrêter pour vérifier en permanence si quelque chose est prêt. Gaspille 100% du CPU même sans trafic.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">epoll</div>
+        <div class="glossary-def">Mécanisme Linux qui dort jusqu'à ce qu'un fd soit prêt à lire/écrire. Remplace le busy-wait et utilise le CPU seulement quand nécessaire.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">multiplexing</div>
+        <div class="glossary-def">Gérer plusieurs connexions simultanées dans un seul thread. Possible grâce à la combinaison fcntl + epoll.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">O_NONBLOCK</div>
+        <div class="glossary-def">Flag de statut qui active le mode non-bloquant sur un fd. Un seul bit dans la structure interne du kernel.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">F_GETFL / F_SETFL</div>
+        <div class="glossary-def">Commandes fcntl pour lire/écrire les flags de statut d'accès d'un fd (O_RDONLY, O_WRONLY, O_NONBLOCK…).</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">FD_CLOEXEC</div>
+        <div class="glossary-def">Flag qui ferme automatiquement un fd lors d'un execve(). Essentiel pour éviter les fuites de fd dans les processus CGI enfants.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SUMMARY                       -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">En <em>résumé</em></div>
+    <div class="summary-subtitle">Les deux appels fcntl indispensables dans Webserv</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">🔓</div>
+        <div>
+          <div class="summary-card-fn">fcntl(fd, F_SETFL, flags | O_NONBLOCK)</div>
+          <div class="summary-card-desc">Rend un socket non-bloquant. À appliquer sur le server_fd ET sur chaque client_fd après accept(). Garantit que le programme ne gèle jamais.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🔒</div>
+        <div>
+          <div class="summary-card-fn">fcntl(fd, F_SETFD, FD_CLOEXEC)</div>
+          <div class="summary-card-desc">Protège les pipes CGI contre les fuites de fd. Le fd se ferme automatiquement dans le processus fils lors de execve().</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">⚡</div>
+        <div>
+          <div class="summary-card-fn">EAGAIN = état normal</div>
+          <div class="summary-card-desc">En mode non-bloquant, EAGAIN signifie "rien maintenant". Ce n'est pas une erreur — c'est le signal pour passer au client suivant ou attendre epoll.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🔁</div>
+        <div>
+          <div class="summary-card-fn">fcntl + epoll = duo obligatoire</div>
+          <div class="summary-card-desc">epoll dit quand agir (efficacité CPU). fcntl garantit que l'action ne bloque jamais (sécurité). Les deux sont nécessaires, ni l'un ni l'autre seul ne suffit.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .main -->
+
+<footer class="footer">
+  <p>Webserv 42 — <a href="../webserv-mindmap.html">Retour à la cartographie</a> — Blocking vs Non-blocking</p>
+</footer>
+
+<script>
+  // Intersection observer for section animations
+  const sections = document.querySelectorAll('.step-section');
+  const navPills = document.querySelectorAll('.step-pill');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+
+        // Update active nav pill
+        const id = entry.target.id;
+        navPills.forEach(pill => {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.15 });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

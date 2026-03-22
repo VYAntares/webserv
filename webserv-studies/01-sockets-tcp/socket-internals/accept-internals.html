@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>accept() internals — Extraire un client de la file</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999;
+  }
+
+  /* HEADER */
+  .header { padding: 3rem 2rem 2rem; max-width: 900px; margin: 0 auto; border-bottom: 1px solid var(--border); }
+  .back-link {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase;
+    letter-spacing: 0.2em; color: var(--text-muted); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.5rem; border-radius: 6px; white-space: nowrap;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-4); background: rgba(74,222,128,0.07); }
+  .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
+  .header-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase;
+    letter-spacing: 0.3em; color: var(--accent-4); background: rgba(74,222,128,0.08);
+    border: 1px solid rgba(74,222,128,0.2); padding: 0.3rem 0.8rem;
+    border-radius: 100px; display: inline-block; margin-bottom: 1.2rem;
+  }
+  .header h1 { font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 1rem; }
+  .header h1 em { font-style: italic; color: var(--accent-4); }
+  .header-desc { font-size: 1rem; color: var(--text-dim); font-weight: 300; max-width: 600px; line-height: 1.7; }
+
+  /* PROGRESS BAR */
+  .progress-bar { position: sticky; top: 0; z-index: 100; background: rgba(10,10,15,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; }
+  .progress-inner { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 0; overflow-x: auto; }
+  .step-pill { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.8rem; border-radius: 100px; font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); cursor: pointer; transition: all 0.3s; text-decoration: none; white-space: nowrap; }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(74,222,128,0.1); color: var(--accent-4); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 10px; }
+
+  /* MAIN */
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; }
+
+  /* STEP SECTION */
+  .step-section { padding: 4rem 0 2rem; opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .step-section.visible { opacity: 1; transform: translateY(0); }
+  .step-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .step-number-badge { font-family: 'Instrument Serif', serif; font-size: 4rem; line-height: 1; opacity: 0.15; flex-shrink: 0; color: var(--step-color, var(--accent-4)); }
+  .step-fn { font-family: 'Space Mono', monospace; font-size: 1.4rem; font-weight: 700; color: var(--step-color, var(--accent-4)); margin-bottom: 0.3rem; }
+  .step-subtitle { font-family: 'Instrument Serif', serif; font-size: 1.8rem; font-weight: 400; color: var(--text); }
+
+  /* TWO COLUMN */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* PANEL */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.8rem; position: relative; overflow: hidden; }
+  .panel::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--step-color, var(--accent-4)); opacity: 0.6; }
+  .panel-label { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--step-color, var(--accent-4)); margin-bottom: 1rem; opacity: 0.8; }
+  .panel p { font-size: 0.88rem; color: var(--text-dim); line-height: 1.75; font-weight: 300; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+
+  /* CODE PANEL */
+  .code-panel { background: #0d0d14; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem; }
+  .code-header { background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 0.7rem 1.2rem; display: flex; align-items: center; justify-content: space-between; }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); }
+  .code-tag { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.2em; padding: 0.2rem 0.6rem; border-radius: 4px; }
+  pre { padding: 1.5rem; overflow-x: auto; font-family: 'Space Mono', monospace; font-size: 0.75rem; line-height: 1.8; color: #c9c7de; }
+  .kw { color: #c084fc; } .fn-name { color: #4ae0ff; } .type { color: #4ade80; }
+  .str { color: #facc15; } .num { color: #fb923c; } .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; } .var { color: #e8e6f0; } .punct { color: #5c5a72; }
+  .highlight-line { display: block; background: rgba(74,222,128,0.06); border-left: 2px solid var(--step-color, var(--accent-4)); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; }
+
+  /* KEY POINTS */
+  .key-points { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; margin-top: 1.5rem; }
+  .key-point { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .key-point strong { color: var(--text); }
+
+  /* WARNING */
+  .warning { background: rgba(255,107,74,0.06); border: 1px solid rgba(255,107,74,0.2); border-radius: 10px; padding: 1.2rem 1.5rem; margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .warning strong { color: var(--accent-1); }
+  .warning-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* INFO BOX */
+  .info-box { background: rgba(74,222,128,0.04); border: 1px solid rgba(74,222,128,0.15); border-radius: 10px; padding: 1.2rem 1.5rem; margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .info-box strong { color: var(--accent-4); }
+  .info-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* DIVIDER */
+  .step-divider { height: 1px; background: linear-gradient(to right, transparent, var(--border), transparent); margin: 1rem 0; }
+
+  /* ══════════════════════════════════════════ */
+  /* QUEUE EXTRACT DIAGRAM                      */
+  /* ══════════════════════════════════════════ */
+  .queue-extract {
+    margin: 1.5rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+  }
+  .qe-header {
+    background: var(--surface-3);
+    border-bottom: 1px solid var(--border);
+    padding: 0.8rem 1.2rem;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .qe-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); }
+  .qe-badge { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent-4); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 0.2rem 0.7rem; border-radius: 100px; }
+  .qe-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.2rem; }
+  .qe-queue { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .qe-slot {
+    padding: 0.5rem 0.9rem; border-radius: 8px; font-size: 0.7rem; font-weight: 700; border: 1px solid;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .slot-extract { background: rgba(74,222,128,0.12); border-color: rgba(74,222,128,0.4); color: var(--accent-4); }
+  .slot-wait { background: rgba(192,132,252,0.08); border-color: rgba(192,132,252,0.25); color: var(--accent-3); }
+  .qe-arrow { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; }
+  .qe-arrow-line { width: 2px; height: 20px; background: var(--accent-4); opacity: 0.4; }
+  .qe-arrow-head { color: var(--accent-4); font-size: 1rem; line-height: 1; }
+  .qe-result {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+  }
+  @media (max-width: 550px) { .qe-result { grid-template-columns: 1fr; } }
+  .qe-fd {
+    padding: 0.9rem 1rem; border-radius: 10px; border: 1px solid;
+  }
+  .qe-fd-new { background: rgba(74,222,128,0.06); border-color: rgba(74,222,128,0.3); }
+  .qe-fd-unchanged { background: rgba(74,224,255,0.04); border-color: rgba(74,224,255,0.2); }
+  .qe-fd-label { font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 0.4rem; }
+  .qe-fd-new .qe-fd-label { color: var(--accent-4); }
+  .qe-fd-unchanged .qe-fd-label { color: var(--accent-2); }
+  .qe-fd-value { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.2rem; }
+  .qe-fd-new .qe-fd-value { color: var(--accent-4); }
+  .qe-fd-unchanged .qe-fd-value { color: var(--accent-2); }
+  .qe-fd-desc { font-size: 0.68rem; color: var(--text-muted); line-height: 1.4; }
+
+  /* FD COMPARISON TABLE */
+  .fd-compare {
+    margin: 1.5rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+  }
+  .fd-compare-header {
+    display: grid; grid-template-columns: 160px 1fr 1fr;
+    background: var(--surface-3); border-bottom: 1px solid var(--border);
+  }
+  .fdch-cell {
+    padding: 0.65rem 1rem; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em;
+    border-right: 1px solid var(--border);
+  }
+  .fdch-cell:last-child { border-right: none; }
+  .fdch-cell:first-child { color: var(--text-muted); }
+  .fdch-cell:nth-child(2) { color: var(--accent-2); }
+  .fdch-cell:nth-child(3) { color: var(--accent-4); }
+  .fd-compare-row {
+    display: grid; grid-template-columns: 160px 1fr 1fr;
+    border-bottom: 1px solid rgba(42,42,66,0.5);
+  }
+  .fd-compare-row:last-child { border-bottom: none; }
+  .fdr-cell {
+    padding: 0.65rem 1rem; font-size: 0.72rem; line-height: 1.4;
+    border-right: 1px solid rgba(42,42,66,0.5);
+  }
+  .fdr-cell:last-child { border-right: none; }
+  .fdr-cell:first-child { color: var(--accent-5); font-size: 0.65rem; }
+  .fdr-cell:nth-child(2) { color: var(--text-dim); }
+  .fdr-cell:nth-child(3) { color: var(--text-dim); }
+  .fdr-val-bad { color: var(--accent-1); }
+  .fdr-val-good { color: var(--accent-4); }
+  .fd-compare-row:hover .fdr-cell { background: rgba(255,255,255,0.02); }
+
+  /* BLOCKING DIAGRAM */
+  .blocking-diagram {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0;
+  }
+  @media (max-width: 640px) { .blocking-diagram { grid-template-columns: 1fr; } }
+  .block-case {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  }
+  .block-case-header {
+    padding: 0.7rem 1rem; font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.15em; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .case-ok .block-case-header { color: var(--accent-4); background: rgba(74,222,128,0.05); }
+  .case-block .block-case-header { color: var(--accent-1); background: rgba(255,107,74,0.05); }
+  .block-case-body { padding: 1.2rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .bc-step { display: flex; align-items: flex-start; gap: 0.6rem; font-family: 'Space Mono', monospace; font-size: 0.7rem; line-height: 1.4; }
+  .bc-num { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; flex-shrink: 0; }
+  .case-ok .bc-num { background: rgba(74,222,128,0.15); color: var(--accent-4); border: 1px solid rgba(74,222,128,0.3); }
+  .case-block .bc-num { background: rgba(255,107,74,0.1); color: var(--accent-1); border: 1px solid rgba(255,107,74,0.25); }
+  .bc-text { color: var(--text-dim); padding-top: 0.1rem; }
+  .bc-text strong { color: var(--text); }
+  .bc-text .bad { color: var(--accent-1); }
+  .bc-text .good { color: var(--accent-4); }
+  .bc-connector { width: 20px; flex-shrink: 0; display: flex; justify-content: center; }
+  .bc-connector-line { width: 2px; height: 14px; background: var(--border); margin-top: -2px; }
+
+  /* POLL COMPARISON */
+  .poll-compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0;
+  }
+  @media (max-width: 640px) { .poll-compare { grid-template-columns: 1fr; } }
+  .poll-block { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .poll-block-header { padding: 0.7rem 1rem; font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; }
+  .poll-without .poll-block-header { color: var(--accent-1); background: rgba(255,107,74,0.05); }
+  .poll-with .poll-block-header { color: var(--accent-4); background: rgba(74,222,128,0.05); }
+  .poll-block-body { padding: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .poll-item { display: flex; align-items: baseline; gap: 0.5rem; font-family: 'Space Mono', monospace; font-size: 0.7rem; line-height: 1.5; }
+  .pi-fn { flex-shrink: 0; }
+  .pi-state-block { color: var(--accent-1); font-size: 0.65rem; }
+  .pi-state-ok { color: var(--accent-4); font-size: 0.65rem; }
+  .pi-arrow { color: var(--text-muted); }
+  .poll-item-note { font-size: 0.65rem; color: var(--text-muted); font-style: italic; padding-left: 0; }
+  .poll-divider { height: 1px; background: var(--border); margin: 0.5rem 0; }
+  .poll-verdict { font-size: 0.7rem; font-weight: 700; padding: 0.4rem 0; }
+  .poll-without .poll-verdict { color: var(--accent-1); }
+  .poll-with .poll-verdict { color: var(--accent-4); }
+
+  /* SUMMARY TABLE */
+  .summary-section { margin-top: 4rem; padding: 3rem; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; position: relative; overflow: hidden; }
+  .summary-section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, var(--accent-4), var(--accent-2), var(--accent-3), var(--accent-5)); }
+  .summary-title { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; margin-bottom: 0.5rem; }
+  .summary-title em { font-style: italic; color: var(--accent-4); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+  .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card { padding: 1.2rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; display: flex; gap: 1rem; align-items: flex-start; }
+  .summary-card-fn { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--accent-4); margin-bottom: 0.2rem; }
+  .summary-card-desc { font-size: 0.8rem; color: var(--text-muted); }
+  .summary-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+  /* FOOTER */
+  .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); margin-top: 4rem; }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-4); text-decoration: none; }
+  .footer a:hover { color: var(--accent-2); }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../socket-lifecycle.html#accept-deepdive" class="back-link">← socket lifecycle</a>
+    <div class="progress-back-divider"></div>
+    <a href="#what" class="step-pill active" id="nav-01"><span class="step-dot"></span>01 · un fd</a>
+    <div class="step-connector"></div>
+    <a href="#two-fds" class="step-pill" id="nav-02"><span class="step-dot"></span>02 · deux fd</a>
+    <div class="step-connector"></div>
+    <a href="#blocking" class="step-pill" id="nav-03"><span class="step-dot"></span>03 · blocking</a>
+    <div class="step-connector"></div>
+    <a href="#poll" class="step-pill" id="nav-04"><span class="step-dot"></span>04 · epoll()</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">accept() internals — Kernel deep dive</div>
+  <h1>Extraire un client<br>de la <em>file</em></h1>
+  <p class="header-desc">
+    Blocking, les deux fd, et pourquoi <code>poll()</code> devient indispensable —
+    tout ce qui se passe quand tu récupères une connexion.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 01 : un fd            -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="what" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div class="step-title-block">
+        <div class="step-fn">accept()</div>
+        <div class="step-subtitle">Un appel, un nouveau fd</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">accept()</div>
+      </div>
+<pre><span class="type">struct sockaddr_in</span> <span class="var">client_addr</span><span class="punct">;</span>
+<span class="type">socklen_t</span> <span class="var">client_len</span> <span class="punct">=</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">client_addr</span><span class="punct">);</span>
+
+<span class="highlight-line"><span class="kw">int</span> <span class="var">client_fd</span> <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span></span>
+<span class="highlight-line">                       <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)&amp;</span><span class="var">client_addr</span><span class="punct">,</span></span>
+<span class="highlight-line">                       <span class="punct">&amp;</span><span class="var">client_len</span><span class="punct">);</span></span>
+
+<span class="cmt">// Lire l'IP du client en clair :</span>
+<span class="cmt">// inet_ntoa(client_addr.sin_addr) → "127.0.0.1"</span>
+<span class="cmt">// ntohs(client_addr.sin_port)     → 54321</span></pre>
+    </div>
+
+    <!-- Queue extraction diagram -->
+    <div class="queue-extract">
+      <div class="qe-header">
+        <span class="qe-title">File d'attente kernel → extraction</span>
+        <span class="qe-badge">accept() en action</span>
+      </div>
+      <div class="qe-body">
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.58rem; text-transform:uppercase; letter-spacing:0.15em; color:var(--text-muted); margin-bottom:0.6rem;">File d'attente — connexions établies</div>
+          <div class="qe-queue">
+            <div class="qe-slot slot-extract">→ <span>client A</span></div>
+            <div class="qe-slot slot-wait">client B</div>
+            <div class="qe-slot slot-wait">client C</div>
+          </div>
+        </div>
+        <div class="qe-arrow" style="align-self:flex-start; padding-left:2.5rem;">
+          <div class="qe-arrow-line"></div>
+          <div class="qe-arrow-head">▼</div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.58rem; color:var(--text-muted); margin-top:0.2rem;">accept(server_fd, ...)</div>
+        </div>
+        <div class="qe-result">
+          <div class="qe-fd qe-fd-new">
+            <div class="qe-fd-label">Nouveau fd — créé par accept()</div>
+            <div class="qe-fd-value">client_fd = 4</div>
+            <div class="qe-fd-desc">Dédié à client A · état ESTABLISHED · sert à recv() et send()</div>
+          </div>
+          <div class="qe-fd qe-fd-unchanged">
+            <div class="qe-fd-label">Inchangé — continue d'écouter</div>
+            <div class="qe-fd-value">server_fd = 3</div>
+            <div class="qe-fd-desc">Toujours en LISTEN · prêt pour le prochain accept() · clients B et C attendent</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">💡</span>
+      <div>
+        <code>client_addr</code> est rempli par le kernel avec l'IP et le port du client —
+        <strong>sans que tu ne les demandes explicitement</strong>. Tu peux passer <code>NULL</code>
+        si tu n'as pas besoin de ces infos, le kernel remplit quand même la connexion.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔗</span><span>La connexion TCP est <strong>déjà établie</strong> quand accept() retourne — le handshake s'est fait pendant listen(), pas maintenant.</span></div>
+      <div class="key-point"><span class="key-point-icon">📦</span><span>accept() ne crée pas la connexion — il la <strong>récupère</strong> dans la file. Le kernel a déjà fait le travail.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 02 : deux fd          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="two-fds" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-2)">Les deux fd</div>
+        <div class="step-subtitle">Rôles distincts, erreurs classiques</div>
+      </div>
+    </div>
+
+    <div class="fd-compare">
+      <div class="fd-compare-header">
+        <div class="fdch-cell">Propriété</div>
+        <div class="fdch-cell">server_fd (ex: 3)</div>
+        <div class="fdch-cell">client_fd (ex: 4, 5, 6…)</div>
+      </div>
+      <div class="fd-compare-row">
+        <div class="fdr-cell">Créé par</div>
+        <div class="fdr-cell">socket()</div>
+        <div class="fdr-cell">accept()</div>
+      </div>
+      <div class="fd-compare-row">
+        <div class="fdr-cell">Port</div>
+        <div class="fdr-cell">bindé sur port 8080</div>
+        <div class="fdr-cell">pas de port fixe côté serveur</div>
+      </div>
+      <div class="fd-compare-row">
+        <div class="fdr-cell">État TCP</div>
+        <div class="fdr-cell">LISTEN</div>
+        <div class="fdr-cell">ESTABLISHED</div>
+      </div>
+      <div class="fd-compare-row">
+        <div class="fdr-cell">Sert à</div>
+        <div class="fdr-cell">uniquement accept()</div>
+        <div class="fdr-cell">recv() et send()</div>
+      </div>
+      <div class="fd-compare-row">
+        <div class="fdr-cell">Durée de vie</div>
+        <div class="fdr-cell">toute la durée du serveur</div>
+        <div class="fdr-cell">fermé après la requête</div>
+      </div>
+      <div class="fd-compare-row">
+        <div class="fdr-cell">Quantité</div>
+        <div class="fdr-cell">un seul, permanent</div>
+        <div class="fdr-cell">un par client connecté</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="warning" style="margin-top:0">
+        <span class="warning-icon">✕</span>
+        <div>
+          <strong>recv() sur server_fd</strong> → erreur.
+          Le server_fd est en mode LISTEN — il n'a pas de données à lire,
+          il est fait pour <code>accept()</code> uniquement.
+        </div>
+      </div>
+      <div class="warning" style="margin-top:0">
+        <span class="warning-icon">✕</span>
+        <div>
+          <strong>Oublier close(client_fd)</strong> → fd leak.
+          Le serveur plante après ~1021 clients avec <code>EMFILE: Too many open files</code>.
+        </div>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🏗️</span><span><strong>server_fd</strong> est la porte d'entrée permanente. <strong>client_fd</strong> est le guichet temporaire ouvert pour chaque client.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔢</span><span>Les client_fd sont alloués en ordre croissant — 4, 5, 6… chaque accept() consomme un fd jusqu'à close().</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 03 : blocking         -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="blocking" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-1)">Pourquoi accept() bloque</div>
+        <div class="step-subtitle">Le kernel endort ton processus</div>
+      </div>
+    </div>
+
+    <div class="blocking-diagram">
+      <div class="block-case case-ok">
+        <div class="block-case-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-4);display:inline-block;flex-shrink:0"></span>
+          File NON vide — retour immédiat
+        </div>
+        <div class="block-case-body">
+          <div class="bc-step">
+            <div class="bc-num">1</div>
+            <div class="bc-text">Tu appelles <code>accept(server_fd, ...)</code></div>
+          </div>
+          <div class="bc-step"><div class="bc-connector"><div class="bc-connector-line"></div></div></div>
+          <div class="bc-step">
+            <div class="bc-num">2</div>
+            <div class="bc-text">Le kernel trouve un client dans la file</div>
+          </div>
+          <div class="bc-step"><div class="bc-connector"><div class="bc-connector-line"></div></div></div>
+          <div class="bc-step">
+            <div class="bc-num">3</div>
+            <div class="bc-text"><span class="good">Retourne client_fd immédiatement</span> — pas de blocage</div>
+          </div>
+        </div>
+      </div>
+      <div class="block-case case-block">
+        <div class="block-case-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-1);display:inline-block;flex-shrink:0"></span>
+          File VIDE — processus endormi
+        </div>
+        <div class="block-case-body">
+          <div class="bc-step">
+            <div class="bc-num">1</div>
+            <div class="bc-text">Tu appelles <code>accept(server_fd, ...)</code></div>
+          </div>
+          <div class="bc-step"><div class="bc-connector"><div class="bc-connector-line"></div></div></div>
+          <div class="bc-step">
+            <div class="bc-num">2</div>
+            <div class="bc-text">Aucun client en attente — le kernel met le processus en état <span class="bad">SLEEPING</span></div>
+          </div>
+          <div class="bc-step"><div class="bc-connector"><div class="bc-connector-line"></div></div></div>
+          <div class="bc-step">
+            <div class="bc-num">3</div>
+            <div class="bc-text"><span class="bad">Ton code ne s'exécute plus.</span> Le CPU fait autre chose</div>
+          </div>
+          <div class="bc-step"><div class="bc-connector"><div class="bc-connector-line"></div></div></div>
+          <div class="bc-step">
+            <div class="bc-num">4</div>
+            <div class="bc-text">Un client arrive → kernel réveille le processus → accept() retourne</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1); margin-top:0;">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">le vrai problème — serveur séquentiel</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">deadlock partiel</div>
+      </div>
+<pre><span class="cmt">// Situation avec 3 clients :</span>
+<span class="cmt">// client 1 → attend ta réponse</span>
+<span class="cmt">// client 2 → en train d'envoyer ses données (lentement)</span>
+<span class="cmt">// client 3 → connecté, n'a pas encore envoyé</span>
+
+<span class="cmt">// Ton code séquentiel :</span>
+<span class="kw">while</span> <span class="punct">(</span><span class="num">1</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">client_fd</span> <span class="punct">=</span> <span class="fn-name">accept</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">, ...);</span>  <span class="cmt">← bloqué ici, attend un 4e client</span>
+    <span class="fn-name">recv</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">, ...);</span>               <span class="cmt">← ou bloqué ici si client envoie lentement</span>
+    <span class="fn-name">send</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">, ...);</span>
+    <span class="fn-name">close</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">);</span>
+<span class="punct">}</span>
+<span class="cmt">// clients 1, 2, 3 → personne n'est traité pendant ce temps</span></pre>
+    </div>
+
+    <div class="warning">
+      <span class="warning-icon">⚠️</span>
+      <div>
+        <strong>recv() bloque aussi.</strong> Si le client n'a pas encore envoyé ses données,
+        <code>recv()</code> gèle ton processus exactement comme <code>accept()</code>.
+        Chaque appel réseau est potentiellement bloquant.
+        Un serveur séquentiel ne traite qu'<strong>un seul client à la fois</strong>.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">😴</span><span>Le blocage place le processus en état <strong>SLEEPING</strong> dans le scheduler Linux — il consomme zéro CPU pendant ce temps.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span>Le kernel réveille le processus via une <strong>interruption</strong> quand le paquet réseau arrive — pas de polling actif.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 04 : epoll()          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="poll" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-4)">La solution : epoll()</div>
+        <div class="step-subtitle">Un seul point de blocage, N fd surveillés</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; margin-bottom:1.5rem; line-height:1.75">
+      Au lieu de bloquer sur chaque appel réseau séparément,
+      <code style="color:var(--accent-4)">epoll_wait()</code> bloque <strong style="color:var(--text)">une seule fois</strong>
+      et te dit exactement quels fd sont prêts — sans jamais bloquer sur accept() ou recv().
+    </p>
+
+    <div class="poll-compare">
+      <div class="poll-block poll-without">
+        <div class="poll-block-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-1);display:inline-block;flex-shrink:0"></span>
+          Sans epoll()
+        </div>
+        <div class="poll-block-body">
+          <div class="poll-item">
+            <span class="pi-fn" style="color:var(--accent-2)">accept()</span>
+            <span class="pi-arrow">→</span>
+            <span class="pi-state-block">bloque si pas de client</span>
+          </div>
+          <div class="poll-item">
+            <span class="pi-fn" style="color:var(--accent-2)">recv()</span>
+            <span class="pi-arrow">→</span>
+            <span class="pi-state-block">bloque si pas de données</span>
+          </div>
+          <div class="poll-item">
+            <span class="pi-fn" style="color:var(--accent-2)">send()</span>
+            <span class="pi-arrow">→</span>
+            <span class="pi-state-block">bloque si buffer plein</span>
+          </div>
+          <div class="poll-divider"></div>
+          <div class="poll-verdict">blocages aléatoires partout</div>
+          <div class="poll-item-note">un seul client traité à la fois</div>
+        </div>
+      </div>
+      <div class="poll-block poll-with">
+        <div class="poll-block-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-4);display:inline-block;flex-shrink:0"></span>
+          Avec epoll()
+        </div>
+        <div class="poll-block-body">
+          <div class="poll-item" style="font-size:0.68rem; color:var(--accent-4)">
+            epoll_wait(epfd, events, …)
+          </div>
+          <div class="poll-item">
+            <span class="pi-arrow">→</span>
+            <span class="pi-state-block" style="color:var(--accent-1)">bloque ici une seule fois</span>
+          </div>
+          <div class="poll-item poll-item-note">sur TOUS les fd enregistrés</div>
+          <div class="poll-divider"></div>
+          <div class="poll-item">
+            <span class="pi-fn" style="color:var(--accent-2)">accept()</span>
+            <span class="pi-arrow">→</span>
+            <span class="pi-state-ok">jamais bloquant</span>
+          </div>
+          <div class="poll-item">
+            <span class="pi-fn" style="color:var(--accent-2)">recv()</span>
+            <span class="pi-arrow">→</span>
+            <span class="pi-state-ok">jamais bloquant</span>
+          </div>
+          <div class="poll-divider"></div>
+          <div class="poll-verdict">un seul point de blocage contrôlé</div>
+          <div class="poll-item-note">N clients traités simultanément</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp — boucle avec epoll()</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">non-bloquant</div>
+      </div>
+<pre><span class="kw">int</span> <span class="var">epfd</span> <span class="punct">=</span> <span class="fn-name">epoll_create1</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>          <span class="cmt">// crée l'instance epoll</span>
+<span class="fn-name">epoll_ctl</span><span class="punct">(</span><span class="var">epfd</span><span class="punct">,</span> <span class="macro">EPOLL_CTL_ADD</span><span class="punct">,</span> <span class="var">server_fd</span><span class="punct">, &amp;</span><span class="var">ev</span><span class="punct">);</span>  <span class="cmt">// enregistre server_fd</span>
+
+<span class="kw">while</span> <span class="punct">(</span><span class="num">1</span><span class="punct">)</span> <span class="punct">{</span>
+<span class="highlight-line">    <span class="kw">int</span> <span class="var">n</span> <span class="punct">=</span> <span class="fn-name">epoll_wait</span><span class="punct">(</span><span class="var">epfd</span><span class="punct">,</span> <span class="var">events</span><span class="punct">,</span> <span class="macro">MAX_EV</span><span class="punct">,</span> <span class="num">-1</span><span class="punct">);</span>  <span class="cmt">// seul point de blocage</span></span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">n</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">events</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">data</span><span class="punct">.</span><span class="var">fd</span> <span class="punct">==</span> <span class="var">server_fd</span><span class="punct">)</span>
+            <span class="fn-name">accept</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">, ...);</span>   <span class="cmt">// ← jamais bloquant</span>
+        <span class="kw">else</span>
+            <span class="fn-name">recv</span><span class="punct">(</span><span class="var">events</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">data</span><span class="punct">.</span><span class="var">fd</span><span class="punct">, ...);</span>  <span class="cmt">// ← jamais bloquant</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">💡</span>
+      <div>
+        <strong>epoll() sera détaillé dans la cartographie.</strong>
+        L'essentiel ici : epoll_wait() est le seul endroit où le programme se met en attente.
+        Tous les accept() et recv() qui suivent opèrent sur des fd <strong>déjà prêts</strong> — zéro blocage.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🎯</span><span>epoll_wait() répond à "qui est prêt ?" — accept() et recv() appelés après ne bloquent <strong>jamais</strong>.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span>epoll est <strong>O(1)</strong> — il notifie uniquement les fd actifs, sans scanner toute la liste. Idéal pour N connexions.</span></div>
+    </div>
+  </section>
+
+  <!-- RECAP -->
+  <div class="summary-section">
+    <div class="summary-title">Récapitulatif <em>accept()</em></div>
+    <div class="summary-subtitle">Ce que chaque concept représente vraiment</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">📥</div>
+        <div>
+          <div class="summary-card-fn">accept()</div>
+          <div class="summary-card-desc">Extrait la première connexion de la file. La connexion est déjà établie — le kernel a fait le handshake.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🚪</div>
+        <div>
+          <div class="summary-card-fn">server_fd</div>
+          <div class="summary-card-desc">Porte d'entrée permanente. LISTEN. Uniquement pour accept(). Un seul pour tout le serveur.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🎫</div>
+        <div>
+          <div class="summary-card-fn">client_fd</div>
+          <div class="summary-card-desc">Guichet temporaire. ESTABLISHED. Pour recv()/send(). Fermé après la requête — toujours close().</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">😴</div>
+        <div>
+          <div class="summary-card-fn">Blocking</div>
+          <div class="summary-card-desc">File vide → processus SLEEPING jusqu'à l'arrivée d'un client. Zéro CPU consommé.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🎯</div>
+        <div>
+          <div class="summary-card-fn">epoll_wait()</div>
+          <div class="summary-card-desc">Seul point de blocage. Retourne la liste des fd prêts — accept() et recv() qui suivent ne bloquent jamais.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">⚡</div>
+        <div>
+          <div class="summary-card-fn">epoll O(1)</div>
+          <div class="summary-card-desc">Notifie uniquement les fd actifs, sans scanner toute la liste. Détaillé dans la cartographie.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../socket-lifecycle.html#accept-deepdive">Retour à Socket Lifecycle</a> &nbsp;·&nbsp; <a href="listen-internals.html">listen() internals</a> &nbsp;·&nbsp; <a href="bind-internals.html">bind() internals</a> &nbsp;·&nbsp; <a href="socket-internals.html">socket() internals</a> &nbsp;·&nbsp; <a href="../../webserv-mindmap.html">Cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — accept() internals. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../socket-lifecycle.html#accept-deepdive"], a[href="listen-internals.html"], a[href="bind-internals.html"], a[href="socket-internals.html"], a[href="../../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  sections.forEach(s => observer.observe(s));
+
+  const sectionIds = ['what','two-fds','blocking','poll'];
+  const navPills   = document.querySelectorAll('.step-pill');
+
+  function updateNav() {
+    let current = 0;
+    sectionIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.getBoundingClientRect().top < window.innerHeight * 0.4) current = i;
+    });
+    navPills.forEach((p, i) => p.classList.toggle('active', i === current));
+  }
+  window.addEventListener('scroll', updateNav, { passive: true });
+  updateNav();
+</script>
+</body>
+</html>

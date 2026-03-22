@@ -1,0 +1,2399 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>epoll — Le mécanisme de surveillance I/O</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-2); background: rgba(74,224,255,0.07); }
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-2); }
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+  .header-desc code {
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-2);
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+	max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active {
+    background: rgba(74,224,255,0.1);
+    color: var(--accent-2);
+  }
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 10px;
+  }
+
+  /* MAIN */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* STEP SECTION */
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-2));
+  }
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 0.3rem;
+  }
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* TWO / THREE COLUMN LAYOUT */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+    .progress-inner { overflow-x: auto; }
+  }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-2));
+    opacity: 0.6;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+  .panel p + p { margin-top: 0.8rem; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+  .panel p code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .panel ul {
+    list-style: none;
+    margin-top: 0.8rem;
+  }
+  .panel ul li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+  .panel ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--step-color, var(--accent-2));
+    opacity: 0.6;
+  }
+  .panel ul li code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .panel ul li strong { color: var(--text); font-weight: 500; }
+
+  /* ANALOGY PANEL */
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+  }
+  .analogy-icon { font-size: 2.5rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* CODE PANEL */
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+  .kw  { color: #c084fc; }
+  .fn-name { color: #4ae0ff; }
+  .type { color: #4ade80; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; }
+  .var { color: #e8e6f0; }
+  .punct { color: #5c5a72; }
+  .ok   { color: #4ade80; }
+  .bad  { color: #ff6b4a; }
+  .highlight-line {
+    display: block;
+    background: rgba(74,224,255,0.06);
+    border-left: 2px solid var(--step-color, var(--accent-2));
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+
+  /* KEY POINTS */
+  .key-points {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .key-point {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .key-point code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-2);
+  }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* WARNING / INFO BOX */
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .warning strong { color: var(--accent-1); }
+  .warning code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-1);
+  }
+  .info-box {
+    background: rgba(74,224,255,0.04);
+    border: 1px solid rgba(74,224,255,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .info-box strong { color: var(--accent-2); }
+  .info-box code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-2);
+  }
+
+  /* BYTE TABLE */
+  .byte-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .byte-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    font-family: 'Space Mono', monospace;
+  }
+  .byte-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .byte-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    line-height: 1.4;
+    font-size: 0.8rem;
+  }
+  .byte-table tr:last-child td { border-bottom: none; }
+  .byte-table td:first-child { color: var(--accent-2); font-weight: 700; }
+  .byte-table td code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-3);
+    background: rgba(192,132,252,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  /* QUOTE BOX */
+  .quote-box {
+    border-left: 3px solid var(--accent-2);
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    background: rgba(74,224,255,0.03);
+    border-radius: 0 8px 8px 0;
+  }
+  .quote-box p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 0.3rem;
+  }
+  .quote-box cite {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* STEP DIVIDER */
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* GLOSSARY */
+  .glossary {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .glossary-item {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .glossary-item:last-child { border-bottom: none; }
+  .glossary-term {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--accent-2);
+    padding: 0.9rem 1.2rem;
+    background: var(--surface-2);
+    min-width: 160px;
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .glossary-def {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    padding: 0.9rem 1.2rem;
+    line-height: 1.55;
+    background: var(--surface);
+  }
+  .glossary-def code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  /* SUMMARY SECTION */
+  .summary-section {
+    margin-top: 4rem;
+    padding: 3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-2), var(--accent-3), var(--accent-4), var(--accent-5));
+  }
+  .summary-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+  .summary-title em { font-style: italic; color: var(--accent-2); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 1.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  .summary-card-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--accent-2);
+    margin-bottom: 0.2rem;
+  }
+  .summary-card-desc { font-size: 0.8rem; color: var(--text-muted); }
+  .summary-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+  /* FAQ */
+  .faq-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem 1.8rem;
+    margin-bottom: 1rem;
+  }
+  .faq-q {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-2);
+    margin-bottom: 0.8rem;
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+  }
+  .faq-q-num {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.6rem;
+    opacity: 0.2;
+    line-height: 1;
+    flex-shrink: 0;
+    min-width: 1.8rem;
+  }
+  .faq-a {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    padding-left: 2.4rem;
+  }
+  .faq-a code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .faq-a strong { color: var(--text); font-weight: 500; }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-2); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#concept" class="step-pill active" id="nav-concept">
+      <span class="step-dot"></span>Concept
+    </a>
+    <div class="step-connector"></div>
+    <a href="#create" class="step-pill" id="nav-create">
+      <span class="step-dot"></span>create1
+    </a>
+    <div class="step-connector"></div>
+    <a href="#struct" class="step-pill" id="nav-struct">
+      <span class="step-dot"></span>struct
+    </a>
+    <div class="step-connector"></div>
+    <a href="#ctl" class="step-pill" id="nav-ctl">
+      <span class="step-dot"></span>ctl
+    </a>
+    <div class="step-connector"></div>
+    <a href="#wait" class="step-pill" id="nav-wait">
+      <span class="step-dot"></span>wait
+    </a>
+    <div class="step-connector"></div>
+    <a href="#flags" class="step-pill" id="nav-flags">
+      <span class="step-dot"></span>Flags
+    </a>
+    <div class="step-connector"></div>
+    <a href="#lt-et" class="step-pill" id="nav-lt-et">
+      <span class="step-dot"></span>LT vs ET
+    </a>
+    <div class="step-connector"></div>
+    <a href="#exemple" class="step-pill" id="nav-exemple">
+      <span class="step-dot"></span>Exemple
+    </a>
+    <div class="step-connector"></div>
+    <a href="#faq" class="step-pill" id="nav-faq">
+      <span class="step-dot"></span>FAQ
+    </a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">I/O Multiplexing — Fondation</div>
+  <h1>epoll<br>Le surveillant <em>événementiel</em></h1>
+  <p class="header-desc">
+    <code>epoll</code> est le mécanisme Linux pour surveiller des centaines de file descriptors en O(1).
+    Trois appels système, deux listes internes, un concept central : ne jamais interroger ce qui n'est pas prêt.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 1 : LE CONCEPT       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="concept" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">epoll</div>
+        <div class="step-subtitle">Le concept fondamental</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Qu'est-ce que epoll ?</div>
+        <p>
+          <code>epoll</code> est une <strong>interface de notification d'événements I/O</strong> spécifique à Linux.
+          Son rôle : surveiller un ensemble de file descriptors et dire lesquels sont <strong>prêts</strong>
+          pour une opération de lecture ou d'écriture.
+        </p>
+        <p>
+          Contrairement à <code>select()</code> (limité à 1024 fds, copie les sets à chaque appel)
+          et <code>poll()</code> (parcourt linéairement tous les fds — O(n)),
+          epoll maintient une <strong>liste interne dans le kernel</strong> et retourne directement les fds actifs en <strong>O(1)</strong>.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📋</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Imagine un hôtel avec 500 chambres. Au lieu de frapper à chaque porte pour demander
+            « vous avez besoin de quelque chose ? » (c'est poll), epoll c'est un système
+            d'appel où chaque chambre appuie sur un bouton quand elle a besoin de service.
+            Tu ne vérifies que les boutons allumés.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 1.5rem;">
+      <div class="panel-label">Architecture interne — deux listes</div>
+      <p>
+        Le kernel maintient deux structures pour chaque instance epoll :
+      </p>
+      <ul>
+        <li><strong>Interest list</strong> (epoll set) — l'ensemble des file descriptors que tu as <strong>enregistrés</strong> via <code>epoll_ctl()</code>. C'est ta liste de surveillance.</li>
+        <li><strong>Ready list</strong> — le sous-ensemble de l'interest list dont les fds sont <strong>prêts</strong> pour de l'I/O. Cette liste est peuplée dynamiquement par le kernel quand un événement se produit sur un fd.</li>
+      </ul>
+      <p>
+        Quand tu appelles <code>epoll_wait()</code>, le kernel te retourne <strong>uniquement la ready list</strong>. Tu ne parcours jamais les fds inactifs.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">architecture.txt</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Schéma mental</span>
+      </div>
+      <pre><span class="cmt">// L'architecture epoll en 3 étapes :</span>
+
+<span class="cmt">// 1. Créer l'instance epoll (une seule fois)</span>
+<span class="type">int</span> <span class="var">epoll_fd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);
+
+<span class="cmt">// 2. Enregistrer les fds à surveiller (interest list)</span>
+<span class="fn-name">epoll_ctl</span>(epoll_fd, <span class="macro">EPOLL_CTL_ADD</span>, fd, &amp;event);  <span class="cmt">// ← ajoute fd à la liste</span>
+
+<span class="cmt">// 3. Attendre que des fds soient prêts (ready list)</span>
+<span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(epoll_fd, events, MAX, <span class="num">-1</span>);
+<span class="cmt">// → n contient le nombre de fds prêts</span>
+<span class="cmt">// → events[] contient UNIQUEMENT les fds actifs</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">⚡</span>
+        <span><strong>O(1)</strong> — epoll ne parcourt pas tous les fds. Le kernel notifie directement les fds actifs.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🧠</span>
+        <span><strong>Persistant</strong> — l'interest list vit dans le kernel. Pas besoin de la reconstruire à chaque appel.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📈</span>
+        <span><strong>Scalable</strong> — gère des milliers de connexions simultanées sans dégradation.</span>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>« poll() (or equivalent) must monitor both reading and writing simultaneously. »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 2 : epoll_create1()   -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="create" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">epoll_create1()</div>
+        <div class="step-subtitle">Créer l'instance epoll</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça fait</div>
+        <p>
+          <code>epoll_create1()</code> crée une nouvelle <strong>instance epoll</strong> dans le kernel
+          et retourne un <strong>file descriptor</strong> qui la représente.
+        </p>
+        <p>
+          Ce fd est le « handle » que tu utiliseras dans tous les appels <code>epoll_ctl()</code> et <code>epoll_wait()</code>.
+          Comme tout fd, il doit être fermé avec <code>close()</code> quand tu n'en as plus besoin.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🏗️</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            C'est comme installer un tableau de contrôle vide dans la salle de surveillance.
+            Le tableau existe, mais il n'y a encore aucune caméra branchée dessus.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_create.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Prototype &amp; usage</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
+
+<span class="cmt">// Prototype</span>
+<span class="type">int</span> <span class="fn-name">epoll_create1</span>(<span class="type">int</span> <span class="var">flags</span>);
+<span class="cmt">// Retourne : un fd epoll (>= 0) en cas de succès, -1 en cas d'erreur</span>
+
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+<span class="cmt">// Usage typique :</span>
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+
+<span class="type">int</span> <span class="var">epoll_fd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);
+<span class="kw">if</span> (<span class="var">epoll_fd</span> == <span class="num">-1</span>) {
+    <span class="fn-name">perror</span>(<span class="str">"epoll_create1"</span>);
+    <span class="fn-name">exit</span>(<span class="macro">EXIT_FAILURE</span>);
+}
+
+<span class="cmt">// epoll_fd est maintenant une instance epoll vide,</span>
+<span class="cmt">// prête à recevoir des fds via epoll_ctl()</span>
+
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+<span class="cmt">// Avec le flag EPOLL_CLOEXEC :</span>
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+
+<span class="type">int</span> <span class="var">epoll_fd</span> = <span class="fn-name">epoll_create1</span>(<span class="macro">EPOLL_CLOEXEC</span>);
+<span class="cmt">// → le fd sera automatiquement fermé lors d'un exec()</span>
+<span class="cmt">// → équivalent de fcntl(epoll_fd, F_SETFD, FD_CLOEXEC)</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">🔑</span>
+        <span>Le paramètre <code>flags</code> est généralement <strong>0</strong> ou <code>EPOLL_CLOEXEC</code>.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📌</span>
+        <span><code>epoll_create()</code> (sans le 1) est l'ancienne version qui prend un <strong>size hint</strong> — ignoré depuis Linux 2.6.8. Utilise toujours <code>epoll_create1()</code>.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">♻️</span>
+        <span>N'oublie pas de <code>close(epoll_fd)</code> en fin de programme pour libérer les ressources kernel.</span>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Pourquoi epoll_create1 et pas epoll_create ?</strong>
+        L'ancienne <code>epoll_create(int size)</code> ignorait déjà le paramètre <code>size</code> depuis longtemps.
+        <code>epoll_create1()</code> a été ajoutée pour pouvoir passer des flags (comme <code>EPOLL_CLOEXEC</code>)
+        proprement, sans bidouilles.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 3 : struct epoll_event -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="struct" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">struct epoll_event</div>
+        <div class="step-subtitle">La structure de données</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Rôle</div>
+        <p>
+          <code>struct epoll_event</code> est la structure que tu passes à <code>epoll_ctl()</code>
+          pour dire <strong>quels événements surveiller</strong>, et que tu reçois de <code>epoll_wait()</code>
+          pour savoir <strong>quels événements se sont produits</strong>.
+        </p>
+        <p>
+          Elle contient deux champs : <code>events</code> (un bitmask de flags) et <code>data</code>
+          (une union pour stocker des données utilisateur, typiquement le fd).
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📝</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            C'est la fiche d'inscription d'une chambre d'hôtel au tableau de surveillance.
+            Elle indique : « surveille cette chambre (fd) pour ces types d'alertes (events) ».
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_event.h</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">Définition</span>
+      </div>
+      <pre><span class="cmt">// Définition de la structure (de &lt;sys/epoll.h&gt;)</span>
+
+<span class="kw">typedef</span> <span class="kw">union</span> <span class="type">epoll_data</span> {
+    <span class="type">void</span>    *<span class="var">ptr</span>;     <span class="cmt">// pointeur générique (pour passer tes propres données)</span>
+    <span class="type">int</span>      <span class="var">fd</span>;      <span class="cmt">// file descriptor (usage le plus courant)</span>
+    <span class="type">uint32_t</span> <span class="var">u32</span>;     <span class="cmt">// entier 32 bits</span>
+    <span class="type">uint64_t</span> <span class="var">u64</span>;     <span class="cmt">// entier 64 bits</span>
+} <span class="type">epoll_data_t</span>;
+
+<span class="kw">struct</span> <span class="type">epoll_event</span> {
+    <span class="type">uint32_t</span>     <span class="var">events</span>;   <span class="cmt">// bitmask : EPOLLIN | EPOLLOUT | ...</span>
+    <span class="type">epoll_data_t</span> <span class="var">data</span>;     <span class="cmt">// données utilisateur (souvent .fd = le fd)</span>
+};</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_event_usage.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">Usage concret</span>
+      </div>
+      <pre><span class="cmt">// Exemple 1 : Surveiller un fd en lecture</span>
+<span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;         <span class="cmt">// je veux être notifié quand ce fd est lisible</span>
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;      <span class="cmt">// je stocke le fd pour le retrouver dans epoll_wait</span>
+
+<span class="cmt">// Exemple 2 : Surveiller en lecture ET écriture</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLOUT</span>;
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;
+
+<span class="cmt">// Exemple 3 : Utiliser le pointeur pour passer des données custom</span>
+<span class="kw">struct</span> <span class="type">Connection</span> *<span class="var">conn</span> = <span class="fn-name">new_connection</span>(<span class="var">client_fd</span>);
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">ptr</span> = <span class="var">conn</span>;        <span class="cmt">// on stocke un pointeur vers notre struct</span>
+<span class="cmt">// → dans epoll_wait, on récupère conn via events[i].data.ptr</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Attention :</strong> <code>data</code> est une <strong>union</strong>, pas une struct.
+        Tu ne peux utiliser qu'<strong>un seul champ à la fois</strong> : soit <code>.fd</code>, soit <code>.ptr</code>,
+        soit <code>.u32</code>, soit <code>.u64</code>. Si tu utilises <code>.ptr</code> pour passer un pointeur custom,
+        tu ne pourras pas utiliser <code>.fd</code> en même temps.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 4 : epoll_ctl()       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="ctl" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">epoll_ctl()</div>
+        <div class="step-subtitle">Gérer l'interest list</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça fait</div>
+        <p>
+          <code>epoll_ctl()</code> est l'appel pour <strong>ajouter, modifier ou retirer</strong> un file descriptor
+          de l'interest list d'une instance epoll. C'est le seul moyen de dire au kernel
+          « surveille ce fd » ou « arrête de surveiller ce fd ».
+        </p>
+        <p>
+          Trois opérations possibles, identifiées par le second paramètre :
+        </p>
+        <ul>
+          <li><code>EPOLL_CTL_ADD</code> — <strong>Ajouter</strong> un fd à l'interest list</li>
+          <li><code>EPOLL_CTL_MOD</code> — <strong>Modifier</strong> les événements surveillés pour un fd existant</li>
+          <li><code>EPOLL_CTL_DEL</code> — <strong>Retirer</strong> un fd de l'interest list</li>
+        </ul>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🔌</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            C'est brancher, rebrancher ou débrancher une caméra sur le tableau de surveillance.
+            ADD branche une nouvelle caméra, MOD change ce qu'elle filme, DEL la débranche.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_ctl.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Prototype</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
+
+<span class="type">int</span> <span class="fn-name">epoll_ctl</span>(<span class="type">int</span> <span class="var">epfd</span>,       <span class="cmt">// fd de l'instance epoll (retourné par epoll_create1)</span>
+              <span class="type">int</span> <span class="var">op</span>,         <span class="cmt">// opération : EPOLL_CTL_ADD, _MOD, ou _DEL</span>
+              <span class="type">int</span> <span class="var">fd</span>,         <span class="cmt">// le fd cible à ajouter/modifier/retirer</span>
+              <span class="kw">struct</span> <span class="type">epoll_event</span> *<span class="var">event</span>  <span class="cmt">// les événements à surveiller (NULL pour DEL)</span>
+);
+<span class="cmt">// Retourne : 0 en cas de succès, -1 en cas d'erreur</span></pre>
+    </div>
+
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:1.5rem; position:relative;">
+      <div style="position:absolute; top:0; left:0; right:0; height:2px; background:var(--accent-4); opacity:0.6;"></div>
+      <div style="padding:1.8rem 2rem 0;">
+        <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-4); opacity:0.8; margin-bottom:1.4rem;">Point de vue du serveur</div>
+
+        <!-- Schéma central -->
+        <div style="background:#0d0d14; border:1px solid var(--border); border-radius:10px; padding:1.4rem 2rem; font-family:'Space Mono',monospace; font-size:0.78rem; line-height:2.2; margin-bottom:1.5rem;">
+          <div style="color:var(--text-muted); font-size:0.6rem; letter-spacing:0.15em; text-transform:uppercase; margin-bottom:0.8rem;">EPOLLIN — le client envoie vers le serveur</div>
+          <div>
+            <span style="color:#8b89a0;">Client</span>
+            <span style="color:var(--accent-4);">  ────  requête HTTP GET /  ────►</span>
+            <span style="color:var(--text);">  Serveur</span>
+            <span style="color:#4a4a6a; font-style:italic; font-size:0.7rem;">  ← EPOLLIN → recv()</span>
+          </div>
+          <div style="margin-top:0.3rem;">
+            <span style="color:#8b89a0;">Client</span>
+            <span style="color:var(--accent-1);">  ◄───  réponse HTTP 200 OK  ────</span>
+            <span style="color:var(--text);">  Serveur</span>
+            <span style="color:#4a4a6a; font-style:italic; font-size:0.7rem;">  ← EPOLLOUT → send()</span>
+          </div>
+        </div>
+
+        <!-- Deux colonnes EPOLLIN / EPOLLOUT -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+          <div style="background:rgba(74,222,128,0.05); border:1px solid rgba(74,222,128,0.2); border-radius:10px; padding:1.2rem 1.4rem;">
+            <div style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); font-weight:700; margin-bottom:0.6rem;">EPOLLIN</div>
+            <div style="font-size:0.82rem; color:var(--text-dim); line-height:1.65; font-weight:300;">Des données <strong style="color:var(--text);">entrent vers moi</strong>. Le client m'a envoyé quelque chose — je peux appeler <span style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4);">recv()</span> ou <span style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4);">accept()</span>.</div>
+          </div>
+          <div style="background:rgba(255,107,74,0.05); border:1px solid rgba(255,107,74,0.2); border-radius:10px; padding:1.2rem 1.4rem;">
+            <div style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-1); font-weight:700; margin-bottom:0.6rem;">EPOLLOUT</div>
+            <div style="font-size:0.82rem; color:var(--text-dim); line-height:1.65; font-weight:300;">Des données <strong style="color:var(--text);">sortent de moi</strong>. Le buffer d'envoi a de la place — je peux appeler <span style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1);">send()</span> ma réponse.</div>
+          </div>
+        </div>
+
+        <!-- Cycle HTTP -->
+        <div style="border-top:1px solid var(--border); padding:1.4rem 0 1.8rem;">
+          <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--text-muted); margin-bottom:1rem;">Cycle complet d'une requête HTTP</div>
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:0.75rem;">
+            <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:0.9rem 1rem;">
+              <div style="font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--accent-4); margin-bottom:0.4rem;">① EPOLLIN</div>
+              <div style="font-size:0.75rem; color:var(--text-dim); line-height:1.5;">Socket d'écoute prêt → <code style="color:var(--accent-4); font-family:'Space Mono',monospace; font-size:0.72rem;">accept()</code></div>
+            </div>
+            <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:0.9rem 1rem;">
+              <div style="font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--accent-4); margin-bottom:0.4rem;">② EPOLLIN</div>
+              <div style="font-size:0.75rem; color:var(--text-dim); line-height:1.5;">Socket client prêt → <code style="color:var(--accent-4); font-family:'Space Mono',monospace; font-size:0.72rem;">recv()</code> la requête</div>
+            </div>
+            <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:0.9rem 1rem;">
+              <div style="font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--accent-1); margin-bottom:0.4rem;">③ EPOLLOUT</div>
+              <div style="font-size:0.75rem; color:var(--text-dim); line-height:1.5;">Buffer prêt → <code style="color:var(--accent-1); font-family:'Space Mono',monospace; font-size:0.72rem;">send()</code> la réponse</div>
+            </div>
+            <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:0.9rem 1rem;">
+              <div style="font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--accent-2); margin-bottom:0.4rem;">④ MOD</div>
+              <div style="font-size:0.75rem; color:var(--text-dim); line-height:1.5;"><code style="color:var(--accent-2); font-family:'Space Mono',monospace; font-size:0.72rem;">EPOLL_CTL_MOD</code> → retour en EPOLLIN</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_ctl_examples.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Les 3 opérations</span>
+      </div>
+      <pre><span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+
+<span class="cmt">// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span class="cmt">// EPOLL_CTL_ADD — Ajouter un fd à la surveillance</span>
+<span class="cmt">// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;              <span class="cmt">// surveiller la lecture</span>
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">listen_fd</span>;
+<span class="kw">if</span> (<span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">listen_fd</span>, &amp;<span class="var">ev</span>) == <span class="num">-1</span>) {
+    <span class="fn-name">perror</span>(<span class="str">"epoll_ctl: EPOLL_CTL_ADD"</span>);
+    <span class="fn-name">exit</span>(<span class="macro">EXIT_FAILURE</span>);
+}
+
+<span class="cmt">// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span class="cmt">// EPOLL_CTL_MOD — Modifier les événements surveillés</span>
+<span class="cmt">// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span class="cmt">// Le client a envoyé une requête, maintenant on veut</span>
+<span class="cmt">// écrire la réponse → on passe en EPOLLOUT</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLOUT</span>;             <span class="cmt">// maintenant surveiller l'écriture</span>
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;
+<span class="kw">if</span> (<span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">client_fd</span>, &amp;<span class="var">ev</span>) == <span class="num">-1</span>) {
+    <span class="fn-name">perror</span>(<span class="str">"epoll_ctl: EPOLL_CTL_MOD"</span>);
+}
+
+<span class="cmt">// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span class="cmt">// EPOLL_CTL_DEL — Retirer un fd de la surveillance</span>
+<span class="cmt">// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span class="cmt">// Le client se déconnecte → on le retire d'epoll</span>
+<span class="cmt">// puis on ferme le fd</span>
+<span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">client_fd</span>, <span class="macro">NULL</span>);  <span class="cmt">// event peut être NULL pour DEL</span>
+<span class="fn-name">close</span>(<span class="var">client_fd</span>);</pre>
+    </div>
+
+    <div class="byte-table-wrap">
+      <table class="byte-table">
+        <tr>
+          <th>Opération</th>
+          <th>Effet</th>
+          <th>event peut être NULL ?</th>
+        </tr>
+        <tr>
+          <td>EPOLL_CTL_ADD</td>
+          <td>Ajoute fd à l'interest list avec les events spécifiés</td>
+          <td style="color:var(--accent-1)">Non</td>
+        </tr>
+        <tr>
+          <td>EPOLL_CTL_MOD</td>
+          <td>Modifie les events surveillés pour un fd déjà enregistré</td>
+          <td style="color:var(--accent-1)">Non</td>
+        </tr>
+        <tr>
+          <td>EPOLL_CTL_DEL</td>
+          <td>Retire fd de l'interest list (arrête la surveillance)</td>
+          <td style="color:var(--accent-4)">Oui (depuis Linux 2.6.9)</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Erreur fréquente :</strong> tenter un <code>EPOLL_CTL_ADD</code> sur un fd déjà enregistré
+        retourne <code>EEXIST</code>. Si tu veux changer les événements, utilise <code>EPOLL_CTL_MOD</code>.
+        Inversement, un <code>EPOLL_CTL_MOD</code> sur un fd non enregistré retourne <code>ENOENT</code>.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Bonne pratique :</strong> toujours appeler <code>epoll_ctl(EPOLL_CTL_DEL)</code>
+        <strong>avant</strong> <code>close()</code>. Bien que fermer un fd le retire automatiquement
+        de l'interest list quand c'est le dernier descripteur vers l'open file description,
+        si le fd a été dupliqué (via <code>dup()</code>, <code>fork()</code>), il reste dans l'interest list
+        tant que tous les duplicatas ne sont pas fermés.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 5 : epoll_wait()      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="wait" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">epoll_wait()</div>
+        <div class="step-subtitle">Attendre les événements</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça fait</div>
+        <p>
+          <code>epoll_wait()</code> <strong>endort le programme à cette ligne</strong> — il ne passe pas à la suite.
+          Le kernel met le processus en sommeil (zéro CPU consommé) et attend qu'un événement
+          se produise sur n'importe quel fd de l'interest list.
+        </p>
+        <p>
+          Dès qu'au moins un fd est prêt, le kernel <strong>réveille le processus</strong> et remplit
+          le tableau <code>events[]</code> avec uniquement les fds actifs. La valeur retournée
+          <code>nfds</code> indique <strong>combien d'entrées</strong> ont été écrites dans ce tableau.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">😴</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Le serveur s'endort en attendant. Il ne tourne pas en rond — il dort vraiment,
+            sans consommer de CPU. Dès qu'un client arrive ou envoie des données,
+            le kernel le réveille avec la liste exacte de ce qui s'est passé.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ce que retourne epoll_wait -->
+    <div class="panel" style="margin-bottom: 1.5rem;">
+      <div class="panel-label">Ce que retourne epoll_wait — le tableau events[]</div>
+      <p>
+        Tu fournis un tableau <code>events[]</code> vide. Le kernel le remplit avec
+        <strong>uniquement les fds prêts</strong> au moment où il te réveille.
+        Chaque entrée <code>events[i]</code> contient deux choses :
+      </p>
+      <ul>
+        <li><code>events[i].data.fd</code> — <strong>quel fd</strong> est prêt (le fd que tu avais enregistré avec <code>epoll_ctl</code>)</li>
+        <li><code>events[i].events</code> — <strong>quel événement</strong> s'est produit sur ce fd (<code>EPOLLIN</code>, <code>EPOLLOUT</code>, <code>EPOLLERR</code>…)</li>
+      </ul>
+      <p>
+        <strong>Oui, il peut y en avoir plusieurs simultanément.</strong> Si 3 clients envoient des données en même temps,
+        <code>nfds = 3</code> et tu as 3 entrées dans le tableau — chacune correspond à un fd différent.
+        Tu les traites une par une dans le <code>for</code>.
+      </p>
+    </div>
+
+    <!-- Schéma visuel du tableau -->
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll surveille 5 fds — 3 sont prêts ce cycle</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Schéma events[]</span>
+      </div>
+      <pre><span class="cmt">// INTEREST LIST — tout ce qu'on a enregistré via epoll_ctl(EPOLL_CTL_ADD)</span>
+<span class="ok">listen_fd=3</span>   <span class="ok">client_fd=5</span>   <span class="ok">client_fd=7</span>   <span class="cmt">client_fd=8</span>   <span class="cmt">client_fd=9</span>
+<span class="cmt">// ↑ prêts                                       ↑ rien à signaler ce cycle</span>
+
+<span class="cmt">// EVENTS[] après epoll_wait() → nfds = 3</span>
+<span class="cmt">// Le kernel a rempli 3 entrées, les autres ne sont pas touchées</span>
+
+<span class="highlight-line"><span class="var">events</span><span class="punct">[</span><span class="num">0</span><span class="punct">]</span>  <span class="punct">.</span><span class="var">data</span><span class="punct">.</span><span class="var">fd</span> <span class="punct">=</span> <span class="num">3</span>   <span class="punct">│</span>  <span class="punct">.</span><span class="var">events</span> <span class="punct">=</span> <span class="macro">EPOLLIN</span>   <span class="cmt">← nouveau client qui attend → accept()</span></span>
+<span class="highlight-line"><span class="var">events</span><span class="punct">[</span><span class="num">1</span><span class="punct">]</span>  <span class="punct">.</span><span class="var">data</span><span class="punct">.</span><span class="var">fd</span> <span class="punct">=</span> <span class="num">5</span>   <span class="punct">│</span>  <span class="punct">.</span><span class="var">events</span> <span class="punct">=</span> <span class="macro">EPOLLIN</span>   <span class="cmt">← client a envoyé sa requête → recv()</span></span>
+<span class="highlight-line"><span class="var">events</span><span class="punct">[</span><span class="num">2</span><span class="punct">]</span>  <span class="punct">.</span><span class="var">data</span><span class="punct">.</span><span class="var">fd</span> <span class="punct">=</span> <span class="num">7</span>   <span class="punct">│</span>  <span class="punct">.</span><span class="var">events</span> <span class="punct">=</span> <span class="bad">EPOLLOUT</span>  <span class="cmt">← buffer prêt → send() la réponse</span></span>
+<span class="cmt">events[3]  .data.fd = —   │  .events = —         ← non rempli (fd=8, fd=9 rien à signaler)</span></pre>
+    </div>
+
+    <!-- Timeout -->
+    <div class="panel" style="margin-bottom: 1.5rem;">
+      <div class="panel-label">Le paramètre timeout</div>
+      <p>
+        Contrôle <strong>combien de temps</strong> <code>epoll_wait()</code> est prêt à attendre
+        avant de rendre la main, même si rien ne se passe.
+      </p>
+    </div>
+
+    <div class="byte-table-wrap" style="margin-bottom: 1.5rem;">
+      <table class="byte-table">
+        <tr>
+          <th>Valeur</th>
+          <th>Comportement</th>
+          <th>Cas d'usage</th>
+        </tr>
+        <tr>
+          <td>-1</td>
+          <td>Dort indéfiniment jusqu'à un événement. Ne revient jamais « pour rien ».</td>
+          <td style="color:var(--accent-4)">Webserv — le cas standard</td>
+        </tr>
+        <tr>
+          <td>0</td>
+          <td>Regarde instantanément et retourne immédiatement, même si rien n'est prêt. <code>nfds = 0</code> si rien.</td>
+          <td>Polling rapide sans bloquer</td>
+        </tr>
+        <tr>
+          <td>&gt; 0</td>
+          <td>Attend au maximum N millisecondes. Retourne avant si un événement arrive, ou avec <code>nfds = 0</code> si timeout.</td>
+          <td>Tâches périodiques (timeouts, heartbeats)</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_wait.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Boucle complète annotée</span>
+      </div>
+      <pre><span class="macro">#define</span> <span class="macro">MAX_EVENTS</span> <span class="num">64</span>
+
+<span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="macro">MAX_EVENTS</span>]; <span class="cmt">// tableau que le kernel va remplir</span>
+
+<span class="cmt">// La boucle tourne indéfiniment — c'est voulu, c'est un serveur</span>
+<span class="kw">while</span> (<span class="num">1</span>) {
+
+    <span class="cmt">// Le programme DORT ici jusqu'à ce qu'un fd soit prêt</span>
+    <span class="cmt">// timeout = -1 : on dort aussi longtemps que nécessaire (0 CPU)</span>
+<span class="highlight-line">    <span class="type">int</span> <span class="var">nfds</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epoll_fd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, <span class="num">-1</span>);</span>
+    <span class="cmt">// ← ici le kernel nous réveille avec nfds événements prêts</span>
+
+    <span class="kw">if</span> (<span class="var">nfds</span> == <span class="num">-1</span>) {
+        <span class="cmt">// EINTR = un signal a interrompu l'attente (ex: SIGCHLD)</span>
+        <span class="cmt">// Ce n'est pas une vraie erreur → on recommence simplement</span>
+        <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EINTR</span>) <span class="kw">continue</span>;
+        <span class="fn-name">perror</span>(<span class="str">"epoll_wait"</span>);
+        <span class="kw">break</span>;
+    }
+
+    <span class="cmt">// On itère sur les nfds événements prêts — PAS sur tous les fds</span>
+    <span class="cmt">// Si on surveille 1000 fds et que 2 sont prêts : nfds = 2, on boucle 2 fois</span>
+    <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">nfds</span>; <span class="var">i</span>++) {
+
+<span class="highlight-line">        <span class="type">int</span>      <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;   <span class="cmt">// le fd qui a un événement</span></span>
+<span class="highlight-line">        <span class="type">uint32_t</span> <span class="var">ev</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span>;    <span class="cmt">// quel type d'événement</span></span>
+
+        <span class="cmt">// fd peut être listen_fd, client_fd_1, client_fd_2...</span>
+        <span class="cmt">// On identifie qui est prêt et ce qu'il veut</span>
+
+        <span class="kw">if</span> (<span class="var">fd</span> == <span class="var">listen_fd</span>) {
+            <span class="cmt">// Le socket d'écoute est prêt → nouveau client qui veut se connecter</span>
+            <span class="fn-name">accept</span>(<span class="var">listen_fd</span>, ...);
+
+        } <span class="kw">else</span> <span class="kw">if</span> (<span class="var">ev</span> &amp; <span class="macro">EPOLLIN</span>) {
+            <span class="cmt">// Un client existant nous a envoyé des données → on lit</span>
+            <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);
+
+        } <span class="kw">else</span> <span class="kw">if</span> (<span class="var">ev</span> &amp; <span class="macro">EPOLLOUT</span>) {
+            <span class="cmt">// Le buffer d'envoi est prêt → on envoie notre réponse</span>
+            <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">response</span>, <span class="var">response_len</span>, <span class="num">0</span>);
+
+        } <span class="kw">else</span> <span class="kw">if</span> (<span class="var">ev</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
+            <span class="cmt">// Erreur ou déconnexion → on nettoie</span>
+            <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+            <span class="fn-name">close</span>(<span class="var">fd</span>);
+        }
+    }
+    <span class="cmt">// Fin du for → on retourne dans epoll_wait → on se rendort</span>
+}</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">😴</span>
+        <span><strong>Le while dort</strong>, il ne tourne pas en rond. <code>epoll_wait(-1)</code> consomme <strong>zéro CPU</strong> pendant l'attente — le kernel met le processus en sommeil.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📦</span>
+        <span><strong>events[]</strong> ne contient que les fds actifs. Sur 1000 fds surveillés, si 3 sont prêts : <code>nfds=3</code>, le reste du tableau n'est pas touché.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🔑</span>
+        <span><strong>epoll_fd ≠ client_fd</strong>. <code>epoll_fd</code> est la télécommande de surveillance. Les données réelles passent par <code>listen_fd</code> et <code>client_fd</code>.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🚨</span>
+        <span><strong>EINTR</strong> : un signal peut interrompre <code>epoll_wait</code> et retourner <code>-1</code> avec <code>errno==EINTR</code>. Ce n'est pas une erreur — il faut juste <code>continue</code>.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 6 : LES FLAGS         -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="flags" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">EPOLLIN, EPOLLOUT, ...</div>
+        <div class="step-subtitle">Tous les flags epoll</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 1.5rem;">
+      <div class="panel-label">Les flags d'événements</div>
+      <p>
+        Les flags sont des <strong>bitmasks</strong> que tu combines avec l'opérateur <code>|</code>
+        dans le champ <code>events</code> de <code>struct epoll_event</code>.
+        Certains sont utilisés à l'<strong>entrée</strong> (dans <code>epoll_ctl</code>),
+        d'autres à la <strong>sortie</strong> (dans <code>epoll_wait</code>), certains aux deux.
+      </p>
+    </div>
+
+    <div class="byte-table-wrap">
+      <table class="byte-table">
+        <tr>
+          <th>Flag</th>
+          <th>Direction</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td>EPOLLIN</td>
+          <td>entrée/sortie</td>
+          <td>Le fd est <strong style="color:var(--text)">prêt en lecture</strong>. Des données sont disponibles, ou un nouveau client attend (pour un socket d'écoute).</td>
+        </tr>
+        <tr>
+          <td>EPOLLOUT</td>
+          <td>entrée/sortie</td>
+          <td>Le fd est <strong style="color:var(--text)">prêt en écriture</strong>. Le buffer d'envoi a de la place. Tu peux appeler <code>send()</code> sans bloquer.</td>
+        </tr>
+        <tr>
+          <td>EPOLLERR</td>
+          <td>sortie uniquement</td>
+          <td><strong style="color:var(--text)">Erreur</strong> sur le fd. Toujours rapporté par epoll même si non demandé. Vérifie avec <code>getsockopt(SO_ERROR)</code>.</td>
+        </tr>
+        <tr>
+          <td>EPOLLHUP</td>
+          <td>sortie uniquement</td>
+          <td><strong style="color:var(--text)">Hang up</strong>. Le pair a fermé sa connexion. Toujours rapporté même si non demandé.</td>
+        </tr>
+        <tr>
+          <td>EPOLLRDHUP</td>
+          <td>entrée/sortie</td>
+          <td>Le pair a fermé <strong style="color:var(--text)">son côté écriture</strong> (half-close). Pratique pour détecter un shutdown propre.</td>
+        </tr>
+        <tr>
+          <td>EPOLLET</td>
+          <td>entrée</td>
+          <td>Active le mode <strong style="color:var(--text)">edge-triggered</strong>. L'événement n'est signalé qu'une fois, lors du changement d'état.</td>
+        </tr>
+        <tr>
+          <td>EPOLLONESHOT</td>
+          <td>entrée</td>
+          <td>Désactive le fd après <strong style="color:var(--text)">un seul événement</strong>. Il faut le réarmer avec <code>EPOLL_CTL_MOD</code>.</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">flags_examples.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-6); background:rgba(244,114,182,0.08)">Combinaisons courantes</span>
+      </div>
+      <pre><span class="cmt">// Surveiller la lecture seule (level-triggered, le défaut)</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;
+
+<span class="cmt">// Surveiller lecture + écriture</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLOUT</span>;
+
+<span class="cmt">// Edge-triggered en lecture (tu dois lire TOUT jusqu'à EAGAIN)</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLET</span>;
+
+<span class="cmt">// Edge-triggered lecture + écriture</span>
+<span class="cmt">// Astuce perf : on enregistre les deux dès le début</span>
+<span class="cmt">// pour éviter des EPOLL_CTL_MOD à répétition</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLOUT</span> | <span class="macro">EPOLLET</span>;
+
+<span class="cmt">// ONESHOT : un seul événement, puis il faut réarmer</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLONESHOT</span>;
+<span class="cmt">// après réception d'un événement, le fd est désactivé</span>
+<span class="cmt">// pour le réactiver :</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLONESHOT</span>;  <span class="cmt">// re-spécifier les events</span>
+<span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);
+
+<span class="cmt">// Détecter la déconnexion propre du pair</span>
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLRDHUP</span>;</pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>EPOLLERR et EPOLLHUP</strong> sont <strong>toujours reportés</strong> par <code>epoll_wait()</code>,
+        même si tu ne les demandes pas dans <code>epoll_ctl()</code>.
+        Tu n'as pas besoin de les ajouter au bitmask — mais tu dois les vérifier dans ta boucle.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>🔑</span>
+      <div>
+        <strong>Quand utiliser EPOLLONESHOT ?</strong> Quand plusieurs threads attendent sur le même epoll_fd.
+        Sans <code>EPOLLONESHOT</code>, un même événement pourrait être dispatché à plusieurs threads simultanément
+        (thundering herd). Avec <code>EPOLLONESHOT</code>, un seul thread traite l'événement, puis le réarme.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 7 : LEVEL vs EDGE TRIGGERED  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="lt-et" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">07</div>
+      <div>
+        <div class="step-fn">Level-triggered vs Edge-triggered</div>
+        <div class="step-subtitle">Les deux modes de notification d'epoll</div>
+      </div>
+    </div>
+
+    <!-- ── Intro : la question fondamentale ── -->
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">La question fondamentale</div>
+      <p>
+        Quand un fd a des données à lire, <strong>quand est-ce que <code>epoll_wait()</code> te prévient ?</strong>
+        La réponse dépend du mode choisi. C'est la différence la plus subtile et la plus critique d'epoll.
+      </p>
+    </div>
+
+    <!-- ── Définitions côte à côte ── -->
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Level-triggered (LT) — le défaut</div>
+        <p>
+          <code>epoll_wait()</code> te signale un fd <strong>tant que</strong> la condition est vraie.
+        </p>
+        <p>
+          Si le buffer du fd contient des données non lues, chaque appel à <code>epoll_wait()</code> te le re-signalera.
+          Tu peux lire petit à petit, epoll continue de te rappeler qu'il reste quelque chose.
+        </p>
+        <p>
+          C'est le comportement <strong>par défaut</strong>. Pas besoin de flag supplémentaire.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Edge-triggered (ET) — EPOLLET</div>
+        <p>
+          <code>epoll_wait()</code> te signale un fd <strong>une seule fois</strong> quand son état <strong>change</strong>.
+        </p>
+        <p>
+          Le kernel te notifie quand de <strong>nouvelles données arrivent</strong>, pas quand il <strong>reste</strong> des données.
+          Si tu n'as pas tout lu, epoll ne te re-signalera plus. Les données restent dans le buffer, mais tu ne seras plus prévenu.
+        </p>
+        <p>
+          S'active avec le flag <code>EPOLLET</code> dans <code>epoll_ctl()</code>.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Analogie ── -->
+    <div class="analogy-panel" style="margin-bottom: 2rem;">
+      <div class="analogy-icon">🔔</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie</div>
+        <p>
+          <strong>LT</strong> = une alarme qui sonne en continu tant que le problème existe. Tu peux être lent, elle te rappellera.<br>
+          <strong>ET</strong> = une alarme qui sonne une seule fois au moment où le problème apparaît. Si tu ne réagis pas immédiatement, silence total.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── SCÉNARIO ÉTAPE PAR ÉTAPE ── -->
+    <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-5); margin-bottom:1.2rem; opacity:0.8;">
+      Scénario pas à pas — Un client envoie 2 Ko
+    </div>
+
+    <!-- Étapes communes 1-4 -->
+    <div style="display:grid; grid-template-columns:auto 1fr; gap:0; margin-bottom:0;">
+
+      <!-- Étape 1 -->
+      <div style="display:flex; flex-direction:column; align-items:center; padding:0 1rem;">
+        <div style="width:32px; height:32px; border-radius:50%; background:var(--surface-2); border:2px solid var(--accent-5); display:flex; align-items:center; justify-content:center; font-family:'Space Mono',monospace; font-size:0.7rem; color:var(--accent-5); font-weight:700; flex-shrink:0;">1</div>
+        <div style="width:2px; flex:1; background:var(--border);"></div>
+      </div>
+      <div style="padding:0.3rem 0 1.5rem;">
+        <div style="font-family:'Space Mono',monospace; font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:0.3rem;">Enregistrement du fd dans epoll</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); font-weight:300;">
+          On ajoute un fd (par ex. un pipe ou un socket client) dans l'instance epoll avec <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-5); background:rgba(250,204,21,0.06); padding:0.1em 0.3em; border-radius:3px;">EPOLLIN</code>.
+          Le buffer du kernel associé à ce fd est <strong style="color:var(--text);">vide</strong>.
+        </div>
+      </div>
+
+      <!-- Étape 2 -->
+      <div style="display:flex; flex-direction:column; align-items:center; padding:0 1rem;">
+        <div style="width:32px; height:32px; border-radius:50%; background:var(--surface-2); border:2px solid var(--accent-5); display:flex; align-items:center; justify-content:center; font-family:'Space Mono',monospace; font-size:0.7rem; color:var(--accent-5); font-weight:700; flex-shrink:0;">2</div>
+        <div style="width:2px; flex:1; background:var(--border);"></div>
+      </div>
+      <div style="padding:0.3rem 0 1.5rem;">
+        <div style="font-family:'Space Mono',monospace; font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:0.3rem;">Le client envoie 2 Ko</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); font-weight:300;">
+          2048 octets arrivent dans le buffer du kernel. L'état du fd <strong style="color:var(--text);">change</strong> : il passe de « vide » à « 2 Ko disponibles ».
+        </div>
+        <div style="margin-top:0.6rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:0.8rem 1rem; display:flex; align-items:center; gap:0.8rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted);">Buffer kernel :</span>
+          <div style="flex:1; height:20px; border-radius:4px; background:var(--surface-2); overflow:hidden; position:relative;">
+            <div style="width:100%; height:100%; background:linear-gradient(90deg, rgba(74,222,128,0.3), rgba(74,222,128,0.15)); border-radius:4px;"></div>
+            <span style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--accent-4);">2048 octets</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Étape 3 -->
+      <div style="display:flex; flex-direction:column; align-items:center; padding:0 1rem;">
+        <div style="width:32px; height:32px; border-radius:50%; background:var(--surface-2); border:2px solid var(--accent-5); display:flex; align-items:center; justify-content:center; font-family:'Space Mono',monospace; font-size:0.7rem; color:var(--accent-5); font-weight:700; flex-shrink:0;">3</div>
+        <div style="width:2px; flex:1; background:var(--border);"></div>
+      </div>
+      <div style="padding:0.3rem 0 1.5rem;">
+        <div style="font-family:'Space Mono',monospace; font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:0.3rem;">epoll_wait() retourne le fd</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); font-weight:300;">
+          Que ce soit en LT ou en ET, <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2); background:rgba(74,224,255,0.06); padding:0.1em 0.3em; border-radius:3px;">epoll_wait()</code> retourne le fd comme prêt.
+          <strong style="color:var(--text);">Les deux modes se comportent pareil ici</strong> — c'est un nouvel événement, et il y a des données.
+        </div>
+      </div>
+
+      <!-- Étape 4 -->
+      <div style="display:flex; flex-direction:column; align-items:center; padding:0 1rem;">
+        <div style="width:32px; height:32px; border-radius:50%; background:var(--surface-2); border:2px solid var(--accent-1); display:flex; align-items:center; justify-content:center; font-family:'Space Mono',monospace; font-size:0.7rem; color:var(--accent-1); font-weight:700; flex-shrink:0;">4</div>
+        <div style="width:2px; flex:1; background:var(--border);"></div>
+      </div>
+      <div style="padding:0.3rem 0 1.5rem;">
+        <div style="font-family:'Space Mono',monospace; font-size:0.75rem; font-weight:700; color:var(--accent-1); margin-bottom:0.3rem;">On lit seulement 1 Ko (lecture partielle)</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); font-weight:300;">
+          On appelle <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2); background:rgba(74,224,255,0.06); padding:0.1em 0.3em; border-radius:3px;">recv(fd, buf, 1024, 0)</code> — on ne lit que 1024 octets.
+          <strong style="color:var(--accent-1);">Il reste 1024 octets non lus dans le buffer du kernel.</strong>
+        </div>
+        <div style="margin-top:0.6rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:0.8rem 1rem; display:flex; align-items:center; gap:0.8rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted);">Buffer kernel :</span>
+          <div style="flex:1; height:20px; border-radius:4px; background:var(--surface-2); overflow:hidden; position:relative; display:flex;">
+            <div style="width:50%; height:100%; background:rgba(42,42,66,0.5); display:flex; align-items:center; justify-content:center;">
+              <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--text-muted);">lu ✓</span>
+            </div>
+            <div style="width:50%; height:100%; background:linear-gradient(90deg, rgba(255,107,74,0.3), rgba(255,107,74,0.15)); display:flex; align-items:center; justify-content:center;">
+              <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-1);">1024 restants</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Étape 5 — titre commun -->
+      <div style="display:flex; flex-direction:column; align-items:center; padding:0 1rem;">
+        <div style="width:32px; height:32px; border-radius:50%; background:var(--surface-2); border:2px solid var(--accent-5); display:flex; align-items:center; justify-content:center; font-family:'Space Mono',monospace; font-size:0.7rem; color:var(--accent-5); font-weight:700; flex-shrink:0;">5</div>
+        <div style="width:2px; flex:1; background:var(--border);"></div>
+      </div>
+      <div style="padding:0.3rem 0 1rem;">
+        <div style="font-family:'Space Mono',monospace; font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:0.3rem;">On rappelle epoll_wait()...</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); font-weight:300;">
+          C'est ici que les deux modes <strong style="color:var(--text);">divergent complètement</strong> :
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Étape 5 : divergence LT vs ET ── -->
+    <div class="two-col" style="margin-top:0.5rem;">
+      <!-- LT -->
+      <div style="background:var(--surface); border:1px solid rgba(74,222,128,0.3); border-radius:12px; padding:1.5rem; position:relative; overflow:hidden;">
+        <div style="position:absolute; top:0; left:0; right:0; height:2px; background:var(--accent-4); opacity:0.6;"></div>
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+          <span style="font-size:1.2rem;">✅</span>
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-4);">Level-triggered</span>
+        </div>
+        <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; line-height:1.75;">
+          <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4); background:rgba(74,222,128,0.06); padding:0.1em 0.3em; border-radius:3px;">epoll_wait()</code>
+          <strong style="color:var(--accent-4);">retourne le fd immédiatement</strong>.
+        </p>
+        <p style="font-size:0.85rem; color:var(--text-dim); font-weight:300; line-height:1.75; margin-top:0.6rem;">
+          Pourquoi ? Parce que le buffer <strong style="color:var(--text);">contient encore des données</strong>.
+          En mode LT, la question que se pose le kernel est : <em>« Est-ce qu'il y a des données à lire ? »</em>
+          La réponse est oui → il te signale le fd.
+        </p>
+        <p style="font-size:0.85rem; color:var(--text-dim); font-weight:300; line-height:1.75; margin-top:0.6rem;">
+          Tu peux lire les 1024 octets restants, et c'est terminé. <strong style="color:var(--accent-4);">Aucune perte de données possible.</strong>
+        </p>
+        <div style="margin-top:1rem; background:var(--surface-2); border-radius:8px; padding:0.8rem 1rem;">
+          <div style="font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--text-muted); margin-bottom:0.4rem;">CYCLE</div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.7rem; color:var(--text-dim); line-height:2;">
+            <span style="color:var(--accent-2);">epoll_wait()</span> → fd prêt<br>
+            <span style="color:var(--accent-4);">recv()</span> → lit 1024 octets<br>
+            <span style="color:var(--accent-2);">epoll_wait()</span> → fd <strong style="color:var(--accent-4);">encore</strong> prêt (il reste des données)<br>
+            <span style="color:var(--accent-4);">recv()</span> → lit les 1024 restants<br>
+            <span style="color:var(--accent-2);">epoll_wait()</span> → bloque (buffer vide)
+          </div>
+        </div>
+      </div>
+
+      <!-- ET -->
+      <div style="background:var(--surface); border:1px solid rgba(255,107,74,0.3); border-radius:12px; padding:1.5rem; position:relative; overflow:hidden;">
+        <div style="position:absolute; top:0; left:0; right:0; height:2px; background:var(--accent-1); opacity:0.6;"></div>
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+          <span style="font-size:1.2rem;">💀</span>
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-1);">Edge-triggered</span>
+        </div>
+        <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; line-height:1.75;">
+          <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1); background:rgba(255,107,74,0.06); padding:0.1em 0.3em; border-radius:3px;">epoll_wait()</code>
+          <strong style="color:var(--accent-1);">bloque indéfiniment</strong>.
+        </p>
+        <p style="font-size:0.85rem; color:var(--text-dim); font-weight:300; line-height:1.75; margin-top:0.6rem;">
+          Pourquoi ? Parce qu'<strong style="color:var(--text);">aucun nouvel événement</strong> ne s'est produit.
+          En mode ET, la question du kernel est : <em>« Est-ce que quelque chose de nouveau est arrivé depuis la dernière notification ? »</em>
+          La réponse est non → silence.
+        </p>
+        <p style="font-size:0.85rem; color:var(--text-dim); font-weight:300; line-height:1.75; margin-top:0.6rem;">
+          Les 1024 octets restants sont <strong style="color:var(--accent-1);">toujours dans le buffer</strong>, mais tu ne seras <strong style="color:var(--accent-1);">jamais prévenu</strong>
+          qu'ils sont là. C'est un <strong style="color:var(--accent-1);">deadlock</strong>.
+        </p>
+        <div style="margin-top:1rem; background:var(--surface-2); border-radius:8px; padding:0.8rem 1rem;">
+          <div style="font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--text-muted); margin-bottom:0.4rem;">CYCLE</div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.7rem; color:var(--text-dim); line-height:2;">
+            <span style="color:var(--accent-2);">epoll_wait()</span> → fd prêt<br>
+            <span style="color:var(--accent-1);">recv()</span> → lit 1024 octets<br>
+            <span style="color:var(--accent-2);">epoll_wait()</span> → <strong style="color:var(--accent-1);">bloque pour toujours</strong> ∞<br>
+            <span style="color:var(--text-muted); font-size:0.6rem;">↑ 1024 octets oubliés dans le buffer</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Pourquoi les données sont « perdues » en ET ── -->
+    <div class="panel" style="--step-color: var(--accent-1); margin-top:1.5rem; margin-bottom:1.5rem;">
+      <div class="panel-label">Pourquoi parle-t-on de « perte » de données en ET ?</div>
+      <p>
+        Les données ne sont pas effacées — elles sont <strong>toujours dans le buffer du kernel</strong>.
+        Le problème est que ton programme ne sait plus qu'elles sont là. <code>epoll_wait()</code> ne
+        le re-signalera pas car il attend un <strong>changement d'état</strong> (= de nouvelles données),
+        pas la présence de données existantes.
+      </p>
+      <p>
+        Le seul moyen pour que <code>epoll_wait()</code> re-signale le fd est que le client envoie
+        <strong>de nouvelles données</strong>. Mais si le client attend une réponse de ta part (qui dépend
+        des octets que tu n'as pas lus), c'est un <strong>deadlock mutuel</strong>.
+      </p>
+    </div>
+
+    <!-- ── LA SOLUTION : comment coder en ET ── -->
+    <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-5); margin-bottom:1.2rem; opacity:0.8;">
+      La solution — Comment coder correctement en Edge-triggered
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom:1.5rem;">
+      <div class="panel-label">Les deux règles obligatoires en ET</div>
+      <p>
+        Pour éviter le piège ci-dessus, le mode edge-triggered impose <strong>deux règles absolues</strong> :
+      </p>
+      <ul>
+        <li><strong>Règle 1 :</strong> Les fds doivent être en mode <strong>non-bloquant</strong> (<code>O_NONBLOCK</code> via <code>fcntl()</code>)</li>
+        <li><strong>Règle 2 :</strong> À chaque notification, lire <strong>en boucle</strong> jusqu'à ce que <code>recv()</code> retourne <code>EAGAIN</code></li>
+      </ul>
+      <p>
+        <code>EAGAIN</code> signifie « il n'y a plus rien à lire pour l'instant ». C'est le signal que tu as
+        <strong>vidé le buffer</strong>. Sans <code>O_NONBLOCK</code>, au lieu de retourner <code>EAGAIN</code>,
+        le dernier <code>recv()</code> bloquerait le processus entier en attendant des données qui ne viendront peut-être jamais.
+      </p>
+    </div>
+
+    <!-- ── Code comparatif LT vs ET ── -->
+    <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-5); margin-bottom:1.2rem; opacity:0.8;">
+      Comparaison de code — LT vs ET
+    </div>
+
+    <div class="two-col" style="margin-bottom:1.5rem;">
+      <!-- Code LT -->
+      <div class="code-panel" style="margin-bottom:0; --step-color: var(--accent-4)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots">
+              <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+            </div>
+            <span class="code-filename">level_triggered.cpp</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">LT — Défaut</span>
+        </div>
+        <pre><span class="cmt">// Enregistrement — PAS de EPOLLET</span>
+<span class="type">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+<span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;
+<span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>,
+          <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);
+
+<span class="cmt">// Lecture — un seul recv() suffit</span>
+<span class="kw">void</span> <span class="fn-name">handle_read_lt</span>(<span class="type">int</span> <span class="var">fd</span>) {
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>,</span>
+<span class="highlight-line">                 <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);</span>
+    <span class="kw">if</span> (<span class="var">n</span> &gt; <span class="num">0</span>)
+        <span class="fn-name">process_data</span>(<span class="var">buf</span>, <span class="var">n</span>);
+    <span class="kw">else</span> <span class="kw">if</span> (<span class="var">n</span> == <span class="num">0</span>)
+        <span class="fn-name">close</span>(<span class="var">fd</span>);
+    <span class="cmt">// Si on n'a pas tout lu,</span>
+    <span class="cmt">// epoll_wait re-signalera le fd</span>
+    <span class="cmt">// au prochain tour de boucle ✅</span>
+}</pre>
+      </div>
+
+      <!-- Code ET -->
+      <div class="code-panel" style="margin-bottom:0; --step-color: var(--accent-1)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots">
+              <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+            </div>
+            <span class="code-filename">edge_triggered.cpp</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">ET — EPOLLET</span>
+        </div>
+        <pre><span class="cmt">// Enregistrement — avec EPOLLET</span>
+<span class="type">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+<span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLET</span>;
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;
+<span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>,
+          <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);
+
+<span class="cmt">// Lecture — BOUCLE obligatoire</span>
+<span class="kw">void</span> <span class="fn-name">handle_read_et</span>(<span class="type">int</span> <span class="var">fd</span>) {
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+<span class="highlight-line">    <span class="kw">while</span> (<span class="num">1</span>) {</span>
+<span class="highlight-line">        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>,</span>
+<span class="highlight-line">            <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);</span>
+<span class="highlight-line">        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">-1</span>) {</span>
+<span class="highlight-line">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span>)</span>
+<span class="highlight-line">                <span class="kw">break</span>; <span class="cmt">// buffer vidé</span></span>
+<span class="highlight-line">            <span class="fn-name">perror</span>(<span class="str">"recv"</span>);</span>
+<span class="highlight-line">            <span class="kw">break</span>;</span>
+<span class="highlight-line">        }</span>
+        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">0</span>) {
+            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;
+        }
+        <span class="fn-name">process_data</span>(<span class="var">buf</span>, <span class="var">n</span>);
+<span class="highlight-line">    } <span class="cmt">// ← boucle jusqu'à EAGAIN</span></span>
+}</pre>
+      </div>
+    </div>
+
+    <!-- ── Les 3 différences de code ── -->
+    <div style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-5); margin-bottom:1.2rem; opacity:0.8;">
+      Les 3 différences entre le code LT et ET
+    </div>
+
+    <div class="byte-table-wrap" style="margin-bottom:1.5rem;">
+      <table class="byte-table">
+        <thead>
+          <tr>
+            <th style="width:30%">Différence</th>
+            <th style="width:35%">Level-triggered (LT)</th>
+            <th style="width:35%">Edge-triggered (ET)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="color:var(--accent-5) !important;">1. Flag epoll_ctl</td>
+            <td><code>EPOLLIN</code></td>
+            <td><code>EPOLLIN | <strong style="color:var(--accent-1)">EPOLLET</strong></code></td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent-5) !important;">2. Boucle de lecture</td>
+            <td>Un seul <code>recv()</code></td>
+            <td><code><strong style="color:var(--accent-1)">while(1)</strong></code> + <code>recv()</code> jusqu'à <code>EAGAIN</code></td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent-5) !important;">3. Mode du fd</td>
+            <td>Bloquant ou non-bloquant</td>
+            <td><strong style="color:var(--accent-1)">Obligatoirement</strong> <code>O_NONBLOCK</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Pourquoi O_NONBLOCK est obligatoire ── -->
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Pourquoi <code>O_NONBLOCK</code> est obligatoire en ET :</strong> en mode ET, tu lis en boucle
+        (<code>while(1) { recv(...) }</code>) jusqu'à ce qu'il n'y ait plus rien. Si le fd est en mode <strong>bloquant</strong>,
+        le dernier <code>recv()</code> — quand le buffer est vide — <strong>bloque le processus entier</strong>
+        au lieu de retourner <code>-1</code> avec <code>errno = EAGAIN</code>. Ton serveur est figé, plus aucun
+        client n'est traité.
+      </div>
+    </div>
+
+    <!-- ── Mise en place O_NONBLOCK ── -->
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">set_nonblocking.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">Prérequis ET</span>
+      </div>
+      <pre><span class="cmt">// Mettre un fd en mode non-bloquant (obligatoire pour ET)</span>
+
+<span class="type">int</span> <span class="var">flags</span> = <span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_GETFL</span>, <span class="num">0</span>);
+<span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_SETFL</span>, <span class="var">flags</span> | <span class="macro">O_NONBLOCK</span>);
+
+<span class="cmt">// Maintenant recv() retournera -1 avec errno = EAGAIN</span>
+<span class="cmt">// au lieu de bloquer quand il n'y a plus de données.</span></pre>
+    </div>
+
+    <!-- ── Quel mode pour webserv ? ── -->
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom:1.5rem;">
+      <div class="panel-label">Quel mode choisir pour webserv ?</div>
+      <p>
+        Le sujet 42 dit : <em>« le fd du serveur doit être en mode non-bloquant »</em>.
+        Le mode <strong>level-triggered</strong> est le choix le plus sûr et le plus simple.
+        La plupart des implémentations de webserv à 42 utilisent LT.
+      </p>
+      <p>
+        Le mode ET est plus performant à grande échelle (moins de réveils inutiles d'<code>epoll_wait</code>),
+        mais la complexité supplémentaire n'apporte pas de valeur réelle pour un projet 42.
+        <strong>Utilise LT sauf si tu as une bonne raison de faire autrement.</strong>
+      </p>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon" style="color:var(--accent-4)">✅</span>
+        <span><strong>LT</strong> = « il y a des données ? » → le kernel te notifie <strong>à chaque <code>epoll_wait()</code></strong> tant que c'est vrai.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon" style="color:var(--accent-1)">⚡</span>
+        <span><strong>ET</strong> = « quelque chose de nouveau ? » → le kernel te notifie <strong>une seule fois</strong> quand l'état change.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🔑</span>
+        <span>La seule différence de code : <code>| EPOLLET</code> dans les flags + boucle <code>while</code> + <code>EAGAIN</code> + <code>O_NONBLOCK</code>.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📌</span>
+        <span>Pour <strong>webserv</strong> : utilise <strong>level-triggered</strong> (le défaut). Plus simple, plus sûr, suffisant pour le projet.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 8 : EXEMPLE COMPLET   -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="exemple" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">08</div>
+      <div>
+        <div class="step-fn">Exemple complet</div>
+        <div class="step-subtitle">Un serveur echo avec epoll</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 1.5rem;">
+      <div class="panel-label">Ce que fait cet exemple</div>
+      <p>
+        Un serveur TCP minimaliste qui utilise epoll en <strong>edge-triggered</strong> pour accepter des connexions
+        et renvoyer en écho tout ce que les clients envoient. Chaque étape est commentée.
+      </p>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">echo_server_epoll.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Exemple complet</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;sys/socket.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;netinet/in.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;fcntl.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;unistd.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;cstdio&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;cstdlib&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;cerrno&gt;</span>
+
+<span class="macro">#define</span> <span class="macro">MAX_EVENTS</span> <span class="num">64</span>
+<span class="macro">#define</span> <span class="macro">PORT</span>       <span class="num">8080</span>
+
+<span class="cmt">// Rendre un fd non-bloquant (obligatoire pour EPOLLET)</span>
+<span class="kw">void</span> <span class="fn-name">set_nonblocking</span>(<span class="type">int</span> <span class="var">fd</span>) {
+    <span class="type">int</span> <span class="var">flags</span> = <span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_GETFL</span>, <span class="num">0</span>);
+    <span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_SETFL</span>, <span class="var">flags</span> | <span class="macro">O_NONBLOCK</span>);
+}
+
+<span class="type">int</span> <span class="fn-name">main</span>() {
+    <span class="cmt">// ━━━ ÉTAPE 1 : Créer le socket d'écoute ━━━</span>
+    <span class="type">int</span> <span class="var">listen_fd</span> = <span class="fn-name">socket</span>(<span class="macro">AF_INET</span>, <span class="macro">SOCK_STREAM</span>, <span class="num">0</span>);
+
+    <span class="type">int</span> <span class="var">opt</span> = <span class="num">1</span>;
+    <span class="fn-name">setsockopt</span>(<span class="var">listen_fd</span>, <span class="macro">SOL_SOCKET</span>, <span class="macro">SO_REUSEADDR</span>, &amp;<span class="var">opt</span>, <span class="kw">sizeof</span>(<span class="var">opt</span>));
+
+    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">addr</span> = {};
+    <span class="var">addr</span>.<span class="var">sin_family</span>      = <span class="macro">AF_INET</span>;
+    <span class="var">addr</span>.<span class="var">sin_addr</span>.<span class="var">s_addr</span> = <span class="macro">INADDR_ANY</span>;
+    <span class="var">addr</span>.<span class="var">sin_port</span>        = <span class="fn-name">htons</span>(<span class="macro">PORT</span>);
+
+    <span class="fn-name">bind</span>(<span class="var">listen_fd</span>, (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">addr</span>, <span class="kw">sizeof</span>(<span class="var">addr</span>));
+    <span class="fn-name">listen</span>(<span class="var">listen_fd</span>, <span class="macro">SOMAXCONN</span>);
+    <span class="fn-name">set_nonblocking</span>(<span class="var">listen_fd</span>);
+
+<span class="highlight-line">    <span class="cmt">// ━━━ ÉTAPE 2 : Créer l'instance epoll ━━━</span></span>
+<span class="highlight-line">    <span class="type">int</span> <span class="var">epoll_fd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);</span>
+
+<span class="highlight-line">    <span class="cmt">// ━━━ ÉTAPE 3 : Enregistrer le socket d'écoute ━━━</span></span>
+<span class="highlight-line">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-line">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLET</span>;  <span class="cmt">// lecture, edge-triggered</span></span>
+<span class="highlight-line">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">listen_fd</span>;</span>
+<span class="highlight-line">    <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">listen_fd</span>, &amp;<span class="var">ev</span>);</span>
+
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="macro">MAX_EVENTS</span>];
+
+    <span class="cmt">// ━━━ ÉTAPE 4 : La boucle événementielle ━━━</span>
+    <span class="kw">while</span> (<span class="num">1</span>) {
+<span class="highlight-line">        <span class="type">int</span> <span class="var">nfds</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epoll_fd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, <span class="num">-1</span>);</span>
+
+        <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">nfds</span>; <span class="var">i</span>++) {
+            <span class="type">int</span> <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;
+
+            <span class="cmt">// ─── Nouveau client ? ───</span>
+            <span class="kw">if</span> (<span class="var">fd</span> == <span class="var">listen_fd</span>) {
+                <span class="cmt">// En ET, on accept() en boucle jusqu'à EAGAIN</span>
+                <span class="kw">while</span> (<span class="num">1</span>) {
+                    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
+                    <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
+                    <span class="type">int</span> <span class="var">conn_fd</span> = <span class="fn-name">accept</span>(<span class="var">listen_fd</span>,
+                        (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
+
+                    <span class="kw">if</span> (<span class="var">conn_fd</span> == <span class="num">-1</span>) {
+                        <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span>)
+                            <span class="kw">break</span>;  <span class="cmt">// plus de clients en attente</span>
+                        <span class="fn-name">perror</span>(<span class="str">"accept"</span>);
+                        <span class="kw">break</span>;
+                    }
+
+                    <span class="fn-name">set_nonblocking</span>(<span class="var">conn_fd</span>);
+                    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLET</span>;
+                    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">conn_fd</span>;
+                    <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">conn_fd</span>, &amp;<span class="var">ev</span>);
+                    <span class="fn-name">printf</span>(<span class="str">"Nouveau client: fd %d\n"</span>, <span class="var">conn_fd</span>);
+                }
+                <span class="kw">continue</span>;
+            }
+
+            <span class="cmt">// ─── Données d'un client ? ───</span>
+            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>) {
+                <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+                <span class="cmt">// En ET, lire en boucle jusqu'à EAGAIN</span>
+                <span class="kw">while</span> (<span class="num">1</span>) {
+                    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);
+                    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
+                        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">-1</span> &amp;&amp; <span class="var">errno</span> == <span class="macro">EAGAIN</span>)
+                            <span class="kw">break</span>;  <span class="cmt">// plus rien à lire</span>
+                        <span class="cmt">// n == 0 → déconnexion, n == -1 → erreur</span>
+                        <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+                        <span class="fn-name">close</span>(<span class="var">fd</span>);
+                        <span class="fn-name">printf</span>(<span class="str">"Client déconnecté: fd %d\n"</span>, <span class="var">fd</span>);
+                        <span class="kw">break</span>;
+                    }
+                    <span class="cmt">// Echo : renvoyer ce qu'on a reçu</span>
+                    <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="var">n</span>, <span class="num">0</span>);
+                }
+            }
+
+            <span class="cmt">// ─── Erreur ou déconnexion ? ───</span>
+            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
+                <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+                <span class="fn-name">close</span>(<span class="var">fd</span>);
+            }
+        }
+    }
+
+    <span class="fn-name">close</span>(<span class="var">listen_fd</span>);
+    <span class="fn-name">close</span>(<span class="var">epoll_fd</span>);
+    <span class="kw">return</span> <span class="num">0</span>;
+}</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">1️⃣</span>
+        <span>On crée le socket d'écoute et on le met en <strong>non-bloquant</strong></span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">2️⃣</span>
+        <span>On crée l'instance epoll avec <code>epoll_create1(0)</code></span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">3️⃣</span>
+        <span>On enregistre le socket d'écoute avec <code>EPOLLIN | EPOLLET</code></span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">4️⃣</span>
+        <span>La boucle : <code>epoll_wait</code> → itérer sur les fds prêts → accept/recv/send</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 9 : FAQ & PIÈGES      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="faq" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">09</div>
+      <div>
+        <div class="step-fn">FAQ & pièges</div>
+        <div class="step-subtitle">Questions fréquentes et erreurs à éviter</div>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q0</span>
+        C'est quoi la « clé » qui identifie un fd dans l'interest list ?
+      </div>
+      <div class="faq-a">
+        La clé est la combinaison du <strong>numéro de fd</strong> + l'<strong>open file description</strong>
+        (la structure interne du kernel). C'est pour ça qu'un même fd ne peut être ajouté qu'une fois,
+        mais que deux fds dupliqués (<code>dup()</code>) pointant vers la même open file description
+        peuvent être ajoutés séparément.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q1</span>
+        Que se passe-t-il si on enregistre le même fd deux fois ?
+      </div>
+      <div class="faq-a">
+        <code>epoll_ctl(EPOLL_CTL_ADD)</code> retourne <strong>-1</strong> avec <code>errno == EEXIST</code>.
+        En revanche, tu peux ajouter un fd dupliqué (via <code>dup()</code>) avec des événements différents
+        — utile pour filtrer les événements.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q2</span>
+        Deux instances epoll peuvent-elles surveiller le même fd ?
+      </div>
+      <div class="faq-a">
+        <strong>Oui.</strong> Les événements seront reportés aux deux instances. Mais ça demande une programmation soigneuse
+        pour éviter les race conditions.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q3</span>
+        Le fd epoll est-il lui-même pollable ?
+      </div>
+      <div class="faq-a">
+        <strong>Oui.</strong> Si une instance epoll a des événements en attente, elle apparaît comme lisible.
+        Tu peux donc imbriquer des instances epoll (ajouter un epoll_fd dans un autre epoll).
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q4</span>
+        Peut-on ajouter un epoll_fd dans sa propre instance ?
+      </div>
+      <div class="faq-a">
+        <strong>Non.</strong> <code>epoll_ctl()</code> retourne <code>EINVAL</code>.
+        Mais tu peux ajouter un epoll_fd dans une <strong>autre</strong> instance epoll.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q5</span>
+        Fermer un fd le retire-t-il automatiquement de l'interest list ?
+      </div>
+      <div class="faq-a">
+        <strong>Oui, mais attention</strong> : un fd est un <strong>référence</strong> vers une open file description.
+        Si le fd a été dupliqué (<code>dup()</code>, <code>fork()</code>), il reste dans l'interest list
+        tant que <strong>tous</strong> les fds qui pointent vers la même open file description n'ont pas été fermés.
+        C'est pourquoi il est recommandé d'appeler <code>epoll_ctl(EPOLL_CTL_DEL)</code> explicitement avant <code>close()</code>.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q6</span>
+        Plusieurs événements entre deux appels epoll_wait : combinés ou séparés ?
+      </div>
+      <div class="faq-a">
+        <strong>Combinés.</strong> Si un fd reçoit EPOLLIN et EPOLLOUT entre deux appels <code>epoll_wait()</code>,
+        tu recevras un seul événement avec <code>events = EPOLLIN | EPOLLOUT</code>.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">
+        <span class="faq-q-num">Q7</span>
+        Faut-il toujours lire jusqu'à EAGAIN en edge-triggered ?
+      </div>
+      <div class="faq-a">
+        Pour les <strong>fichiers orientés paquets</strong> (datagram socket, terminal en mode canonique) :
+        <strong>oui, obligatoirement</strong>. Pour les <strong>flux</strong> (pipe, TCP socket) : tu peux aussi
+        vérifier si <code>recv()</code> retourne moins que demandé — ça signifie que le buffer est vidé.
+        Mais la méthode la plus sûre reste de lire jusqu'à <code>EAGAIN</code>.
+      </div>
+    </div>
+
+    <div class="step-divider" style="margin: 2rem 0;"></div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">Piège #1 — Starvation en edge-triggered</div>
+      <p>
+        Si un fd a <strong>beaucoup de données</strong>, la boucle « lire jusqu'à EAGAIN » peut monopoliser
+        le processus et <strong>affamer les autres fds</strong>. Les connexions avec peu de trafic ne sont
+        jamais traitées.
+      </p>
+      <p>
+        <strong>Solution :</strong> maintenir une liste de fds « prêts » dans ton application.
+        Lire une quantité limitée par fd, puis passer au fd suivant (round-robin).
+      </p>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1);">
+      <div class="panel-label">Piège #2 — Cache d'événements obsolète</div>
+      <p>
+        Si tu caches les résultats de <code>epoll_wait()</code> et que le traitement de l'événement #47
+        provoque la <strong>fermeture</strong> du fd de l'événement #13 (qui est dans le même batch),
+        tu risques de traiter un fd déjà fermé.
+      </p>
+      <p>
+        <strong>Solution :</strong> avant de traiter un événement, vérifie que le fd est toujours valide.
+        Ou mieux : appelle <code>epoll_ctl(EPOLL_CTL_DEL)</code> puis <code>close()</code>,
+        et marque le fd comme supprimé dans ta structure de données.
+      </p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- RÉSUMÉ                         -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">Résumé <em>epoll</em></div>
+    <div class="summary-subtitle">Trois appels, deux listes, un mécanisme de surveillance I/O complet.</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">🏗️</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-3)">epoll_create1(flags)</div>
+          <div class="summary-card-desc">Crée une instance epoll vide. Retourne un fd. Un seul appel au démarrage.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">📝</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-5)">struct epoll_event</div>
+          <div class="summary-card-desc">Bitmask d'événements (EPOLLIN, EPOLLOUT, ...) + données utilisateur (.fd ou .ptr).</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🔌</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-4)">epoll_ctl(epfd, op, fd, &amp;ev)</div>
+          <div class="summary-card-desc">Gère l'interest list. ADD ajoute, MOD modifie, DEL retire un fd.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">👀</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-2)">epoll_wait(epfd, events, max, timeout)</div>
+          <div class="summary-card-desc">Bloque et retourne les fds prêts. Le coeur de la boucle événementielle.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — epoll : mécanisme de surveillance I/O. eahmeti</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on navigation (back button + footer link)
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  // Animate sections on scroll
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+
+  // Update nav pills on scroll
+  const navIds = ['concept','create','struct','ctl','wait','flags','lt-et','exemple','faq'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+
+  sectionEls.forEach(s => s && navObserver.observe(s));
+
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

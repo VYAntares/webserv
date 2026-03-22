@@ -11,7 +11,7 @@
 static const int PORT    = 8080;
 static const int BACKLOG = 10;
 
-// ── Étape 1 : crée le socket TCP/IPv4 ──────────────────────────
+// ── Étape 1 : crée le socket TCP/IPv4 ─────────────────────────
 int create_server_socket() {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) { perror("socket"); return -1; }

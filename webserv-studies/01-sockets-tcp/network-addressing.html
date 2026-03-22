@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adressage réseau & options de socket</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-2); background: rgba(74,224,255,0.07); }
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-2); }
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active {
+    background: rgba(74,224,255,0.1);
+    color: var(--accent-2);
+  }
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 10px;
+  }
+
+  /* MAIN */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* STEP SECTION */
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-2));
+  }
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 0.3rem;
+  }
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* TWO COLUMN LAYOUT */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .progress-inner { overflow-x: auto; }
+  }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-2));
+    opacity: 0.6;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+  .panel p strong { color: var(--text); font-weight: 500; }
+  .panel p code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  /* ANALOGY PANEL */
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+  }
+  .analogy-icon { font-size: 2.5rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* CODE PANEL */
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+  .kw  { color: #c084fc; }
+  .fn-name { color: #4ae0ff; }
+  .type { color: #4ade80; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; }
+  .var { color: #e8e6f0; }
+  .punct { color: #5c5a72; }
+  .highlight-line {
+    display: block;
+    background: rgba(74,224,255,0.05);
+    border-left: 2px solid var(--step-color, var(--accent-2));
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+
+  /* KEY POINTS */
+  .key-points {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .key-point {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .key-point code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-2);
+  }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* WARNING / INFO BOX */
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .warning strong { color: var(--accent-1); }
+  .info-box {
+    background: rgba(74,224,255,0.04);
+    border: 1px solid rgba(74,224,255,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .info-box strong { color: var(--accent-2); }
+  .info-box code, .warning code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-2);
+  }
+
+  /* STEP DIVIDER */
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* BYTE TABLE */
+  .byte-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .byte-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    font-family: 'Space Mono', monospace;
+  }
+  .byte-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .byte-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+  .byte-table tr:last-child td { border-bottom: none; }
+  .byte-table td:first-child { color: var(--accent-2); font-weight: 700; }
+  .byte-table td:nth-child(2) { color: var(--accent-3); }
+  .byte-table td:nth-child(3) { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* FLOW MINI */
+  .flow-mini {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    margin: 1.5rem 0;
+    padding: 1.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .flow-mini-step {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    border: 1px solid;
+  }
+  .flow-mini-arrow { color: var(--text-muted); font-size: 0.8rem; padding: 0 0.3rem; }
+  .flow-mini-step.active { border-color: var(--accent-2); color: var(--accent-2); background: rgba(74,224,255,0.06); }
+  .flow-mini-step.neutral { border-color: var(--border); color: var(--text-muted); }
+
+  /* SUMMARY SECTION */
+  .summary-section {
+    margin-top: 4rem;
+    padding: 3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-2), var(--accent-3), var(--accent-4), var(--accent-5));
+  }
+  .summary-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+  .summary-title em { font-style: italic; color: var(--accent-2); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 1.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  .summary-card-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--step-color);
+    margin-bottom: 0.2rem;
+  }
+  .summary-card-desc { font-size: 0.8rem; color: var(--text-muted); }
+  .summary-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-2); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#endianness" class="step-pill active" id="nav-endianness">
+      <span class="step-dot"></span>Endianness
+    </a>
+    <div class="step-connector"></div>
+    <a href="#getaddrinfo" class="step-pill" id="nav-getaddrinfo">
+      <span class="step-dot"></span>getaddrinfo
+    </a>
+    <div class="step-connector"></div>
+    <a href="#getsockname" class="step-pill" id="nav-getsockname">
+      <span class="step-dot"></span>getsockname
+    </a>
+    <div class="step-connector"></div>
+    <a href="#setsockopt" class="step-pill" id="nav-setsockopt">
+      <span class="step-dot"></span>setsockopt
+    </a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Réseau — Fondation</div>
+  <h1>Adressage réseau<br>&amp; <em>options de socket</em></h1>
+  <p class="header-desc">
+    Comment transformer un couple IP:port en quelque chose que le kernel comprend,
+    pourquoi les octets sont dans le mauvais ordre par défaut,
+    et comment configurer un socket pour qu'il se comporte correctement.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 1 : ENDIANNESS        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="endianness" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">htons / htonl / ntohs / ntohl</div>
+        <div class="step-subtitle">L'ordre des octets en réseau</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Le problème</div>
+        <p>
+          Un nombre multi-octets — disons le port <strong>8080</strong> — peut être stocké en mémoire
+          dans deux ordres différents selon le processeur.
+          <br><br>
+          <strong>Little-endian</strong> (x86, ARM modernes) : l'octet de poids faible en premier.
+          <br>
+          <strong>Big-endian</strong> : l'octet de poids fort en premier.
+          <br><br>
+          Le réseau utilise toujours le <strong>big-endian</strong> (appelé "network byte order" dans la RFC 791).
+          Si ton CPU est little-endian et que tu envoies un port sans conversion, la valeur arrive inversée à l'autre bout.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📦</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            C'est comme écrire une date : en France c'est <em>jour/mois/année</em>,
+            aux États-Unis c'est <em>mois/jour/année</em>. Même informations,
+            ordre différent. Si les deux côtés ne parlent pas le même ordre, la date est mal comprise.
+            <code>htons()</code> est le traducteur.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="byte-table-wrap">
+      <table class="byte-table">
+        <thead>
+          <tr>
+            <th>Fonction</th>
+            <th>Signification</th>
+            <th>Usage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>htons()</td>
+            <td>Host TO Network Short (16 bits)</td>
+            <td>Convertir un port avant de le mettre dans sockaddr_in.sin_port</td>
+          </tr>
+          <tr>
+            <td>htonl()</td>
+            <td>Host TO Network Long (32 bits)</td>
+            <td>Convertir une adresse IPv4 (INADDR_ANY, INADDR_LOOPBACK, ...)</td>
+          </tr>
+          <tr>
+            <td>ntohs()</td>
+            <td>Network TO Host Short (16 bits)</td>
+            <td>Lire un port reçu du réseau pour l'afficher / l'utiliser</td>
+          </tr>
+          <tr>
+            <td>ntohl()</td>
+            <td>Network TO Host Long (32 bits)</td>
+            <td>Lire une adresse IPv4 reçue du réseau</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">bind_example.cpp</span>
+        </div>
+        <span class="code-tag">Usage concret</span>
+      </div>
+      <pre><span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+<span class="fn-name">memset</span><span class="punct">(&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span>
+
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>
+<span class="highlight-line"><span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="num">8080</span><span class="punct">);</span>   <span class="cmt">// ← TOUJOURS htons() pour le port</span>
+</span><span class="highlight-line"><span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="fn-name">htonl</span><span class="punct">(</span><span class="macro">INADDR_ANY</span><span class="punct">);</span> <span class="cmt">// ← htonl() pour l'IP (0.0.0.0)</span>
+</span>
+<span class="cmt">// Lire le port d'un client entrant :</span>
+<span class="type">struct sockaddr_in</span> <span class="var">client</span><span class="punct">;</span>
+<span class="cmt">// ... après accept() ...</span>
+<span class="kw">int</span> <span class="var">port</span> <span class="punct">=</span> <span class="fn-name">ntohs</span><span class="punct">(</span><span class="var">client</span><span class="punct">.</span><span class="var">sin_port</span><span class="punct">);</span> <span class="cmt">// ← ntohs() pour récupérer le port lisible</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔁</span><span>Sur un CPU big-endian (rare), ces fonctions ne font <strong>rien</strong> — c'est du no-op. Mais les appeler reste obligatoire pour la portabilité.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔢</span><span><strong>Ports = 16 bits</strong> → <code>htons</code>/<code>ntohs</code>. <strong>Adresses IPv4 = 32 bits</strong> → <code>htonl</code>/<code>ntohl</code>. Mnémonique : s = short, l = long.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌐</span><span>Hors webserv, tu retrouves ces fonctions partout : parseurs de protocoles binaires, jeux réseau, bases de données distribuées — partout où des nombres transitent sur le réseau.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 2 : GETADDRINFO       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="getaddrinfo" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">getaddrinfo() / freeaddrinfo()</div>
+        <div class="step-subtitle">Résoudre une adresse proprement</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça fait</div>
+        <p>
+          <code>getaddrinfo()</code> prend un nom d'hôte (ex: <code>"localhost"</code>, <code>"google.com"</code>, ou <code>NULL</code>)
+          et un service (ex: <code>"8080"</code> ou <code>"http"</code>) et retourne
+          une <strong>liste chaînée de structures <code>addrinfo</code></strong> prêtes à être utilisées directement.
+          <br><br>
+          Elle gère <strong>IPv4 et IPv6 de façon transparente</strong>, fait la résolution DNS si nécessaire,
+          et remplace les anciennes fonctions <code>gethostbyname()</code> (obsolète, non thread-safe, IPv4 seulement).
+          <br><br>
+          Pour Webserv : utile pour résoudre les adresses des blocs <code>server</code> de la config.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📖</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            C'est un <em>annuaire universel</em>. Tu donnes un nom et un type de service,
+            il te rend une fiche complète avec l'adresse exacte à utiliser — déjà formatée,
+            déjà dans le bon byte order. Tu n'as plus qu'à la copier dans ta <code>struct sockaddr</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">resolve.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3);background:rgba(192,132,252,0.08)">Usage complet</span>
+      </div>
+      <pre><span class="type">struct addrinfo</span>  <span class="var">hints</span><span class="punct">,</span> <span class="punct">*</span><span class="var">res</span><span class="punct">;</span>
+<span class="fn-name">memset</span><span class="punct">(&amp;</span><span class="var">hints</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">hints</span><span class="punct">));</span>
+
+<span class="var">hints</span><span class="punct">.</span><span class="var">ai_family</span>   <span class="punct">=</span> <span class="macro">AF_UNSPEC</span><span class="punct">;</span>    <span class="cmt">// accepte IPv4 et IPv6</span>
+<span class="var">hints</span><span class="punct">.</span><span class="var">ai_socktype</span> <span class="punct">=</span> <span class="macro">SOCK_STREAM</span><span class="punct">;</span>  <span class="cmt">// on veut du TCP</span>
+<span class="var">hints</span><span class="punct">.</span><span class="var">ai_flags</span>    <span class="punct">=</span> <span class="macro">AI_PASSIVE</span><span class="punct">;</span>   <span class="cmt">// NULL hostname → INADDR_ANY (toutes les interfaces)</span>
+
+<span class="highlight-line"><span class="kw">int</span> <span class="var">status</span> <span class="punct">=</span> <span class="fn-name">getaddrinfo</span><span class="punct">(</span><span class="macro">NULL</span><span class="punct">,</span> <span class="str">"8080"</span><span class="punct">,</span> <span class="punct">&amp;</span><span class="var">hints</span><span class="punct">,</span> <span class="punct">&amp;</span><span class="var">res</span><span class="punct">);</span>
+</span><span class="kw">if</span> <span class="punct">(</span><span class="var">status</span> <span class="punct">!=</span> <span class="num">0</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="fn-name">std::cerr</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">gai_strerror</span><span class="punct">(</span><span class="var">status</span><span class="punct">)</span> <span class="punct">&lt;&lt;</span> <span class="str">"\n"</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="cmt">// res est une liste chaînée — prendre le premier qui marche</span>
+<span class="kw">int</span> <span class="var">fd</span> <span class="punct">=</span> <span class="fn-name">socket</span><span class="punct">(</span><span class="var">res</span><span class="punct">-&gt;</span><span class="var">ai_family</span><span class="punct">,</span> <span class="var">res</span><span class="punct">-&gt;</span><span class="var">ai_socktype</span><span class="punct">,</span> <span class="var">res</span><span class="punct">-&gt;</span><span class="var">ai_protocol</span><span class="punct">);</span>
+<span class="fn-name">bind</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="var">res</span><span class="punct">-&gt;</span><span class="var">ai_addr</span><span class="punct">,</span> <span class="var">res</span><span class="punct">-&gt;</span><span class="var">ai_addrlen</span><span class="punct">);</span>
+
+<span class="highlight-line"><span class="fn-name">freeaddrinfo</span><span class="punct">(</span><span class="var">res</span><span class="punct">);</span>  <span class="cmt">// ← TOUJOURS libérer après utilisation</span>
+</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔗</span><span><code>getaddrinfo()</code> retourne une <strong>liste chaînée</strong> — plusieurs résultats possibles (IPv4, IPv6, interfaces différentes). Dans la pratique on itère et on prend le premier qui fonctionne.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗑️</span><span>La liste est allouée dynamiquement par le kernel. Appeler <code>freeaddrinfo()</code> est obligatoire — sinon fuite mémoire.</span></div>
+      <div class="key-point"><span class="key-point-icon">❌</span><span>Ne jamais utiliser <code>gethostbyname()</code> — obsolète, non thread-safe, IPv4 seulement. <code>getaddrinfo()</code> est son remplacement officiel depuis POSIX 2001.</span></div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Hors webserv :</strong> <code>getaddrinfo()</code> est LA façon moderne de se connecter à un serveur distant.
+        Dans un client HTTP, tu fais <code>getaddrinfo("api.exemple.com", "443", ...)</code> et tu obtiens directement l'adresse
+        à passer à <code>connect()</code> — sans jamais manipuler manuellement une <code>struct sockaddr_in</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 3 : GETSOCKNAME       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="getsockname" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">getsockname()</div>
+        <div class="step-subtitle">Demander au socket son adresse</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça fait</div>
+        <p>
+          Après un <code>bind()</code>, le socket est attaché à une adresse.
+          <code>getsockname()</code> permet de <strong>récupérer cette adresse</strong> depuis le socket lui-même —
+          utile quand tu ne l'as pas stockée, ou quand tu as laissé le kernel choisir.
+          <br><br>
+          Cas le plus courant : tu fais <code>bind()</code> avec le port <strong>0</strong>
+          (le kernel choisit un port libre), et tu utilises <code>getsockname()</code> juste après
+          pour savoir quel port a été attribué.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🪪</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Tu t'installes dans un bureau dont tu n'as pas choisi le numéro.
+            <code>getsockname()</code>, c'est regarder la plaque sur la porte
+            pour savoir où tu es.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">discover_port.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4);background:rgba(74,222,128,0.08)">Port dynamique</span>
+      </div>
+      <pre><span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="fn-name">htonl</span><span class="punct">(</span><span class="macro">INADDR_ANY</span><span class="punct">);</span>
+<span class="highlight-line"><span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>  <span class="cmt">// 0 = le kernel choisit un port libre</span>
+</span>
+<span class="fn-name">bind</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="punct">(</span><span class="type">struct sockaddr</span><span class="punct">*)&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span>
+
+<span class="cmt">// Récupérer le port réellement attribué :</span>
+<span class="type">struct sockaddr_in</span> <span class="var">actual</span><span class="punct">;</span>
+<span class="type">socklen_t</span>          <span class="var">len</span> <span class="punct">=</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">actual</span><span class="punct">);</span>
+<span class="highlight-line"><span class="fn-name">getsockname</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="punct">(</span><span class="type">struct sockaddr</span><span class="punct">*)&amp;</span><span class="var">actual</span><span class="punct">,</span> <span class="punct">&amp;</span><span class="var">len</span><span class="punct">);</span>
+</span>
+<span class="fn-name">std::cout</span> <span class="punct">&lt;&lt;</span> <span class="str">"Port attribué : "</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">ntohs</span><span class="punct">(</span><span class="var">actual</span><span class="punct">.</span><span class="var">sin_port</span><span class="punct">)</span> <span class="punct">&lt;&lt;</span> <span class="str">"\n"</span><span class="punct">;</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🎯</span><span>Dans Webserv tu connais tes ports (ils sont dans la config) — <code>getsockname()</code> est surtout utile pour les tests et le debug : afficher le port réel d'écoute.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌐</span><span>Hors webserv : indispensable dans les serveurs de tests automatisés — on bind sur port 0, on récupère le port, on le communique aux clients de test.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 4 : SETSOCKOPT        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="setsockopt" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">setsockopt()</div>
+        <div class="step-subtitle">Configurer le comportement du socket</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça fait</div>
+        <p>
+          <code>setsockopt()</code> permet de modifier des <strong>options du socket</strong> au niveau du kernel.
+          La signature : <code>setsockopt(fd, level, optname, &amp;val, sizeof(val))</code>.
+          <br><br>
+          Le <code>level</code> indique à quel niveau de la pile réseau s'applique l'option :
+          <code>SOL_SOCKET</code> pour les options génériques du socket,
+          <code>IPPROTO_TCP</code> pour les options spécifiques à TCP.
+          <br><br>
+          Dans Webserv, <strong>une seule option est réellement indispensable</strong> : <code>SO_REUSEADDR</code>.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">⚙️</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            C'est le <em>panneau de configuration</em> du socket.
+            Après l'avoir créé, tu peux ajuster son comportement
+            avant de l'utiliser — exactement comme configurer une voiture
+            avant de prendre la route.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">server_setup.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5);background:rgba(250,204,21,0.08)">SO_REUSEADDR</span>
+      </div>
+      <pre><span class="kw">int</span> <span class="var">fd</span> <span class="punct">=</span> <span class="fn-name">socket</span><span class="punct">(</span><span class="macro">AF_INET</span><span class="punct">,</span> <span class="macro">SOCK_STREAM</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+
+<span class="kw">int</span> <span class="var">opt</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+<span class="highlight-line"><span class="fn-name">setsockopt</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="macro">SOL_SOCKET</span><span class="punct">,</span> <span class="macro">SO_REUSEADDR</span><span class="punct">,</span> <span class="punct">&amp;</span><span class="var">opt</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">opt</span><span class="punct">));</span>
+</span>
+<span class="cmt">// Ensuite bind() normalement :</span>
+<span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="num">8080</span><span class="punct">);</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="fn-name">htonl</span><span class="punct">(</span><span class="macro">INADDR_ANY</span><span class="punct">);</span>
+<span class="fn-name">bind</span><span class="punct">(</span><span class="var">fd</span><span class="punct">,</span> <span class="punct">(</span><span class="type">struct sockaddr</span><span class="punct">*)&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Sans SO_REUSEADDR :</strong> quand tu arrêtes ton serveur, le port reste en état <code>TIME_WAIT</code>
+        pendant ~60 secondes (le kernel attend des paquets tardifs). Relancer le serveur immédiatement
+        donne <code>bind: Address already in use</code>. Avec <code>SO_REUSEADDR</code>, le port est réutilisable
+        immédiatement. <strong>C'est la première ligne à écrire après socket() dans tout serveur.</strong>
+      </div>
+    </div>
+
+    <div class="key-points" style="margin-top: 1.5rem;">
+      <div class="key-point"><span class="key-point-icon">📋</span><span>D'autres options existent : <code>SO_RCVBUF</code>/<code>SO_SNDBUF</code> (taille des buffers), <code>TCP_NODELAY</code> (désactiver Nagle), <code>SO_KEEPALIVE</code> (détecter les connexions mortes). Pour Webserv, seul <code>SO_REUSEADDR</code> est nécessaire.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌐</span><span>Hors webserv : <code>SO_REUSEADDR</code> est standard dans <strong>tout</strong> code serveur. Tu le verras dans nginx, Redis, PostgreSQL — c'est une pratique universelle.</span></div>
+      <div class="key-point"><span class="key-point-icon">📏</span><span>Le paramètre <code>&amp;opt</code> est un pointeur vers la valeur — <code>1</code> = activer, <code>0</code> = désactiver. La taille (<code>sizeof(opt)</code>) est obligatoire car les options n'ont pas toutes le même type.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- SUMMARY -->
+  <div class="summary-section">
+    <div class="summary-title">Récap — <em>l'essentiel</em></div>
+    <div class="summary-subtitle">Ce que tu dois retenir et utiliser dans Webserv</div>
+    <div class="summary-grid">
+      <div class="summary-card" style="--step-color: var(--accent-2)">
+        <div class="summary-icon">🔄</div>
+        <div>
+          <div class="summary-card-fn">htons(port) / htonl(ip)</div>
+          <div class="summary-card-desc">Toujours convertir port et IP avant de les mettre dans sockaddr. Sans ça, les valeurs arrivent inversées côté réseau.</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-3)">
+        <div class="summary-icon">📖</div>
+        <div>
+          <div class="summary-card-fn">getaddrinfo() + freeaddrinfo()</div>
+          <div class="summary-card-desc">Résolution d'adresses moderne, IPv4/IPv6, retourne des structs prêtes à l'emploi. Toujours freeaddrinfo() après.</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-4)">
+        <div class="summary-icon">🪪</div>
+        <div>
+          <div class="summary-card-fn">getsockname(fd, &addr, &len)</div>
+          <div class="summary-card-desc">Récupérer l'adresse effective d'un socket après bind(). Utile pour debug et pour les ports dynamiques (port 0).</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-5)">
+        <div class="summary-icon">⚙️</div>
+        <div>
+          <div class="summary-card-fn">setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &1, ...)</div>
+          <div class="summary-card-desc">Appel obligatoire juste après socket(). Évite "Address already in use" au redémarrage du serveur.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — Adressage réseau & options de socket</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on navigation
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  // Animate sections on scroll
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+
+  // Update nav pills on scroll
+  const navIds = ['endianness', 'getaddrinfo', 'getsockname', 'setsockopt'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

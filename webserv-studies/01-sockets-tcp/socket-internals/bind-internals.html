@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bind() internals — Attacher une adresse à un socket</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-2); background: rgba(74,224,255,0.07); }
+  .progress-back-divider {
+    width: 1px; height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-2); }
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+  }
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(74,224,255,0.1); color: var(--accent-2); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 10px; }
+
+  /* MAIN */
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; }
+
+  /* STEP SECTION */
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .step-section.visible { opacity: 1; transform: translateY(0); }
+  .step-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-2));
+  }
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 0.3rem;
+  }
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* TWO COLUMN */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-2));
+    opacity: 0.6;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .panel p { font-size: 0.88rem; color: var(--text-dim); line-height: 1.75; font-weight: 300; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+
+  /* ANALOGY */
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+  }
+  .analogy-icon { font-size: 2.5rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* CODE PANEL */
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); }
+  .code-tag { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.2em; padding: 0.2rem 0.6rem; border-radius: 4px; }
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+  .kw { color: #c084fc; }
+  .fn-name { color: #4ae0ff; }
+  .type { color: #4ade80; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; }
+  .var { color: #e8e6f0; }
+  .punct { color: #5c5a72; }
+  .highlight-line {
+    display: block;
+    background: rgba(74,224,255,0.06);
+    border-left: 2px solid var(--step-color, var(--accent-2));
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+
+  /* KEY POINTS */
+  .key-points { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; margin-top: 1.5rem; }
+  .key-point {
+    display: flex; gap: 0.75rem; align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 0.82rem; color: var(--text-dim); line-height: 1.5;
+  }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .key-point strong { color: var(--text); }
+
+  /* WARNING */
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex; gap: 0.75rem; align-items: flex-start;
+    font-size: 0.85rem; color: var(--text-dim); line-height: 1.7;
+  }
+  .warning strong { color: var(--accent-1); }
+  .warning-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* INFO BOX */
+  .info-box {
+    background: rgba(74,224,255,0.04);
+    border: 1px solid rgba(74,224,255,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex; gap: 0.75rem; align-items: flex-start;
+    font-size: 0.85rem; color: var(--text-dim); line-height: 1.7;
+  }
+  .info-box strong { color: var(--accent-2); }
+  .info-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* DIVIDER */
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* DATA TABLE */
+  .data-table-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-top: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; font-family: 'Space Mono', monospace; }
+  .data-table th {
+    text-align: left; padding: 0.6rem 1rem;
+    background: var(--surface-3); color: var(--text-muted);
+    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-table td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); color: var(--text-dim); line-height: 1.5; }
+  .data-table td:first-child { color: var(--accent-2); font-weight: 600; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* SUMMARY SECTION */
+  .summary-section {
+    margin-top: 4rem; padding: 3rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; position: relative; overflow: hidden;
+  }
+  .summary-section::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(to right, var(--accent-2), var(--accent-3), var(--accent-4), var(--accent-5));
+  }
+  .summary-title { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; margin-bottom: 0.5rem; }
+  .summary-title em { font-style: italic; color: var(--accent-2); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+  .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 1.2rem; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 10px;
+    display: flex; gap: 1rem; align-items: flex-start;
+  }
+  .summary-card-fn { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--accent-2); margin-bottom: 0.2rem; }
+  .summary-card-desc { font-size: 0.8rem; color: var(--text-muted); }
+  .summary-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+  /* FOOTER */
+  .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); margin-top: 4rem; }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-2); text-decoration: none; }
+  .footer a:hover { color: var(--accent-3); }
+
+  /* ══════════════════════════════════════════ */
+  /* MEMORY LAYOUT DIAGRAM                      */
+  /* ══════════════════════════════════════════ */
+  .mem-diagram {
+    margin: 1.5rem 0;
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+  }
+  .mem-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .mem-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .mem-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); }
+  .mem-badge {
+    font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--accent-2); background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.2);
+    padding: 0.2rem 0.6rem; border-radius: 4px;
+  }
+  .mem-row {
+    display: grid;
+    grid-template-columns: 90px 140px 80px 1fr;
+    border-bottom: 1px solid rgba(42,42,66,0.6);
+    align-items: stretch;
+  }
+  .mem-row:last-child { border-bottom: none; }
+  .mem-row.mem-row-header { background: var(--surface-3); }
+  .mem-cell {
+    padding: 0.65rem 1rem;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    border-right: 1px solid rgba(42,42,66,0.6);
+    display: flex; align-items: center;
+  }
+  .mem-cell:last-child { border-right: none; }
+  .mem-cell-offset { color: var(--accent-5); font-weight: 700; }
+  .mem-cell-field { color: var(--accent-2); }
+  .mem-cell-size { color: var(--text-muted); }
+  .mem-cell-value { color: var(--text-dim); }
+  .mem-cell-header { color: var(--text-muted); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.15em; }
+  .mem-row-highlight { background: rgba(74,224,255,0.04); }
+  .mem-row-zero { background: rgba(74,222,128,0.03); }
+  .mem-val-hex { color: var(--accent-5); }
+  .mem-val-special { color: var(--accent-6); }
+  .mem-val-zero { color: var(--text-muted); font-style: italic; }
+
+  /* BYTE ORDER DIAGRAM */
+  .endian-diagram {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+  }
+  @media (max-width: 600px) { .endian-diagram { grid-template-columns: 1fr; } }
+  .endian-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .endian-block.endian-bad { border-color: rgba(255,107,74,0.3); }
+  .endian-block.endian-good { border-color: rgba(74,222,128,0.3); }
+  .endian-block-header {
+    padding: 0.7rem 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    display: flex; align-items: center; gap: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .endian-bad .endian-block-header { background: rgba(255,107,74,0.06); color: var(--accent-1); }
+  .endian-good .endian-block-header { background: rgba(74,222,128,0.06); color: var(--accent-4); }
+  .endian-body { padding: 1.2rem; }
+  .endian-bytes {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.8rem;
+  }
+  .endian-byte {
+    flex: 1;
+    text-align: center;
+    padding: 0.6rem 0.3rem;
+    border-radius: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .byte-low { background: rgba(255,107,74,0.12); color: var(--accent-1); border: 1px solid rgba(255,107,74,0.25); }
+  .byte-high { background: rgba(74,224,255,0.1); color: var(--accent-2); border: 1px solid rgba(74,224,255,0.2); }
+  .endian-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.58rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 0.5rem;
+  }
+  .endian-result {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    text-align: center;
+  }
+  .result-bad { background: rgba(255,107,74,0.08); color: var(--accent-1); border: 1px solid rgba(255,107,74,0.15); }
+  .result-good { background: rgba(74,222,128,0.08); color: var(--accent-4); border: 1px solid rgba(74,222,128,0.15); }
+
+  /* PORTS TABLE */
+  .ports-diagram {
+    margin: 1.5rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+  }
+  .ports-row {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    border-bottom: 1px solid var(--border);
+  }
+  .ports-row:last-child { border-bottom: none; }
+  .ports-range {
+    padding: 1rem 1.2rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-right: 1px solid var(--border);
+    display: flex; align-items: center;
+  }
+  .ports-info { padding: 1rem 1.2rem; }
+  .ports-category {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 0.3rem;
+  }
+  .ports-desc { font-size: 0.75rem; color: var(--text-dim); line-height: 1.5; }
+  .ports-examples { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.2rem; }
+  .ports-row-system .ports-range { color: var(--accent-1); }
+  .ports-row-system { background: rgba(255,107,74,0.03); }
+  .ports-row-system .ports-category { color: var(--accent-1); }
+  .ports-row-registered .ports-range { color: var(--accent-5); }
+  .ports-row-registered .ports-category { color: var(--accent-5); }
+  .ports-row-ephemeral .ports-range { color: var(--accent-4); }
+  .ports-row-ephemeral { background: rgba(74,222,128,0.02); }
+  .ports-row-ephemeral .ports-category { color: var(--accent-4); }
+
+  /* KERNEL STEPS */
+  .kernel-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 1.5rem 0;
+  }
+  .kstep {
+    display: flex;
+    gap: 0;
+    position: relative;
+  }
+  .kstep-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 48px;
+    flex-shrink: 0;
+  }
+  .kstep-num {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    z-index: 1;
+    border: 1px solid;
+  }
+  .kstep-line {
+    width: 2px;
+    flex: 1;
+    min-height: 16px;
+    margin: 2px 0;
+  }
+  .kstep:last-child .kstep-line { display: none; }
+  .kstep-body {
+    padding: 0 0 1.2rem 1rem;
+    flex: 1;
+    padding-top: 0.25rem;
+  }
+  .kstep-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+  }
+  .kstep-desc {
+    font-size: 0.83rem;
+    color: var(--text-dim);
+    line-height: 1.65;
+    font-weight: 300;
+  }
+  .kstep-desc strong { color: var(--text); font-weight: 500; }
+  .kstep-desc code { font-family: 'Space Mono', monospace; font-size: 0.75em; }
+
+  /* TIME_WAIT diagram */
+  .timewait-flow {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .tw-step {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.6rem 0;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+  }
+  .tw-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .tw-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0 0 0 4px;
+    padding: 0.2rem 0;
+    gap: 1px;
+  }
+  .tw-arrow span {
+    display: block;
+    width: 2px; height: 6px;
+    background: var(--border);
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../socket-lifecycle.html#bind-deepdive" class="back-link">← socket lifecycle</a>
+    <div class="progress-back-divider"></div>
+    <a href="#sockaddr" class="step-pill active" id="nav-01"><span class="step-dot"></span>01 · sockaddr</a>
+    <div class="step-connector"></div>
+    <a href="#htons" class="step-pill" id="nav-02"><span class="step-dot"></span>02 · htons</a>
+    <div class="step-connector"></div>
+    <a href="#inaddr" class="step-pill" id="nav-03"><span class="step-dot"></span>03 · INADDR</a>
+    <div class="step-connector"></div>
+    <a href="#kernel-bind" class="step-pill" id="nav-04"><span class="step-dot"></span>04 · kernel</a>
+    <div class="step-connector"></div>
+    <a href="#reuseaddr" class="step-pill" id="nav-05"><span class="step-dot"></span>05 · SO_REUSEADDR</a>
+    <div class="step-connector"></div>
+    <a href="#ports" class="step-pill" id="nav-06"><span class="step-dot"></span>06 · ports</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">bind() internals — Kernel deep dive</div>
+  <h1>Attacher une adresse<br>à un <em>socket</em></h1>
+  <p class="header-desc">
+    <code>htons</code>, <code>INADDR_ANY</code>, <code>SO_REUSEADDR</code> — tout ce qui se passe
+    dans le kernel quand tu associes un port et une IP à un socket.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 01 : sockaddr_in      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="sockaddr" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div class="step-title-block">
+        <div class="step-fn">sockaddr_in</div>
+        <div class="step-subtitle">16 octets en mémoire — pas plus</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; margin-bottom:1.5rem; line-height:1.75">
+      Avant d'appeler <code style="color:var(--accent-2)">bind()</code>, tu remplis une struct.
+      C'est juste un bloc de <strong style="color:var(--text)">16 octets contigus en RAM</strong>.
+      Pas plus, pas moins.
+    </p>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">remplir sockaddr_in</div>
+      </div>
+<pre><span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+<span class="highlight-line"><span class="fn-name">memset</span><span class="punct">(&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span>       <span class="cmt">// met les 16 octets à zéro</span></span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>       <span class="cmt">// protocole IPv4</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="num">8080</span><span class="punct">);</span>   <span class="cmt">// port en network byte order</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="macro">INADDR_ANY</span><span class="punct">;</span>    <span class="cmt">// 0.0.0.0 — toutes les interfaces</span></pre>
+    </div>
+
+    <!-- Memory layout HTML diagram -->
+    <div class="mem-diagram">
+      <div class="mem-header">
+        <div class="mem-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="mem-title">struct sockaddr_in en RAM</span>
+        </div>
+        <span class="mem-badge">16 octets · layout mémoire</span>
+      </div>
+      <div class="mem-row mem-row-header">
+        <div class="mem-cell mem-cell-header">Offset</div>
+        <div class="mem-cell mem-cell-header">Champ</div>
+        <div class="mem-cell mem-cell-header">Taille</div>
+        <div class="mem-cell mem-cell-header">Valeur</div>
+      </div>
+      <div class="mem-row mem-row-highlight">
+        <div class="mem-cell mem-cell-offset">offset 0</div>
+        <div class="mem-cell mem-cell-field">sin_family</div>
+        <div class="mem-cell mem-cell-size">2 octets</div>
+        <div class="mem-cell mem-cell-value"><span class="mem-val-hex">0x0002</span> &nbsp;= AF_INET</div>
+      </div>
+      <div class="mem-row mem-row-highlight">
+        <div class="mem-cell mem-cell-offset">offset 2</div>
+        <div class="mem-cell mem-cell-field">sin_port</div>
+        <div class="mem-cell mem-cell-size">2 octets</div>
+        <div class="mem-cell mem-cell-value"><span class="mem-val-hex">0x1F90</span> &nbsp;= 8080 en big-endian</div>
+      </div>
+      <div class="mem-row mem-row-highlight">
+        <div class="mem-cell mem-cell-offset">offset 4</div>
+        <div class="mem-cell mem-cell-field">sin_addr</div>
+        <div class="mem-cell mem-cell-size">4 octets</div>
+        <div class="mem-cell mem-cell-value"><span class="mem-val-hex">0x00000000</span> &nbsp;= INADDR_ANY (0.0.0.0)</div>
+      </div>
+      <div class="mem-row mem-row-zero">
+        <div class="mem-cell mem-cell-offset">offset 8</div>
+        <div class="mem-cell mem-cell-field">sin_zero</div>
+        <div class="mem-cell mem-cell-size">8 octets</div>
+        <div class="mem-cell mem-cell-value"><span class="mem-val-zero">00 00 00 00 00 00 00 00 &nbsp;← padding, doit être à zéro</span></div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span class="warning-icon">⚠️</span>
+      <div>
+        <strong>Pourquoi <code>memset</code> est crucial :</strong> sans lui, <code>sin_zero</code> contient
+        ce qui traîne dans la stack — des bytes aléatoires. Le kernel peut rejeter le <code>bind()</code>
+        ou se comporter bizarrement. <code>memset(&amp;addr, 0, sizeof(addr))</code> garantit que tout est propre
+        avant de remplir les champs. C'est aussi <strong>ce qui met INADDR_ANY à zéro automatiquement</strong>.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📐</span><span><strong>16 octets exactement</strong> — c'est la taille que le kernel attend. <code>sizeof(addr)</code> doit être passé à <code>bind()</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">🧹</span><span><code>memset</code> avant tout — même si tu penses remplir tous les champs, le padding <code>sin_zero</code> doit être à zéro.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Le cast <code>(struct sockaddr*)</code> dans <code>bind()</code> est nécessaire — l'API accepte différents types de sockaddr via ce cast générique.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 02 : htons            -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="htons" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-5)">htons()</div>
+        <div class="step-subtitle">Le problème des octets</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; margin-bottom:1.5rem; line-height:1.75">
+      Ton CPU (x86/x86_64) est <strong style="color:var(--text)">little-endian</strong>.
+      Le réseau TCP/IP est <strong style="color:var(--text)">big-endian</strong> (appelé <em>network byte order</em>).
+      Ce sont deux conventions opposées pour stocker un nombre multi-octets en mémoire.
+    </p>
+
+    <!-- Byte order comparison -->
+    <div class="endian-diagram">
+      <div class="endian-block endian-bad">
+        <div class="endian-block-header">
+          ✕ &nbsp;Little-endian — ton CPU x86
+        </div>
+        <div class="endian-body">
+          <div class="endian-label">Port 8080 = 0x1F90 stocké en mémoire :</div>
+          <div class="endian-bytes">
+            <div class="endian-byte byte-low" title="adresse+0">0x<strong>90</strong></div>
+            <div class="endian-byte byte-high" title="adresse+1">0x<strong>1F</strong></div>
+          </div>
+          <div class="endian-label" style="margin-bottom:0.8rem">octet faible en premier</div>
+          <div class="endian-result result-bad">réseau lit [90][1F] = port <strong>36895</strong> ✕</div>
+        </div>
+      </div>
+      <div class="endian-block endian-good">
+        <div class="endian-block-header">
+          ✓ &nbsp;Big-endian — réseau TCP/IP
+        </div>
+        <div class="endian-body">
+          <div class="endian-label">Port 8080 = 0x1F90 après htons() :</div>
+          <div class="endian-bytes">
+            <div class="endian-byte byte-high" title="adresse+0">0x<strong>1F</strong></div>
+            <div class="endian-byte byte-low" title="adresse+1">0x<strong>90</strong></div>
+          </div>
+          <div class="endian-label" style="margin-bottom:0.8rem">octet fort en premier</div>
+          <div class="endian-result result-good">réseau lit [1F][90] = port <strong>8080</strong> ✓</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">ce que fait htons()</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">byte swap</div>
+      </div>
+<pre><span class="fn-name">htons</span><span class="punct">(</span><span class="num">8080</span><span class="punct">)</span>
+  <span class="cmt">entrée  :  0x1F90  (little-endian en mémoire : [90][1F])</span>
+  <span class="cmt">swap    :  inverse les 2 octets</span>
+<span class="highlight-line">  <span class="cmt">sortie  :  0x901F  (stocké en mémoire : [1F][90])</span></span>
+  <span class="cmt">lecture réseau (big-endian) : [1F][90] = 0x1F90 = 8080 ✓</span>
+
+<span class="cmt">── Sur un CPU big-endian, htons() ne fait RIEN ──────────────────</span>
+<span class="cmt">   Les octets sont déjà dans le bon ordre. La fonction s'adapte</span>
+<span class="cmt">   automatiquement à l'architecture. C'est pour ça qu'on l'utilise</span>
+<span class="cmt">   toujours, même si on ne sait pas sur quel CPU ça tourne.</span></pre>
+    </div>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Fonction</th>
+            <th>Direction</th>
+            <th>Taille</th>
+            <th>Usage typique</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>htons()</td>
+            <td style="color:var(--accent-5)">host → network</td>
+            <td style="color:var(--text-muted)">16 bits</td>
+            <td style="color:var(--text-dim)">port dans sockaddr_in</td>
+          </tr>
+          <tr>
+            <td>htonl()</td>
+            <td style="color:var(--accent-5)">host → network</td>
+            <td style="color:var(--text-muted)">32 bits</td>
+            <td style="color:var(--text-dim)">adresse IP dans sockaddr_in</td>
+          </tr>
+          <tr>
+            <td>ntohs()</td>
+            <td style="color:var(--accent-2)">network → host</td>
+            <td style="color:var(--text-muted)">16 bits</td>
+            <td style="color:var(--text-dim)">lire un port reçu</td>
+          </tr>
+          <tr>
+            <td>ntohl()</td>
+            <td style="color:var(--accent-2)">network → host</td>
+            <td style="color:var(--text-muted)">32 bits</td>
+            <td style="color:var(--text-dim)">lire une IP reçue</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">🔍</span>
+      <div>
+        <strong>Vérification dans <code>/proc/net/tcp</code> :</strong> le port y est affiché en big-endian brut.
+        <code style="color:var(--accent-5)">1F90</code> = 8080. C'est exactement ce que <code>htons()</code> a produit et mis dans <code>sin_port</code>.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔡</span><span><strong>h</strong>ost <strong>t</strong>o <strong>n</strong>etwork <strong>s</strong>hort — short = 16 bits = la taille d'un port TCP.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Sur big-endian (SPARC, PowerPC…) <code>htons()</code> est un no-op. Mais on l'écrit toujours pour la portabilité.</span></div>
+      <div class="key-point"><span class="key-point-icon">🐛</span><span>Oublier <code>htons()</code> est un bug silencieux — ton serveur bind sur le bon fd mais personne ne peut s'y connecter au bon port.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 03 : INADDR_ANY       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="inaddr" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-4)">INADDR_ANY</div>
+        <div class="step-subtitle">Écouter sur toutes les interfaces</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; margin-bottom:1.5rem; line-height:1.75">
+      Ta machine a plusieurs interfaces réseau simultanément. Sur quelle IP tu veux écouter ?
+    </p>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label" style="color:var(--accent-1)">IP précise — restrictif</div>
+        <p>
+          <code style="color:var(--accent-6)">addr.sin_addr.s_addr = inet_addr("127.0.0.1");</code>
+          <br><br>
+          → Ton serveur répond <strong>uniquement</strong> aux connexions depuis la machine locale.
+          <br><br>
+          <code style="color:var(--accent-4)">curl localhost:8080</code> &nbsp;✓<br>
+          <code style="color:var(--accent-1)">curl 192.168.2.2:8080</code> &nbsp;✕ connexion refusée
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label" style="color:var(--accent-4)">INADDR_ANY — ouvert</div>
+        <p>
+          <code style="color:var(--accent-6)">addr.sin_addr.s_addr = INADDR_ANY;</code>
+          <br><br>
+          → Ton serveur répond sur <strong>toutes les interfaces</strong>.
+          <br><br>
+          <code style="color:var(--accent-4)">curl localhost:8080</code> &nbsp;✓<br>
+          <code style="color:var(--accent-4)">curl 192.168.2.2:8080</code> &nbsp;✓<br>
+          <code style="color:var(--accent-4)">curl [depuis le réseau]</code> &nbsp;✓
+        </p>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">💡</span>
+      <div>
+        <code>INADDR_ANY</code> vaut <strong>0</strong> — c'est pourquoi le <code>memset</code> suffit à le setter.
+        <code>sin_addr.s_addr</code> est déjà à zéro après <code>memset(&amp;addr, 0, sizeof(addr))</code>.
+        La ligne <code>= INADDR_ANY</code> est techniquement redondante, mais elle documente l'intention.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🌐</span><span>Pour Webserv : utilise <strong>INADDR_ANY</strong>. Un serveur HTTP doit être accessible depuis le réseau, pas seulement en local.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔢</span><span><code>INADDR_ANY = 0x00000000</code> — stocké tel quel dans <code>sin_addr.s_addr</code>, pas de <code>htonl()</code> nécessaire car 0 est 0 dans tous les endianness.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔍</span><span>Dans <code>/proc/net/tcp</code>, tu verras <code>local_address: 00000000:1F90</code> — les 8 zéros = INADDR_ANY.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 04 : kernel bind()    -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="kernel-bind" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-3)">Sous le capot du syscall</div>
+        <div class="step-subtitle">Les 6 étapes de bind() dans le kernel</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">bind()</div>
+      </div>
+<pre><span class="fn-name">bind</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span>
+<span class="cmt">                      ↑                        ↑</span>
+<span class="cmt">                  pointeur user space       toujours 16</span></pre>
+    </div>
+
+    <div class="kernel-steps">
+      <div class="kstep">
+        <div class="kstep-left">
+          <div class="kstep-num" style="color:var(--accent-3); border-color:rgba(192,132,252,0.3); background:rgba(192,132,252,0.06)">1</div>
+          <div class="kstep-line" style="background:rgba(192,132,252,0.15)"></div>
+        </div>
+        <div class="kstep-body">
+          <div class="kstep-title" style="color:var(--accent-3)">syscall — bascule en ring 0</div>
+          <div class="kstep-desc">Ton processus émet l'instruction <code>syscall</code>. Le CPU bascule en ring 0. Le kernel reçoit : le fd, un pointeur vers ta struct en user space, et la taille (16).</div>
+        </div>
+      </div>
+      <div class="kstep">
+        <div class="kstep-left">
+          <div class="kstep-num" style="color:var(--accent-3); border-color:rgba(192,132,252,0.3); background:rgba(192,132,252,0.06)">2</div>
+          <div class="kstep-line" style="background:rgba(192,132,252,0.15)"></div>
+        </div>
+        <div class="kstep-body">
+          <div class="kstep-title" style="color:var(--accent-3)">validation du fd</div>
+          <div class="kstep-desc">Le kernel vérifie que le fd existe dans la table du processus, qu'il pointe vers un socket, et qu'il n'est <strong>pas déjà bindé</strong>. Sinon → <code>EINVAL</code>.</div>
+        </div>
+      </div>
+      <div class="kstep">
+        <div class="kstep-left">
+          <div class="kstep-num" style="color:var(--accent-3); border-color:rgba(192,132,252,0.3); background:rgba(192,132,252,0.06)">3</div>
+          <div class="kstep-line" style="background:rgba(192,132,252,0.15)"></div>
+        </div>
+        <div class="kstep-body">
+          <div class="kstep-title" style="color:var(--accent-3)">copy_from_user() — copie sécurisée</div>
+          <div class="kstep-desc">Le kernel ne fait <strong>jamais confiance à un pointeur user space</strong>. Il copie tes 16 octets dans sa propre mémoire protégée via <code>copy_from_user()</code>. Si le pointeur est invalide → <code>EFAULT</code>.</div>
+        </div>
+      </div>
+      <div class="kstep">
+        <div class="kstep-left">
+          <div class="kstep-num" style="color:var(--accent-5); border-color:rgba(250,204,21,0.3); background:rgba(250,204,21,0.06)">4</div>
+          <div class="kstep-line" style="background:rgba(250,204,21,0.15)"></div>
+        </div>
+        <div class="kstep-body">
+          <div class="kstep-title" style="color:var(--accent-5)">inet_bind() — vérifie la disponibilité du port</div>
+          <div class="kstep-desc">La fonction spécifique à AF_INET vérifie que le port n'est pas déjà utilisé par un autre processus. C'est ici que <strong><code>EADDRINUSE</code></strong> est déclenché si le port est pris — typiquement à cause de TIME_WAIT.</div>
+        </div>
+      </div>
+      <div class="kstep">
+        <div class="kstep-left">
+          <div class="kstep-num" style="color:var(--accent-4); border-color:rgba(74,222,128,0.3); background:rgba(74,222,128,0.06)">5</div>
+          <div class="kstep-line" style="background:rgba(74,222,128,0.15)"></div>
+        </div>
+        <div class="kstep-body">
+          <div class="kstep-title" style="color:var(--accent-4)">mise à jour de la struct socket</div>
+          <div class="kstep-desc">
+            Le kernel met à jour la <code>struct socket</code> en mémoire kernel :
+            <br><code>sk_num = 8080</code> &nbsp;·&nbsp; <code>sk_rcv_saddr = 0.0.0.0</code>
+            <br><code>state</code> reste <code>SS_UNCONNECTED</code> — c'est <code>listen()</code> qui le changera.
+          </div>
+        </div>
+      </div>
+      <div class="kstep">
+        <div class="kstep-left">
+          <div class="kstep-num" style="color:var(--accent-2); border-color:rgba(74,224,255,0.3); background:rgba(74,224,255,0.06)">6</div>
+        </div>
+        <div class="kstep-body">
+          <div class="kstep-title" style="color:var(--accent-2)">enregistrement dans la hash table TCP</div>
+          <div class="kstep-desc">Le kernel maintient une <strong>table de hashage indexée par port</strong>. Désormais, quand un paquet TCP arrive sur le port 8080, le kernel sait immédiatement à quelle <code>struct socket</code> le livrer. <strong>C'est ça le vrai effet de <code>bind()</code>.</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📋</span><span><code>copy_from_user()</code> protège le kernel — un pointeur user space malformé ne peut pas corrompre la mémoire kernel.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗃️</span><span>La <strong>hash table TCP</strong> est la raison pour laquelle <code>bind()</code> est "rapide" — c'est une lookup O(1) pour router les paquets entrants.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔗</span><span>Après <code>bind()</code>, le socket a un port mais <strong>n'accepte pas encore</strong> de connexions — il faut <code>listen()</code> ensuite.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 05 : SO_REUSEADDR     -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="reuseaddr" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-1)">SO_REUSEADDR</div>
+        <div class="step-subtitle">Pourquoi "Address already in use" et comment l'éviter</div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span class="warning-icon">🔄</span>
+      <div>
+        <strong>Le scénario classique :</strong> tu lances webserv → bind sur le port 8080 → OK.
+        Un client se connecte. Tu tues webserv (Ctrl+C). Tu le relances immédiatement →
+        <code>bind()</code> retourne <code>EADDRINUSE</code>. Pourquoi ?
+      </div>
+    </div>
+
+    <!-- TIME_WAIT flow -->
+    <div class="timewait-flow" style="margin-top:1.5rem;">
+      <div style="font-family:'Space Mono',monospace; font-size:0.58rem; text-transform:uppercase; letter-spacing:0.2em; color:var(--text-muted); margin-bottom:0.8rem;">Cycle de vie d'un port après fermeture</div>
+      <div class="tw-step">
+        <div class="tw-dot" style="background:var(--accent-4)"></div>
+        <span style="color:var(--accent-4); font-weight:700">ESTABLISHED</span>
+        <span style="color:var(--text-muted); font-size:0.7rem">— connexion active</span>
+      </div>
+      <div class="tw-arrow"><span></span><span></span><span></span></div>
+      <div class="tw-step">
+        <div class="tw-dot" style="background:var(--accent-5)"></div>
+        <span style="color:var(--accent-5); font-weight:700">FIN_WAIT / CLOSE_WAIT</span>
+        <span style="color:var(--text-muted); font-size:0.7rem">— fermeture en cours</span>
+      </div>
+      <div class="tw-arrow"><span></span><span></span><span></span></div>
+      <div class="tw-step">
+        <div class="tw-dot" style="background:var(--accent-1)"></div>
+        <span style="color:var(--accent-1); font-weight:700">TIME_WAIT</span>
+        <span style="color:var(--text-muted); font-size:0.7rem">— ~60 secondes · le port reste réservé</span>
+      </div>
+      <div class="tw-arrow"><span></span><span></span><span></span></div>
+      <div class="tw-step">
+        <div class="tw-dot" style="background:var(--text-muted)"></div>
+        <span style="color:var(--text-muted); font-weight:700">port libéré</span>
+        <span style="color:var(--text-muted); font-size:0.7rem">— nouvelle connexion possible</span>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-top:1rem">
+      <span class="info-icon">💡</span>
+      <div>
+        TCP garantit la livraison — il doit s'assurer qu'aucun paquet retardé encore en transit
+        ne vienne perturber une future connexion sur le même port. TIME_WAIT dure <strong>2 × MSL</strong>
+        (Maximum Segment Lifetime ≈ 30s), soit ~60s au total.
+        <br><br>
+        Tu peux l'observer : <code style="color:var(--accent-2)">ss -tnp | grep 8080</code>
+        → <code>TIME-WAIT  0  0  0.0.0.0:8080 ...</code>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1); margin-top:1.5rem;">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp — ordre correct</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">SO_REUSEADDR</div>
+      </div>
+<pre><span class="kw">int</span> <span class="var">server_fd</span> <span class="punct">=</span> <span class="fn-name">socket</span><span class="punct">(</span><span class="macro">AF_INET</span><span class="punct">,</span> <span class="macro">SOCK_STREAM</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>  <span class="cmt">// 1. créer</span>
+
+<span class="kw">int</span> <span class="var">opt</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+<span class="highlight-line"><span class="fn-name">setsockopt</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="macro">SOL_SOCKET</span><span class="punct">,</span>                  <span class="cmt">// 2. option — AVANT bind()</span></span>
+<span class="highlight-line">           <span class="macro">SO_REUSEADDR</span><span class="punct">,</span> <span class="punct">&amp;</span><span class="var">opt</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">opt</span><span class="punct">));</span></span>
+
+<span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+<span class="fn-name">memset</span><span class="punct">(&amp;</span><span class="var">addr</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="num">8080</span><span class="punct">);</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="macro">INADDR_ANY</span><span class="punct">;</span>
+
+<span class="fn-name">bind</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="punct">(</span><span class="kw">struct</span> <span class="type">sockaddr</span><span class="punct">*)&amp;</span><span class="var">addr</span><span class="punct">,</span>           <span class="cmt">// 3. bind</span>
+     <span class="kw">sizeof</span><span class="punct">(</span><span class="var">addr</span><span class="punct">));</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Ce que fait SO_REUSEADDR</div>
+        <p>
+          Dit au kernel : <em>"si le port est en TIME_WAIT, laisse-moi quand même le réutiliser"</em>.
+          <br><br>
+          Ce n'est <strong>pas dangereux</strong>. Les connexions en TIME_WAIT appartiennent à l'ancienne instance.
+          Elles vont expirer toutes seules. Le nouveau <code>bind()</code> crée une nouvelle entrée dans la hash table TCP — les deux coexistent proprement.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Pourquoi c'est critique en dev</div>
+        <p>
+          Sans <code>SO_REUSEADDR</code>, tu attends <strong>30 à 60 secondes</strong> entre chaque Ctrl+C et relance.
+          <br><br>
+          En évaluation Webserv, le correcteur va tuer et relancer ton serveur. Si <code>bind()</code> plante,
+          ton serveur est dysfonctionnel. C'est une faute <strong>rédhibitoire</strong>.
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">⚡</span><span><code>SO_REUSEADDR</code> doit être posé <strong>après <code>socket()</code> et avant <code>bind()</code></strong> — sinon il n'a aucun effet.</span></div>
+      <div class="key-point"><span class="key-point-icon">🕐</span><span>TIME_WAIT existe pour garantir la fiabilité TCP — il empêche qu'un vieux paquet retardé perturbe une nouvelle connexion.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔍</span><span><code>ss -tnp | grep 8080</code> te montre si ton port est en TIME_WAIT et combien de temps il lui reste.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 06 : ports            -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="ports" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-6)">Les ports</div>
+        <div class="step-subtitle">Pourquoi 0 à 65535 ?</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; margin-bottom:1.5rem; line-height:1.75">
+      Les ports TCP sont encodés sur <strong style="color:var(--text)">16 bits</strong> dans le header TCP.
+      2<sup>16</sup> = 65 536 valeurs possibles — ports <code>0</code> à <code>65535</code>.
+      Décision du RFC 793 (1981). Gravée dans le protocole depuis 44 ans.
+    </p>
+
+    <div class="ports-diagram">
+      <div class="ports-row ports-row-system">
+        <div class="ports-range">0 – 1023</div>
+        <div class="ports-info">
+          <div class="ports-category">Ports système — Well-known</div>
+          <div class="ports-desc">Nécessitent les droits <strong>root</strong> pour <code>bind()</code>. Réservés aux services standard.</div>
+          <div class="ports-examples">HTTP=80 · HTTPS=443 · SSH=22 · FTP=21 · SMTP=25</div>
+        </div>
+      </div>
+      <div class="ports-row ports-row-registered">
+        <div class="ports-range">1024 – 49151</div>
+        <div class="ports-info">
+          <div class="ports-category">Ports enregistrés</div>
+          <div class="ports-desc">Conventions IANA, <strong>pas de droits root</strong> requis. Zone de travail pour Webserv.</div>
+          <div class="ports-examples">8080 (HTTP alt) · 4242 (42 project) · 3306 (MySQL) · 5432 (PostgreSQL)</div>
+        </div>
+      </div>
+      <div class="ports-row ports-row-ephemeral">
+        <div class="ports-range">49152 – 65535</div>
+        <div class="ports-info">
+          <div class="ports-category">Ports éphémères</div>
+          <div class="ports-desc">Assignés <strong>automatiquement</strong> aux clients pour le port source d'une connexion sortante. Tu ne bindes jamais ici.</div>
+          <div class="ports-examples">Quand tu fais curl, ton OS choisit un port dans cette plage comme port source.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔢</span><span>16 bits dans le header TCP = décision de 1981. La migration IPv6 n'a pas changé la taille des ports.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔑</span><span>Ports < 1024 nécessitent <code>CAP_NET_BIND_SERVICE</code> (root ou capability). Un utilisateur normal ne peut pas bind sur le port 80.</span></div>
+      <div class="key-point"><span class="key-point-icon">🎯</span><span>Pour Webserv : utilise <strong>8080</strong> ou <strong>4242</strong> — dans la plage enregistrée, pas besoin de sudo.</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- RECAP                         -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">Récapitulatif <em>bind()</em></div>
+    <div class="summary-subtitle">Ce que chaque élément fait vraiment</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">📐</div>
+        <div>
+          <div class="summary-card-fn">sockaddr_in</div>
+          <div class="summary-card-desc">16 octets en RAM — IP + port + famille + padding. Toujours memset avant de remplir.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🧹</div>
+        <div>
+          <div class="summary-card-fn">memset(&addr, 0, ...)</div>
+          <div class="summary-card-desc">Garantit que sin_zero est à zéro ET initialise INADDR_ANY automatiquement.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🔄</div>
+        <div>
+          <div class="summary-card-fn">htons(8080)</div>
+          <div class="summary-card-desc">Convertit le port en big-endian pour le réseau. Sans ça, le port est silencieusement incorrect.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🌐</div>
+        <div>
+          <div class="summary-card-fn">INADDR_ANY</div>
+          <div class="summary-card-desc">0.0.0.0 — écoute sur toutes les interfaces. Vaut 0, déjà setté par memset.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🗃️</div>
+        <div>
+          <div class="summary-card-fn">bind()</div>
+          <div class="summary-card-desc">Enregistre port+IP dans la hash table TCP du kernel. Les paquets entrants sont routés vers ton socket.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">⚡</div>
+        <div>
+          <div class="summary-card-fn">SO_REUSEADDR</div>
+          <div class="summary-card-desc">Permet de rebind un port en TIME_WAIT. Obligatoire en dev, rédhibitoire en éval si absent.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../socket-lifecycle.html#bind-deepdive">Retour à Socket Lifecycle</a> &nbsp;·&nbsp; <a href="socket-internals.html">socket() internals</a> &nbsp;·&nbsp; <a href="../../webserv-mindmap.html">Cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — bind() internals. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../socket-lifecycle.html#bind-deepdive"], a[href="socket-internals.html"], a[href="../../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  sections.forEach(s => observer.observe(s));
+
+  const sectionIds = ['sockaddr','htons','inaddr','kernel-bind','reuseaddr','ports'];
+  const navIds     = ['nav-01','nav-02','nav-03','nav-04','nav-05','nav-06'];
+  const navPills   = document.querySelectorAll('.step-pill');
+
+  function updateNav() {
+    let current = 0;
+    sectionIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.getBoundingClientRect().top < window.innerHeight * 0.4) current = i;
+    });
+    navPills.forEach((p, i) => p.classList.toggle('active', i === current));
+  }
+  window.addEventListener('scroll', updateNav, { passive: true });
+  updateNav();
+</script>
+</body>
+</html>
