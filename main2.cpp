@@ -44,7 +44,12 @@ void accept_next_client(int server_fd, int epfd) {
                             (struct sockaddr*)&client_addr, &len);
 	if (client_fd == -1) { perror("accept"); return; }
 
-	fcntl(clientfd, F_SETFL, fcntl(client_fd, F_GETFL) | O_NONBLOCK);
+	fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL) | O_NONBLOCK);
+	
+	struct epoll_event ev;
+	ev.events = EPOLLIN;
+	ev.data.fd = client_fd;
+	epoll_ctl(epfd, EPOLL_CTL_DEL, client_fd, &ev);
 }
 
 void handle_recv(int fd, int epfd) {
