@@ -117,7 +117,6 @@ void handle_send(int fd, int epfd) {
 int	main() {
 	signal(SIGPIPE, SIG_IGN);
 
-	// 1 Etape: socket(), bind(), listen()
 	int server_fd = create_socket_server();
 	if (server_fd == -1) { return 1; }
 	if (bind_ports(server_fd, PORT) == -1) { return 1; }
@@ -154,4 +153,7 @@ int	main() {
 		}
 	}
 
+	close(epfd);
+	close(server_fd);
+	return 0;
 }
