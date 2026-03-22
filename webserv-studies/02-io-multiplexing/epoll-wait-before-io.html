@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La règle d'or — toujours epoll_wait() avant read/write</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-1); background: rgba(255,107,74,0.07); }
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-1);
+    background: rgba(255,107,74,0.08);
+    border: 1px solid rgba(255,107,74,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-1); }
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+  .header-desc code {
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-1);
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active {
+    background: rgba(255,107,74,0.1);
+    color: var(--accent-1);
+  }
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 10px;
+  }
+
+  /* MAIN */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* STEP SECTION */
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-1));
+  }
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-1));
+    margin-bottom: 0.3rem;
+  }
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* TWO COLUMN LAYOUT */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .progress-inner { overflow-x: auto; }
+  }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-1));
+    opacity: 0.6;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-1));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+  .panel p + p { margin-top: 0.8rem; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+  .panel p code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-1));
+    background: rgba(255,107,74,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .panel ul {
+    list-style: none;
+    margin-top: 0.8rem;
+  }
+  .panel ul li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+  .panel ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--step-color, var(--accent-1));
+    opacity: 0.6;
+  }
+  .panel ul li code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-1));
+    background: rgba(255,107,74,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .panel ul li strong { color: var(--text); font-weight: 500; }
+
+  /* ANALOGY PANEL */
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+  }
+  .analogy-icon { font-size: 2.5rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* CODE PANEL */
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+  .kw  { color: #c084fc; }
+  .fn-name { color: #4ae0ff; }
+  .type { color: #4ade80; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; }
+  .var { color: #e8e6f0; }
+  .punct { color: #5c5a72; }
+  .ok   { color: #4ade80; }
+  .bad  { color: #ff6b4a; }
+  .highlight-line {
+    display: block;
+    background: rgba(255,107,74,0.06);
+    border-left: 2px solid var(--step-color, var(--accent-1));
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+  .highlight-line-ok {
+    display: block;
+    background: rgba(74,222,128,0.06);
+    border-left: 2px solid var(--accent-4);
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+
+  /* KEY POINTS */
+  .key-points {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .key-point {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .key-point code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-1);
+  }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* WARNING / INFO BOX */
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .warning strong { color: var(--accent-1); }
+  .warning code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-1);
+  }
+  .info-box {
+    background: rgba(74,222,128,0.04);
+    border: 1px solid rgba(74,222,128,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .info-box strong { color: var(--accent-4); }
+  .info-box code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-4);
+  }
+
+  /* QUOTE BOX */
+  .quote-box {
+    border-left: 3px solid var(--accent-1);
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    background: rgba(255,107,74,0.03);
+    border-radius: 0 8px 8px 0;
+  }
+  .quote-box p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 0.3rem;
+  }
+  .quote-box cite {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* STEP DIVIDER */
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* BUG SCENARIO */
+  .bug-scenario {
+    background: var(--surface);
+    border: 1px solid rgba(255,107,74,0.25);
+    border-radius: 14px;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .bug-scenario::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent-1);
+    opacity: 0.6;
+  }
+  .bug-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--accent-1);
+    margin-bottom: 0.4rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .bug-desc {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    margin-bottom: 1rem;
+  }
+  .bug-desc strong { color: var(--text); font-weight: 500; }
+  .bug-desc code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-1);
+    background: rgba(255,107,74,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  /* FLOW DIAGRAM */
+  .flow-diagram {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .flow-box {
+    padding: 0.5rem 0.9rem;
+    border-radius: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .flow-box.good { color: var(--accent-4); border-color: rgba(74,222,128,0.3); background: rgba(74,222,128,0.06); }
+  .flow-box.bad { color: var(--accent-1); border-color: rgba(255,107,74,0.3); background: rgba(255,107,74,0.06); }
+  .flow-box.neutral { color: var(--accent-2); border-color: rgba(74,224,255,0.3); background: rgba(74,224,255,0.06); }
+  .flow-arrow { color: var(--text-muted); font-size: 0.9rem; }
+
+  /* SUMMARY SECTION */
+  .summary-section {
+    margin-top: 4rem;
+    padding: 3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-1), var(--accent-5), var(--accent-4));
+  }
+  .summary-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+  .summary-title em { font-style: italic; color: var(--accent-1); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 1.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  .summary-card-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    margin-bottom: 0.2rem;
+  }
+  .summary-card-desc { font-size: 0.8rem; color: var(--text-muted); line-height: 1.6; }
+  .summary-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-1); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#regle" class="step-pill active" id="nav-regle">
+      <span class="step-dot"></span>La règle
+    </a>
+    <div class="step-connector"></div>
+    <a href="#sans-epoll" class="step-pill" id="nav-sans-epoll">
+      <span class="step-dot"></span>Sans epoll
+    </a>
+    <div class="step-connector"></div>
+    <a href="#bugs" class="step-pill" id="nav-bugs">
+      <span class="step-dot"></span>Bugs
+    </a>
+    <div class="step-connector"></div>
+    <a href="#avec-epoll" class="step-pill" id="nav-avec-epoll">
+      <span class="step-dot"></span>Avec epoll
+    </a>
+    <div class="step-connector"></div>
+    <a href="#exception" class="step-pill" id="nav-exception">
+      <span class="step-dot"></span>Exception
+    </a>
+    <div class="step-connector"></div>
+    <a href="#cgi" class="step-pill" id="nav-cgi">
+      <span class="step-dot"></span>CGI
+    </a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Piège mortel — I/O Multiplexing</div>
+  <h1>La règle d'or<br>Toujours <em>epoll_wait()</em> avant read/write</h1>
+  <p class="header-desc">
+    Le sujet est catégorique : <strong>jamais</strong> de <code>recv()</code> ou <code>send()</code> sur un socket
+    sans que <code>epoll_wait()</code> ait confirmé que le fd est prêt. Enfreindre cette règle = <strong>0</strong>.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 1 : LA RÈGLE          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="regle" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">La règle</div>
+        <div class="step-subtitle">Ce que dit le sujet, mot pour mot</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>« You must never do a read or a write operation without going through poll() (or equivalent).
+      Calling read/recv or write/send on these descriptors without prior readiness will result in a grade of 0. »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ça veut dire</div>
+        <p>
+          Avant <strong>chaque</strong> appel à <code>recv()</code>, <code>send()</code>, <code>read()</code> ou <code>write()</code>
+          sur un <strong>socket ou un pipe</strong>, tu dois avoir reçu la confirmation d'<code>epoll_wait()</code>
+          que ce fd est prêt pour l'opération demandée.
+        </p>
+        <p>
+          <code>EPOLLIN</code> = le fd est prêt en <strong>lecture</strong> → tu peux appeler <code>recv()</code>.<br>
+          <code>EPOLLOUT</code> = le fd est prêt en <strong>écriture</strong> → tu peux appeler <code>send()</code>.<br>
+          Pas d'événement = <strong>tu ne touches pas au fd</strong>.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Le contrat fondamental</div>
+        <p>
+          C'est le contrat de base d'un serveur <strong>event-driven</strong> : tu ne fais <strong>rien</strong>
+          sans qu'un événement te le dise. Ton serveur est <strong>réactif</strong>, pas <strong>proactif</strong>.
+        </p>
+        <p>
+          Le serveur ne <em>demande</em> pas aux clients s'ils ont des données. Il <em>attend</em> qu'epoll lui dise :
+          « le client 42 a des données prêtes à être lues ». Alors, et <strong>seulement alors</strong>, il appelle <code>recv()</code>.
+        </p>
+      </div>
+    </div>
+
+    <div class="flow-diagram">
+      <div class="flow-box good">epoll_wait()</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box neutral">EPOLLIN sur fd 7</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box good">recv(fd 7)</div>
+      <span class="flow-arrow" style="margin: 0 0.3rem; color:var(--accent-4)">✅</span>
+    </div>
+
+    <div class="flow-diagram">
+      <div class="flow-box bad">recv(fd 7)</div>
+      <span class="flow-arrow" style="color:var(--accent-1)">← pas d'epoll_wait avant</span>
+      <span class="flow-arrow" style="margin: 0 0.3rem; color:var(--accent-1)">❌ = 0</span>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 2 : SANS EPOLL        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="sans-epoll" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">Sans epoll_wait()</div>
+        <div class="step-subtitle">Ce qui se passe quand on triche</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="analogy-panel">
+        <div class="analogy-icon">🎯</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Le problème central</div>
+          <p>
+            Sans epoll_wait(), tu tires à l'aveugle. Tu ne sais pas si le fd est prêt.
+            Tu appelles recv() en espérant qu'il y ait des données. Parfois oui, souvent non.
+            Ton code devient un casino.
+          </p>
+        </div>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🔥</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Les conséquences</div>
+          <p>
+            EAGAIN partout, boucles qui tournent dans le vide, données partielles non gérées,
+            CPU à 100% pour rien, et surtout : un serveur qui ne scale pas du tout.
+            C'est l'exact opposé de l'event-driven.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">sans_epoll_recv.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">❌ Mauvais — recv sans epoll</span>
+      </div>
+      <pre><span class="cmt">// ❌ MAUVAIS : recv() direct après accept()</span>
+
+<span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">listen_fd</span>, <span class="macro">NULL</span>, <span class="macro">NULL</span>);
+<span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="macro">O_NONBLOCK</span>);
+
+<span class="cmt">// Le client vient de se connecter (TCP handshake OK)</span>
+<span class="cmt">// MAIS il n'a peut-être PAS encore envoyé sa requête HTTP !</span>
+
+<span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+<span class="highlight-line"><span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">client_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);  <span class="cmt">// ❌ SANS epoll_wait !</span></span>
+
+<span class="kw">if</span> (<span class="var">n</span> == <span class="num">-1</span> &amp;&amp; <span class="var">errno</span> == <span class="macro">EAGAIN</span>) {
+    <span class="cmt">// Pas de données encore... et maintenant ?</span>
+    <span class="cmt">// On fait quoi ? On réessaie en boucle ? On attend combien de temps ?</span>
+    <span class="cmt">// → On a aucune idée de QUAND les données arriveront</span>
+}
+<span class="kw">else if</span> (<span class="var">n</span> == <span class="num">0</span>) {
+    <span class="cmt">// Le client s'est déconnecté avant d'envoyer quoi que ce soit</span>
+}
+<span class="kw">else if</span> (<span class="var">n</span> &gt; <span class="num">0</span>) {
+    <span class="cmt">// On a eu de la chance... cette fois-ci</span>
+    <span class="cmt">// Mais la requête est-elle complète ? Faut-il relire ?</span>
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">sans_epoll_send.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">❌ Mauvais — send sans epoll</span>
+      </div>
+      <pre><span class="cmt">// ❌ MAUVAIS : send() sans vérifier EPOLLOUT</span>
+
+<span class="type">std::string</span> <span class="var">response</span> = <span class="str">"HTTP/1.1 200 OK\r\n..."</span>;  <span class="cmt">// 50 KB de HTML</span>
+
+<span class="highlight-line"><span class="type">ssize_t</span> <span class="var">sent</span> = <span class="fn-name">send</span>(<span class="var">client_fd</span>, <span class="var">response</span>.<span class="fn-name">c_str</span>(), <span class="var">response</span>.<span class="fn-name">size</span>(), <span class="num">0</span>);  <span class="cmt">// ❌</span></span>
+
+<span class="cmt">// Problème 1 : le buffer d'envoi TCP est peut-être PLEIN</span>
+<span class="cmt">// → send() retourne -1 avec EAGAIN</span>
+<span class="cmt">// → tu perds la réponse complète</span>
+
+<span class="cmt">// Problème 2 : send() n'envoie peut-être que 8 KB sur 50 KB</span>
+<span class="cmt">// → le reste est perdu si tu ne gères pas le retour partiel</span>
+<span class="cmt">// → et tu ne sais pas QUAND le buffer sera à nouveau disponible</span>
+
+<span class="cmt">// Problème 3 : le client a peut-être fermé la connexion</span>
+<span class="cmt">// → send() envoie un SIGPIPE → ton serveur CRASH</span></pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 3 : CATALOGUE DE BUGS -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="bugs" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">Catalogue de bugs</div>
+        <div class="step-subtitle">Les 5 scénarios catastrophe</div>
+      </div>
+    </div>
+
+    <div class="bug-scenario">
+      <div class="bug-title">💥 Bug #1 — EAGAIN infini</div>
+      <div class="bug-desc">
+        Tu appelles <code>recv()</code> sur un socket non-bloquant sans epoll.
+        Le client n'a rien envoyé. <code>recv()</code> retourne <code>-1</code> avec <code>errno = EAGAIN</code>.
+        Tu réessaies. Encore EAGAIN. Tu boucles. <strong>CPU à 100%</strong> pour absolument rien.
+        C'est du <strong>busy-waiting</strong> — l'exact opposé de l'event-driven.
+      </div>
+    </div>
+
+    <div class="bug-scenario">
+      <div class="bug-title">💥 Bug #2 — recv() direct après accept()</div>
+      <div class="bug-desc">
+        Un client vient de se connecter. Le TCP handshake est fait, <code>accept()</code> retourne un fd.
+        Tu appelles immédiatement <code>recv()</code>. Mais le client n'a <strong>pas encore envoyé</strong> sa requête HTTP
+        — la connexion TCP est ouverte, mais le navigateur prépare encore ses headers.
+        <code>recv()</code> retourne <code>EAGAIN</code>. Si tu étais en mode bloquant, ton serveur entier
+        <strong>gèle</strong> en attendant ce seul client.
+      </div>
+    </div>
+
+    <div class="bug-scenario">
+      <div class="bug-title">💥 Bug #3 — send() sur un buffer TCP plein</div>
+      <div class="bug-desc">
+        Tu construis ta réponse HTTP de 50 KB et tu appelles <code>send()</code>.
+        Le buffer d'envoi TCP du kernel a seulement <strong>16 KB de libre</strong>.
+        <code>send()</code> n'envoie que 16 KB et retourne <code>16384</code>.
+        Les 34 KB restants ? <strong>Perdus</strong> si tu ne gères pas.
+        Et quand le buffer sera libre ? <strong>Tu n'en sais rien</strong> sans EPOLLOUT.
+      </div>
+    </div>
+
+    <div class="bug-scenario">
+      <div class="bug-title">💥 Bug #4 — Client déconnecté = SIGPIPE</div>
+      <div class="bug-desc">
+        Le client a fermé sa connexion (il a navigué ailleurs, timeout, etc.).
+        Tu appelles <code>send()</code> sans avoir vérifié avec epoll.
+        Le kernel t'envoie un <strong>SIGPIPE</strong>. Comportement par défaut : <strong>ton serveur se termine</strong>.
+        Avec epoll, tu aurais reçu <code>EPOLLHUP</code> ou <code>EPOLLERR</code> et tu aurais proprement fermé le fd.
+      </div>
+    </div>
+
+    <div class="bug-scenario">
+      <div class="bug-title">💥 Bug #5 — Données partielles et requêtes mélangées</div>
+      <div class="bug-desc">
+        Tu appelles <code>recv()</code> à un moment arbitraire. Tu reçois <code>"GET /index.ht"</code>
+        — la requête est <strong>coupée au milieu</strong> car les données arrivent par paquets TCP.
+        Sans epoll, quand relire la suite ? Tu ne sais pas. Tu relies immédiatement ?
+        Peut-être <code>EAGAIN</code>. Tu attends un temps arbitraire ? <strong>C'est du polling</strong>.
+        Avec epoll, tu recevras un nouvel <code>EPOLLIN</code> quand la suite arrive.
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Le point commun de tous ces bugs :</strong> sans <code>epoll_wait()</code>,
+        tu n'as <strong>aucun moyen de savoir</strong> quand un fd est prêt.
+        Tu es condamné à deviner, boucler, ou dormir un temps arbitraire.
+        Tout ça disparaît avec une boucle événementielle correcte.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 4 : AVEC EPOLL        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="avec-epoll" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">Avec epoll_wait()</div>
+        <div class="step-subtitle">Comment faire correctement</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Le flux correct pour accept</div>
+        <p>
+          Le socket d'écoute est enregistré dans epoll avec <code>EPOLLIN</code>.
+          Quand un client se connecte, <code>epoll_wait()</code> te le signale.
+          <strong>Alors seulement</strong> tu appelles <code>accept()</code>.
+          Puis tu enregistres le nouveau client dans epoll et tu retournes dans la boucle.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Le flux correct pour recv/send</div>
+        <p>
+          Le client est enregistré avec <code>EPOLLIN</code>. Quand il envoie des données,
+          <code>epoll_wait()</code> retourne <code>EPOLLIN</code> pour ce fd. Tu appelles <code>recv()</code>.
+          Pour la réponse, tu modifies le fd avec <code>EPOLLOUT</code> via <code>epoll_ctl(MOD)</code>.
+          Quand le buffer est prêt, epoll te le dit → tu appelles <code>send()</code>.
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">correct_accept.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">✅ accept() correct</span>
+      </div>
+      <pre><span class="cmt">// ✅ CORRECT : accept() seulement quand epoll le signale</span>
+
+<span class="cmt">// Au démarrage : enregistrer le listen_fd</span>
+<span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">listen_fd</span>;
+<span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">listen_fd</span>, &amp;<span class="var">ev</span>);
+
+<span class="cmt">// Dans la boucle :</span>
+<span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="num">64</span>, <span class="num">-1</span>);
+
+<span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
+    <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span> == <span class="var">listen_fd</span>) {
+<span class="highlight-line-ok">        <span class="cmt">// ✅ epoll a dit : "quelqu'un frappe à la porte"</span></span>
+<span class="highlight-line-ok">        <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">listen_fd</span>, <span class="macro">NULL</span>, <span class="macro">NULL</span>);</span>
+        <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="macro">O_NONBLOCK</span>);
+
+        <span class="cmt">// On enregistre le client dans epoll pour savoir quand il envoie</span>
+        <span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;
+        <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;
+        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);
+
+        <span class="cmt">// PAS de recv() ici ! On attend le prochain epoll_wait()</span>
+    }
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">correct_recv_send.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">✅ recv/send correct</span>
+      </div>
+      <pre><span class="cmt">// ✅ CORRECT : recv() et send() seulement après epoll_wait()</span>
+
+<span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
+    <span class="type">int</span> <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;
+
+    <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>) {
+<span class="highlight-line-ok">        <span class="cmt">// ✅ epoll confirme : "ce fd a des données à lire"</span></span>
+        <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+<span class="highlight-line-ok">        <span class="type">ssize_t</span> <span class="var">bytes</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);</span>
+
+        <span class="kw">if</span> (<span class="var">bytes</span> &gt; <span class="num">0</span>) {
+            <span class="cmt">// Accumuler dans un buffer, parser la requête HTTP</span>
+            <span class="cmt">// Quand la requête est complète → préparer la réponse</span>
+
+            <span class="cmt">// Maintenant on veut écrire → on demande EPOLLOUT</span>
+            <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+            <span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLOUT</span>;
+            <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;
+            <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);
+        }
+        <span class="kw">else if</span> (<span class="var">bytes</span> == <span class="num">0</span>) {
+            <span class="cmt">// Client déconnecté proprement</span>
+            <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+            <span class="fn-name">close</span>(<span class="var">fd</span>);
+        }
+    }
+
+    <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>) {
+<span class="highlight-line-ok">        <span class="cmt">// ✅ epoll confirme : "le buffer d'envoi est prêt"</span></span>
+<span class="highlight-line-ok">        <span class="type">ssize_t</span> <span class="var">sent</span> = <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">response_buf</span>, <span class="var">response_len</span>, <span class="num">0</span>);</span>
+
+        <span class="kw">if</span> (<span class="var">sent</span> &lt; <span class="var">response_len</span>) {
+            <span class="cmt">// Envoi partiel → avancer le pointeur, rester en EPOLLOUT</span>
+            <span class="cmt">// epoll_wait() nous re-notifiera quand le buffer est libre</span>
+        } <span class="kw">else</span> {
+            <span class="cmt">// Tout envoyé → repasser en EPOLLIN pour la prochaine requête</span>
+            <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+            <span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;
+            <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;
+            <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);
+        }
+    }
+
+    <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
+        <span class="cmt">// Erreur ou déconnexion → on nettoie proprement</span>
+        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+        <span class="fn-name">close</span>(<span class="var">fd</span>);
+    }
+}</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">🔑</span>
+        <span><strong>accept()</strong> — seulement quand <code>EPOLLIN</code> arrive sur le listen_fd. Puis enregistrer le client dans epoll.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📥</span>
+        <span><strong>recv()</strong> — seulement quand <code>EPOLLIN</code> arrive sur un client_fd. Accumuler dans un buffer.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📤</span>
+        <span><strong>send()</strong> — seulement quand <code>EPOLLOUT</code> arrive. Gérer les envois partiels.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🔀</span>
+        <span><strong>Transition</strong> — après recv complet, <code>epoll_ctl(MOD)</code> pour passer de EPOLLIN à EPOLLOUT.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 5 : L'EXCEPTION       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="exception" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">L'exception</div>
+        <div class="step-subtitle">Fichiers réguliers sur disque</div>
+      </div>
+    </div>
+
+    <div class="quote-box" style="border-left-color: var(--accent-5); background: rgba(250,204,21,0.03);">
+      <p>« Regular disk files are exempt. »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Pourquoi les fichiers sont exemptés</div>
+        <p>
+          Un fichier sur disque (<code>open("/var/www/index.html")</code>) est <strong>toujours prêt</strong>.
+          Le kernel sait lire un fichier immédiatement — les données sont sur le disque,
+          pas en attente d'un client réseau distant.
+        </p>
+        <p>
+          Un <code>read()</code> sur un fichier régulier ne retourne <strong>jamais</strong> <code>EAGAIN</code>.
+          Il lit les données (ou retourne 0 à la fin du fichier). Pas besoin d'epoll pour ça.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Ce qui est exempté vs ce qui ne l'est pas</div>
+        <ul>
+          <li><strong style="color:var(--accent-4)">Exempté</strong> — <code>open()</code> + <code>read()</code>/<code>write()</code> sur fichiers .html, .css, .jpg, etc.</li>
+          <li><strong style="color:var(--accent-4)">Exempté</strong> — <code>opendir()</code> + <code>readdir()</code> pour les listings de répertoires</li>
+          <li><strong style="color:var(--accent-1)">PAS exempté</strong> — <code>recv()</code>/<code>send()</code> sur les sockets clients</li>
+          <li><strong style="color:var(--accent-1)">PAS exempté</strong> — <code>accept()</code> sur le socket d'écoute</li>
+          <li><strong style="color:var(--accent-1)">PAS exempté</strong> — <code>read()</code>/<code>write()</code> sur les pipes CGI</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">file_read.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">✅ Fichier — pas besoin d'epoll</span>
+      </div>
+      <pre><span class="cmt">// ✅ Les fichiers réguliers sont toujours prêts</span>
+<span class="cmt">// → pas besoin de passer par epoll_wait()</span>
+
+<span class="type">int</span> <span class="var">file_fd</span> = <span class="fn-name">open</span>(<span class="str">"/var/www/index.html"</span>, <span class="macro">O_RDONLY</span>);
+
+<span class="type">char</span> <span class="var">buf</span>[<span class="num">8192</span>];
+<span class="type">ssize_t</span> <span class="var">n</span>;
+
+<span class="highlight-line-ok"><span class="kw">while</span> ((<span class="var">n</span> = <span class="fn-name">read</span>(<span class="var">file_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>))) &gt; <span class="num">0</span>) {  <span class="cmt">// ✅ direct, sans epoll</span></span>
+    <span class="cmt">// Accumuler le contenu du fichier dans le buffer de réponse</span>
+    <span class="fn-name">response_buffer</span>.<span class="fn-name">append</span>(<span class="var">buf</span>, <span class="var">n</span>);
+}
+
+<span class="fn-name">close</span>(<span class="var">file_fd</span>);
+
+<span class="cmt">// MAIS pour envoyer cette réponse au client via le socket :</span>
+<span class="cmt">// → il FAUT passer par epoll_wait() + EPOLLOUT !</span></pre>
+    </div>
+
+    <div class="info-box" style="border-color: rgba(250,204,21,0.15); background: rgba(250,204,21,0.04);">
+      <span>💡</span>
+      <div>
+        <strong style="color:var(--accent-5)">Résumé simple :</strong>
+        lire un fichier sur le disque → <strong>direct</strong>.
+        Envoyer ce fichier à un client via un socket → <strong>epoll_wait() + EPOLLOUT d'abord</strong>.
+        Le fichier est le contenu. Le socket est le tuyau. Seul le tuyau a besoin d'epoll.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 6 : CGI               -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="cgi" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">Et le CGI ?</div>
+        <div class="step-subtitle">Les pipes aussi passent par epoll</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Aperçu — on verra les détails plus tard</div>
+      <p>
+        Le CGI utilise des <strong>pipes</strong> pour communiquer avec le processus fils (<code>fork()</code> + <code>exec()</code>).
+        Un pipe est comme un socket : c'est un fd qui peut <strong>ne pas être prêt</strong>.
+        Le processus CGI peut prendre du temps à produire sa sortie.
+      </p>
+      <p>
+        La règle est la même : le pipe de sortie du CGI doit être enregistré dans epoll via <code>epoll_ctl()</code>
+        en mode non-bloquant. Tu lis le pipe (<code>read()</code>) <strong>seulement</strong> quand <code>epoll_wait()</code>
+        retourne <code>EPOLLIN</code> dessus. Même logique pour écrire le body POST dans le pipe d'entrée du CGI
+        — attendre <code>EPOLLOUT</code>.
+      </p>
+    </div>
+
+    <div class="flow-diagram">
+      <div class="flow-box neutral">fork() + exec()</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box good">epoll_ctl(ADD, pipe_fd)</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box good">epoll_wait()</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box neutral">EPOLLIN sur pipe</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box good">read(pipe_fd)</div>
+    </div>
+
+    <div class="info-box" style="border-color: rgba(192,132,252,0.15); background: rgba(192,132,252,0.04);">
+      <span>📌</span>
+      <div>
+        <strong style="color:var(--accent-3)">On détaillera le CGI dans son propre chapitre.</strong>
+        Pour l'instant, retiens juste : un pipe CGI suit <strong>exactement la même règle</strong>
+        qu'un socket client — jamais de read/write sans epoll_wait() avant.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- RÉSUMÉ                         -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">Résumé — La <em>règle d'or</em></div>
+    <div class="summary-subtitle">Toujours epoll_wait() avant toute I/O sur un socket ou un pipe.</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">🚫</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-1)">Jamais sans epoll</div>
+          <div class="summary-card-desc">recv(), send(), accept() sur sockets, read()/write() sur pipes — toujours après epoll_wait().</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">✅</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-4)">Direct sur fichiers</div>
+          <div class="summary-card-desc">read()/write() sur fichiers réguliers (HTML, CSS, images) — pas besoin d'epoll, toujours prêts.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🔀</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-2)">Transition EPOLLIN → EPOLLOUT</div>
+          <div class="summary-card-desc">Après avoir lu la requête, epoll_ctl(MOD) pour passer en écriture. Puis epoll_wait() avant send().</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">📌</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-3)">Pipes CGI inclus</div>
+          <div class="summary-card-desc">Les pipes suivent la même règle : enregistrer dans epoll, lire/écrire seulement après notification.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — La règle d'or : toujours epoll_wait() avant read/write. eahmeti</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on navigation
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  // Animate sections on scroll
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+
+  // Update nav pills on scroll
+  const navIds = ['regle','sans-epoll','bugs','avec-epoll','exception','cgi'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+
+  sectionEls.forEach(s => s && navObserver.observe(s));
+
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

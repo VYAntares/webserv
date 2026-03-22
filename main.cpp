@@ -15,6 +15,7 @@ static const int BACKLOG = 10;
 int create_server_socket() {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) { perror("socket"); return -1; }
+	
     int opt = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
@@ -67,7 +68,6 @@ void handle_client(int client_fd) {
         n = recv(client_fd, buf, sizeof(buf) - 1, 0);
     } while (n == -1 && errno == EAGAIN);  // retry jusqu'à avoir quelque chose
 
-	if (n == -1 && errno == EAGAIN) { return; }
     if (n <= 0) { close(client_fd); return; }
     buf[n] = '\0';
     std::cout << buf;

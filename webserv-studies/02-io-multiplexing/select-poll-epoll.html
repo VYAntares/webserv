@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>select vs poll vs epoll — Pourquoi epoll ?</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-2); background: rgba(74,224,255,0.07); }
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-3);
+    background: rgba(192,132,252,0.08);
+    border: 1px solid rgba(192,132,252,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-3); }
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+  .header-desc code {
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-3);
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active {
+    background: rgba(192,132,252,0.1);
+    color: var(--accent-3);
+  }
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 10px;
+  }
+
+  /* MAIN */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* STEP SECTION */
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-3));
+  }
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-3));
+    margin-bottom: 0.3rem;
+  }
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* TWO / THREE COLUMN LAYOUT */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+    .progress-inner { overflow-x: auto; }
+  }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-3));
+    opacity: 0.6;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-3));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+  .panel p + p { margin-top: 0.8rem; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+  .panel p code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-3));
+    background: rgba(192,132,252,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .panel ul {
+    list-style: none;
+    margin-top: 0.8rem;
+  }
+  .panel ul li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+  .panel ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--step-color, var(--accent-3));
+    opacity: 0.6;
+  }
+  .panel ul li code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-3));
+    background: rgba(192,132,252,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .panel ul li strong { color: var(--text); font-weight: 500; }
+
+  /* ANALOGY PANEL */
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+  }
+  .analogy-icon { font-size: 2.5rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* CODE PANEL */
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-3));
+    background: rgba(192,132,252,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+  .kw  { color: #c084fc; }
+  .fn-name { color: #4ae0ff; }
+  .type { color: #4ade80; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; }
+  .var { color: #e8e6f0; }
+  .punct { color: #5c5a72; }
+  .ok   { color: #4ade80; }
+  .bad  { color: #ff6b4a; }
+  .highlight-line {
+    display: block;
+    background: rgba(74,224,255,0.06);
+    border-left: 2px solid var(--step-color, var(--accent-3));
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+
+  /* KEY POINTS */
+  .key-points {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .key-point {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .key-point code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-3);
+  }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  /* WARNING / INFO BOX */
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .warning strong { color: var(--accent-1); }
+  .warning code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-1);
+  }
+  .info-box {
+    background: rgba(192,132,252,0.04);
+    border: 1px solid rgba(192,132,252,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .info-box strong { color: var(--accent-3); }
+  .info-box code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-3);
+  }
+
+  /* COMPARISON TABLE */
+  .compare-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    font-family: 'Space Mono', monospace;
+  }
+  .compare-table th {
+    text-align: left;
+    padding: 0.8rem 1rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .compare-table th:nth-child(2) { color: var(--accent-1); }
+  .compare-table th:nth-child(3) { color: var(--accent-5); }
+  .compare-table th:nth-child(4) { color: var(--accent-4); }
+  .compare-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    line-height: 1.5;
+    font-size: 0.78rem;
+  }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table td:first-child {
+    color: var(--accent-3);
+    font-weight: 700;
+    font-size: 0.72rem;
+  }
+  .compare-table td code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent-3);
+    background: rgba(192,132,252,0.06);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .compare-table .cell-bad { color: var(--accent-1); }
+  .compare-table .cell-mid { color: var(--accent-5); }
+  .compare-table .cell-good { color: var(--accent-4); }
+
+  /* QUOTE BOX */
+  .quote-box {
+    border-left: 3px solid var(--accent-3);
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    background: rgba(192,132,252,0.03);
+    border-radius: 0 8px 8px 0;
+  }
+  .quote-box p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 0.3rem;
+  }
+  .quote-box cite {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* STEP DIVIDER */
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* VERDICT CARD */
+  .verdict-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .verdict-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-1), var(--accent-5), var(--accent-4));
+    opacity: 0.8;
+  }
+  .verdict-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+  .verdict-item {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .verdict-item:last-child { border-bottom: none; }
+  .verdict-icon { font-size: 1.3rem; flex-shrink: 0; }
+  .verdict-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+  }
+  .verdict-desc {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+    font-weight: 300;
+  }
+
+  /* SUMMARY SECTION */
+  .summary-section {
+    margin-top: 4rem;
+    padding: 3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-1), var(--accent-5), var(--accent-4), var(--accent-3));
+  }
+  .summary-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+  .summary-title em { font-style: italic; color: var(--accent-3); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card {
+    padding: 1.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  .summary-card-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--accent-3);
+    margin-bottom: 0.2rem;
+  }
+  .summary-card-desc { font-size: 0.8rem; color: var(--text-muted); }
+  .summary-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-3); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#probleme" class="step-pill active" id="nav-probleme">
+      <span class="step-dot"></span>Problème
+    </a>
+    <div class="step-connector"></div>
+    <a href="#select" class="step-pill" id="nav-select">
+      <span class="step-dot"></span>select
+    </a>
+    <div class="step-connector"></div>
+    <a href="#poll" class="step-pill" id="nav-poll">
+      <span class="step-dot"></span>poll
+    </a>
+    <div class="step-connector"></div>
+    <a href="#epoll" class="step-pill" id="nav-epoll">
+      <span class="step-dot"></span>epoll
+    </a>
+    <div class="step-connector"></div>
+    <a href="#comparaison" class="step-pill" id="nav-comparaison">
+      <span class="step-dot"></span>Tableau
+    </a>
+    <div class="step-connector"></div>
+    <a href="#verdict" class="step-pill" id="nav-verdict">
+      <span class="step-dot"></span>Verdict
+    </a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Contexte — I/O Multiplexing</div>
+  <h1>select vs poll vs epoll<br>Pourquoi choisir <em>epoll</em> ?</h1>
+  <p class="header-desc">
+    Trois mécanismes, trois époques, un seul gagnant pour un serveur web haute performance.
+    Comprendre leurs différences pour savoir pourquoi <code>epoll</code> est le choix évident sous Linux.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 1 : LE PROBLÈME      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="probleme" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Le problème</div>
+        <div class="step-subtitle">Pourquoi a-t-on besoin de multiplexing ?</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Le défi</div>
+        <p>
+          Un serveur web doit gérer <strong>des centaines de connexions simultanées</strong>.
+          Chaque connexion est un file descriptor (fd). Le serveur doit savoir <strong>lequel est prêt</strong>
+          pour une lecture ou une écriture — sans bloquer sur un seul fd et ignorer les autres.
+        </p>
+        <p>
+          Sans multiplexing, deux options : <strong>un thread par connexion</strong> (coûteux en mémoire, en context switches)
+          ou <strong>boucler en polling actif</strong> (brûle du CPU pour rien). Le multiplexing I/O résout ça :
+          un seul thread surveille tout.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🏨</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Tu gères un hôtel de 500 chambres. Tu dois savoir qui a besoin de room service.
+            Tu as trois stratégies : frapper à chaque porte (select), appeler chaque chambre au téléphone (poll),
+            ou installer un bouton d'appel dans chaque chambre (epoll).
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>« It must be non-blocking and use only 1 poll() (or equivalent) for all the I/O operations between the clients and the server (listen included). »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 2 : select()          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="select" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">select()</div>
+        <div class="step-subtitle">L'ancêtre — simple mais limité</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Comment ça marche</div>
+        <p>
+          <code>select()</code> prend trois <strong>bitmaps de fds</strong> (lecture, écriture, exception)
+          et attend qu'au moins un fd soit prêt. Le kernel parcourt <strong>tous les fds</strong> du bitmap
+          à chaque appel et modifie les sets en place pour indiquer les fds prêts.
+        </p>
+        <p>
+          Tu dois <strong>reconstruire les sets à chaque itération</strong> car select les modifie.
+          Et le nombre max de fds est fixé à <strong>FD_SETSIZE</strong> (typiquement <strong>1024</strong>).
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Les problèmes</div>
+        <ul>
+          <li><strong>Limite FD_SETSIZE = 1024</strong> — impossible de surveiller plus de fds sans recompiler</li>
+          <li><strong>Copie à chaque appel</strong> — les fd_set doivent être reconstruits car select les modifie</li>
+          <li><strong>Parcours linéaire O(n)</strong> — le kernel scanne tous les fds, même les inactifs</li>
+          <li><strong>Copie user ↔ kernel</strong> — les 3 sets sont copiés à chaque appel système</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">select_example.c</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">select()</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/select.h&gt;</span>
+
+<span class="cmt">// Prototype</span>
+<span class="type">int</span> <span class="fn-name">select</span>(<span class="type">int</span> <span class="var">nfds</span>,             <span class="cmt">// fd le plus élevé + 1</span>
+           <span class="type">fd_set</span> *<span class="var">readfds</span>,        <span class="cmt">// fds à surveiller en lecture</span>
+           <span class="type">fd_set</span> *<span class="var">writefds</span>,       <span class="cmt">// fds à surveiller en écriture</span>
+           <span class="type">fd_set</span> *<span class="var">exceptfds</span>,      <span class="cmt">// fds à surveiller pour exceptions</span>
+           <span class="kw">struct</span> <span class="type">timeval</span> *<span class="var">timeout</span> <span class="cmt">// timeout (NULL = bloquant)</span>
+);
+
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+<span class="cmt">// Usage typique dans une boucle :</span>
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+
+<span class="type">fd_set</span> <span class="var">master_set</span>, <span class="var">read_set</span>;
+<span class="fn-name">FD_ZERO</span>(&amp;<span class="var">master_set</span>);
+<span class="fn-name">FD_SET</span>(<span class="var">listen_fd</span>, &amp;<span class="var">master_set</span>);
+
+<span class="kw">while</span> (<span class="num">1</span>) {
+<span class="highlight-line">    <span class="var">read_set</span> = <span class="var">master_set</span>;  <span class="cmt">// ⚠️ OBLIGATOIRE : reconstruire à chaque tour !</span></span>
+
+    <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">select</span>(<span class="var">max_fd</span> + <span class="num">1</span>, &amp;<span class="var">read_set</span>, <span class="macro">NULL</span>, <span class="macro">NULL</span>, <span class="macro">NULL</span>);
+
+    <span class="cmt">// Parcourir TOUS les fds pour trouver les actifs</span>
+<span class="highlight-line">    <span class="kw">for</span> (<span class="type">int</span> <span class="var">fd</span> = <span class="num">0</span>; <span class="var">fd</span> &lt;= <span class="var">max_fd</span>; <span class="var">fd</span>++) {  <span class="cmt">// ⚠️ O(n) — on teste TOUT</span></span>
+        <span class="kw">if</span> (<span class="fn-name">FD_ISSET</span>(<span class="var">fd</span>, &amp;<span class="var">read_set</span>)) {
+            <span class="cmt">// fd est prêt en lecture</span>
+        }
+    }
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Piège classique :</strong> oublier de reconstruire le <code>fd_set</code> avant chaque appel à <code>select()</code>.
+        Les sets sont modifiés en place par le kernel — si tu ne les reconstruis pas, tu perds des fds de ta surveillance.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 3 : poll()            -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="poll" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">poll()</div>
+        <div class="step-subtitle">L'amélioration — sans la limite des 1024</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Comment ça marche</div>
+        <p>
+          <code>poll()</code> utilise un <strong>tableau de <code>struct pollfd</code></strong> au lieu de bitmaps.
+          Chaque entrée contient le fd, les événements à surveiller (<code>events</code>),
+          et les événements retournés (<code>revents</code>). Pas de limite sur le nombre de fds.
+        </p>
+        <p>
+          L'avantage sur select : <strong>pas de limite FD_SETSIZE</strong> et la structure est plus propre.
+          Le problème : le kernel <strong>parcourt encore linéairement</strong> tout le tableau à chaque appel — O(n).
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Mieux que select, mais...</div>
+        <ul>
+          <li><strong>Pas de limite de fds</strong> — le tableau est dynamique, tu le dimensionnes toi-même</li>
+          <li><strong>events / revents séparés</strong> — pas besoin de reconstruire le set, events n'est pas modifié</li>
+          <li><strong>Toujours O(n)</strong> — le kernel parcourt tout le tableau, même les fds inactifs</li>
+          <li><strong>Copie user ↔ kernel</strong> — tout le tableau est copié à chaque appel</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">poll_example.c</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">poll()</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;poll.h&gt;</span>
+
+<span class="cmt">// Prototype</span>
+<span class="type">int</span> <span class="fn-name">poll</span>(<span class="kw">struct</span> <span class="type">pollfd</span> *<span class="var">fds</span>,    <span class="cmt">// tableau de structures pollfd</span>
+         <span class="type">nfds_t</span> <span class="var">nfds</span>,              <span class="cmt">// nombre d'entrées dans le tableau</span>
+         <span class="type">int</span> <span class="var">timeout</span>               <span class="cmt">// timeout en ms (-1 = bloquant)</span>
+);
+
+<span class="kw">struct</span> <span class="type">pollfd</span> {
+    <span class="type">int</span>   <span class="var">fd</span>;         <span class="cmt">// file descriptor</span>
+    <span class="type">short</span> <span class="var">events</span>;     <span class="cmt">// événements demandés (POLLIN, POLLOUT...)</span>
+    <span class="type">short</span> <span class="var">revents</span>;    <span class="cmt">// événements retournés par le kernel</span>
+};
+
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+<span class="cmt">// Usage typique :</span>
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+
+<span class="kw">struct</span> <span class="type">pollfd</span> <span class="var">fds</span>[<span class="num">200</span>];
+<span class="var">fds</span>[<span class="num">0</span>].<span class="var">fd</span> = <span class="var">listen_fd</span>;
+<span class="var">fds</span>[<span class="num">0</span>].<span class="var">events</span> = <span class="macro">POLLIN</span>;
+<span class="type">int</span> <span class="var">nfds</span> = <span class="num">1</span>;
+
+<span class="kw">while</span> (<span class="num">1</span>) {
+    <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">poll</span>(<span class="var">fds</span>, <span class="var">nfds</span>, <span class="num">-1</span>);
+
+    <span class="cmt">// Parcourir TOUT le tableau pour trouver les actifs</span>
+<span class="highlight-line">    <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">nfds</span>; <span class="var">i</span>++) {       <span class="cmt">// ⚠️ O(n) — on teste TOUT</span></span>
+        <span class="kw">if</span> (<span class="var">fds</span>[<span class="var">i</span>].<span class="var">revents</span> &amp; <span class="macro">POLLIN</span>) {
+            <span class="cmt">// fds[i].fd est prêt en lecture</span>
+        }
+    }
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Le sujet 42 dit « poll() or equivalent ».</strong>
+        poll est mentionné par nom dans le PDF, mais on a le droit d'utiliser un « équivalent ».
+        <code>epoll</code> est cet équivalent — en mieux. C'est ce qu'on utilise.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 4 : epoll             -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="epoll" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">epoll</div>
+        <div class="step-subtitle">Le gagnant — O(1) et stateful</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Comment ça marche</div>
+        <p>
+          <code>epoll</code> est fondamentalement différent. Au lieu de passer la liste de fds à chaque appel,
+          tu <strong>enregistres les fds une seule fois</strong> via <code>epoll_ctl()</code>.
+          Le kernel maintient une <strong>liste interne</strong> (interest list) et une <strong>ready list</strong>.
+        </p>
+        <p>
+          Quand tu appelles <code>epoll_wait()</code>, le kernel retourne <strong>uniquement les fds actifs</strong>.
+          Pas de parcours linéaire, pas de copie de toute la liste, pas de reconstruction.
+          C'est <strong>O(1)</strong> par rapport au nombre total de fds surveillés.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Les avantages décisifs</div>
+        <ul>
+          <li><strong>O(1) par rapport à N</strong> — seuls les fds actifs sont retournés, pas parcourus</li>
+          <li><strong>Stateful</strong> — l'interest list persiste dans le kernel, pas de reconstruction</li>
+          <li><strong>Pas de copie complète</strong> — seuls les événements prêts sont copiés vers l'userspace</li>
+          <li><strong>Pas de limite</strong> — autant de fds que la mémoire le permet</li>
+          <li><strong>Edge-triggered</strong> — mode EPOLLET pour ne notifier que sur les changements d'état</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_example.c</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">epoll</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
+
+<span class="cmt">// 1. Créer l'instance (une seule fois)</span>
+<span class="type">int</span> <span class="var">epfd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);
+
+<span class="cmt">// 2. Enregistrer les fds (une seule fois par fd)</span>
+<span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+<span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">listen_fd</span>;
+<span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">listen_fd</span>, &amp;<span class="var">ev</span>);
+
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+<span class="cmt">// 3. La boucle événementielle :</span>
+<span class="cmt">// ──────────────────────────────────────────────────</span>
+
+<span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="num">64</span>];
+
+<span class="kw">while</span> (<span class="num">1</span>) {
+    <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="num">64</span>, <span class="num">-1</span>);
+
+<span class="highlight-line">    <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {            <span class="cmt">// ✅ seulement les fds ACTIFS</span></span>
+        <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span> == <span class="var">listen_fd</span>) {
+            <span class="cmt">// nouvelle connexion → accept()</span>
+        } <span class="kw">else</span> {
+            <span class="cmt">// client prêt → recv() / send()</span>
+        }
+    }
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="analogy-panel">
+        <div class="analogy-icon">🔔</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Pourquoi c'est mieux</div>
+          <p>
+            Avec select/poll, à chaque tour de boucle tu redonnes toute la liste et tu vérifies tout.
+            Avec epoll, tu enregistres une fois et le kernel te dit directement qui est prêt.
+            Sur 10 000 connexions dont 3 sont actives, select/poll vérifient 10 000 fds. epoll te donne les 3.
+          </p>
+        </div>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📊</div>
+        <div class="analogy-text">
+          <div class="analogy-label">En chiffres</div>
+          <p>
+            Avec 10 000 fds et 10 actifs par tour : select copie ~1.2 KB de bitmaps et scanne 10 000 bits.
+            poll copie ~80 KB de pollfd et scanne 10 000 entrées.
+            epoll retourne juste 10 events — ~120 octets. Le reste vit dans le kernel.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 5 : TABLEAU COMPARATIF -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="comparaison" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">Comparaison</div>
+        <div class="step-subtitle">Les trois côte à côte</div>
+      </div>
+    </div>
+
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Critère</th>
+            <th>select()</th>
+            <th>poll()</th>
+            <th>epoll</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Limite de fds</td>
+            <td class="cell-bad">FD_SETSIZE (1024)</td>
+            <td class="cell-mid">Aucune</td>
+            <td class="cell-good">Aucune</td>
+          </tr>
+          <tr>
+            <td>Complexité</td>
+            <td class="cell-bad">O(n) par appel</td>
+            <td class="cell-bad">O(n) par appel</td>
+            <td class="cell-good">O(1) amortie</td>
+          </tr>
+          <tr>
+            <td>Copie user↔kernel</td>
+            <td class="cell-bad">3 fd_set complets</td>
+            <td class="cell-bad">Tout le tableau pollfd</td>
+            <td class="cell-good">Seuls les events prêts</td>
+          </tr>
+          <tr>
+            <td>État persistant</td>
+            <td class="cell-bad">Non — reconstruire à chaque appel</td>
+            <td class="cell-mid">Partiel — revents remis à 0</td>
+            <td class="cell-good">Oui — interest list dans le kernel</td>
+          </tr>
+          <tr>
+            <td>Edge-triggered</td>
+            <td class="cell-bad">Non</td>
+            <td class="cell-bad">Non</td>
+            <td class="cell-good">Oui (EPOLLET)</td>
+          </tr>
+          <tr>
+            <td>Portabilité</td>
+            <td class="cell-good" style="color:var(--accent-4)">POSIX — partout</td>
+            <td class="cell-good" style="color:var(--accent-4)">POSIX — partout</td>
+            <td class="cell-mid" style="color:var(--accent-5)">Linux seulement</td>
+          </tr>
+          <tr>
+            <td>Header</td>
+            <td><code>sys/select.h</code></td>
+            <td><code>poll.h</code></td>
+            <td><code>sys/epoll.h</code></td>
+          </tr>
+          <tr>
+            <td>Apparu en</td>
+            <td>BSD 4.2 (1983)</td>
+            <td>SVR3 (1987)</td>
+            <td>Linux 2.5.44 (2002)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">la_difference_cle.c</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Le noeud du problème</span>
+      </div>
+      <pre><span class="cmt">// ═══════════════════════════════════════════════════</span>
+<span class="cmt">// La différence fondamentale en une ligne :</span>
+<span class="cmt">// ═══════════════════════════════════════════════════</span>
+
+<span class="cmt">// select / poll : à chaque tour de boucle</span>
+<span class="bad">// → "Kernel, voici mes 10 000 fds. Lesquels sont prêts ?"</span>
+<span class="bad">// → Le kernel copie la liste, la parcourt, retourne tout</span>
+<span class="bad">// → Tu re-parcours tout pour trouver les 3 actifs</span>
+
+<span class="cmt">// epoll : UNE seule fois (enregistrement)</span>
+<span class="ok">// → "Kernel, surveille ce fd." (× 10 000 au démarrage)</span>
+<span class="ok">// → Ensuite, à chaque tour :</span>
+<span class="ok">// → "Kernel, qui est prêt ?" → "Voici 3 fds."</span>
+<span class="ok">// → Zéro copie, zéro parcours inutile</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">🐌</span>
+        <span><strong>select/poll avec 10K fds :</strong> chaque tour copie et parcourt les 10 000 entrées, même si 3 sont actives.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">⚡</span>
+        <span><strong>epoll avec 10K fds :</strong> <code>epoll_wait</code> retourne directement les 3 fds actifs. Le reste vit tranquillement dans le kernel.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📈</span>
+        <span><strong>Scalabilité :</strong> plus tu as de connexions inactives (idle), plus l'avantage d'epoll est énorme.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 6 : VERDICT           -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="verdict" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">Verdict</div>
+        <div class="step-subtitle">Lequel choisir pour webserv ?</div>
+      </div>
+    </div>
+
+    <div class="verdict-card">
+      <div class="verdict-label" style="color: var(--accent-1)">Verdict par mécanisme</div>
+
+      <div class="verdict-item">
+        <div class="verdict-icon">🪦</div>
+        <div>
+          <div class="verdict-name" style="color: var(--accent-1)">select() — Non</div>
+          <div class="verdict-desc">
+            Limite à 1024 fds, copie de 3 sets à chaque itération, parcours linéaire.
+            Historique et pédagogique, mais obsolète pour un serveur web.
+            <strong>On ne l'utilise pas.</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="verdict-item">
+        <div class="verdict-icon">⚠️</div>
+        <div>
+          <div class="verdict-name" style="color: var(--accent-5)">poll() — Acceptable mais insuffisant</div>
+          <div class="verdict-desc">
+            Supprime la limite des 1024, structure plus propre.
+            Mais toujours O(n) à chaque appel — le kernel parcourt tout le tableau.
+            Utilisable pour un petit serveur, mais ne scale pas.
+          </div>
+        </div>
+      </div>
+
+      <div class="verdict-item">
+        <div class="verdict-icon">✅</div>
+        <div>
+          <div class="verdict-name" style="color: var(--accent-4)">epoll — Le bon choix</div>
+          <div class="verdict-desc">
+            O(1), stateful, edge-triggered disponible.
+            Le kernel fait le tri et ne te retourne que les fds actifs.
+            C'est <strong>le mécanisme conçu pour les serveurs haute performance sous Linux</strong>.
+            Nginx, HAProxy, Node.js — tout le monde utilise epoll.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">webserv_event_loop.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre choix pour webserv</span>
+      </div>
+      <pre><span class="cmt">// La boucle événementielle de notre webserv</span>
+<span class="cmt">// Un seul epoll_wait() pour TOUT : listen, clients, CGI pipes</span>
+
+<span class="type">int</span> <span class="var">epfd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);
+
+<span class="cmt">// Enregistrer les sockets d'écoute (un par port configuré)</span>
+<span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">num_servers</span>; <span class="var">i</span>++) {
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+    <span class="var">ev</span>.<span class="var">events</span> = <span class="macro">EPOLLIN</span>;
+    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">listen_fds</span>[<span class="var">i</span>];
+    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">listen_fds</span>[<span class="var">i</span>], &amp;<span class="var">ev</span>);
+}
+
+<span class="cmt">// La boucle principale — UN seul point de blocage</span>
+<span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="num">256</span>];
+<span class="kw">while</span> (<span class="var">running</span>) {
+<span class="highlight-line">    <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="num">256</span>, <span class="num">1000</span>);  <span class="cmt">// ← LE seul point bloquant</span></span>
+
+    <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
+        <span class="type">int</span> <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;
+
+        <span class="kw">if</span> (<span class="fn-name">is_listen_fd</span>(<span class="var">fd</span>))
+            <span class="fn-name">handle_new_connection</span>(<span class="var">epfd</span>, <span class="var">fd</span>);    <span class="cmt">// accept + epoll_ctl ADD</span>
+        <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>)
+            <span class="fn-name">handle_read</span>(<span class="var">fd</span>);                      <span class="cmt">// recv dans un buffer</span>
+        <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>)
+            <span class="fn-name">handle_write</span>(<span class="var">fd</span>);                     <span class="cmt">// send la réponse</span>
+    }
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Rappel du sujet :</strong> <code>epoll</code> est Linux-only.
+        Sur macOS, l'équivalent est <code>kqueue</code>. Sur les anciens Unix, c'est <code>/dev/poll</code>.
+        Pour le projet 42, on code sous Linux — donc <strong>epoll est le choix naturel</strong>.
+        Les serveurs portables (comme nginx) utilisent une couche d'abstraction pour supporter les deux.
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>« poll() (or equivalent) must monitor both reading and writing simultaneously. »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- RÉSUMÉ                         -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">Résumé <em>select vs poll vs epoll</em></div>
+    <div class="summary-subtitle">Trois mécanismes, un seul adapté à un serveur web Linux haute performance.</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">🪦</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-1)">select()</div>
+          <div class="summary-card-desc">Limité à 1024 fds, copie les sets, O(n). Historique. Ne pas utiliser.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">⚠️</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-5)">poll()</div>
+          <div class="summary-card-desc">Pas de limite de fds, mais toujours O(n) et copie du tableau entier.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">✅</div>
+        <div>
+          <div class="summary-card-fn" style="color:var(--accent-4)">epoll</div>
+          <div class="summary-card-desc">O(1), stateful, edge-triggered. Le choix pour webserv et tout serveur Linux.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — select vs poll vs epoll : pourquoi choisir epoll. eahmeti</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on navigation (back button + footer link)
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  // Animate sections on scroll
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+
+  // Update nav pills on scroll
+  const navIds = ['probleme','select','poll','epoll','comparaison','verdict'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+
+  sectionEls.forEach(s => s && navObserver.observe(s));
+
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

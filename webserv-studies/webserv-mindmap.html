@@ -919,6 +919,28 @@
     </div>
 
     <div class="concepts-grid">
+      <div class="card" data-page="02-io-multiplexing/select-poll-epoll.html" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
+        <span class="card-tag">Contexte</span>
+        <h3><a href="02-io-multiplexing/select-poll-epoll.html">Pourquoi epoll plutôt que poll ou select</a></h3>
+        <p>
+          <code>select()</code> est limité à 1024 fds et recopie les sets à chaque appel.
+          <code>poll()</code> supprime la limite mais parcourt linéairement tous les fds à chaque retour — O(n).
+          <code>epoll</code> (Linux) maintient une liste interne dans le kernel : <code>epoll_wait()</code> retourne directement
+          les fds actifs, en O(1). C'est le choix approprié pour un serveur web sous Linux avec de nombreuses connexions simultanées.
+        </p>
+        <div class="card-functions">
+          <span class="fn-tag">select()</span>
+          <span class="fn-tag">poll()</span>
+          <span class="fn-tag">epoll</span>
+          <span class="fn-tag">EPOLLET</span>
+          <span class="fn-tag">EPOLLONESHOT</span>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://man7.org/linux/man-pages/man7/epoll.7.html" target="_blank">man 7 epoll</a>
+          <a class="card-link" href="https://man7.org/linux/man-pages/man2/epoll_ctl.2.html" target="_blank">man 2 epoll_ctl</a>
+        </div>
+      </div>
+
       <div class="card" data-page="02-io-multiplexing/epoll.html" style="--card-accent: var(--accent-2); --card-accent-dim: var(--accent-2-dim);">
         <span class="card-tag">Mécanisme central</span>
         <h3><a href="02-io-multiplexing/epoll.html">epoll — Le surveillant événementiel</a></h3>
@@ -946,29 +968,9 @@
         </div>
       </div>
 
-      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
-        <span class="card-tag">Contexte</span>
-        <h3>Pourquoi epoll plutôt que poll ou select</h3>
-        <p>
-          <code>select()</code> est limité à 1024 fds et recopie les sets à chaque appel.
-          <code>poll()</code> supprime la limite mais parcourt linéairement tous les fds à chaque retour — O(n).
-          <code>epoll</code> (Linux) maintient une liste interne dans le kernel : <code>epoll_wait()</code> retourne directement
-          les fds actifs, en O(1). C'est le choix approprié pour un serveur web sous Linux avec de nombreuses connexions simultanées.
-        </p>
-        <div class="card-functions">
-          <span class="fn-tag">EPOLLET</span>
-          <span class="fn-tag">EPOLLONESHOT</span>
-          <span class="fn-tag">struct epoll_event</span>
-        </div>
-        <div class="card-links">
-          <a class="card-link" href="https://man7.org/linux/man-pages/man7/epoll.7.html" target="_blank">man 7 epoll</a>
-          <a class="card-link" href="https://man7.org/linux/man-pages/man2/epoll_ctl.2.html" target="_blank">man 2 epoll_ctl</a>
-        </div>
-      </div>
-
-      <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+      <div class="card" data-page="02-io-multiplexing/epoll-wait-before-io.html" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
         <span class="card-tag">Piège mortel</span>
-        <h3>La règle d'or : toujours epoll_wait() avant read/write</h3>
+        <h3><a href="02-io-multiplexing/epoll-wait-before-io.html">La règle d'or : toujours epoll_wait() avant read/write</a></h3>
         <p>
           Le sujet est catégorique : toute opération de lecture ou écriture sur un socket ou pipe
           DOIT être précédée d'une vérification de disponibilité via <code>epoll_wait()</code>.
@@ -981,9 +983,9 @@
         </div>
       </div>
 
-      <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+      <div class="card" data-page="02-io-multiplexing/event-loop.html" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
         <span class="card-tag">Concept</span>
-        <h3>La boucle événementielle (Event Loop)</h3>
+        <h3><a href="02-io-multiplexing/event-loop.html">La boucle événementielle (Event Loop)</a></h3>
         <p>
           L'architecture fondamentale : une boucle infinie qui appelle <code>epoll_wait()</code>, puis itère
           sur les événements retournés et exécute l'action appropriée (<code>accept()</code> pour le socket d'écoute,

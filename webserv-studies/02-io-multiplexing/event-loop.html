@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La boucle événementielle — Intégrer epoll dans le serveur</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  body::after { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; }
+
+  .header { padding: 3rem 2rem 2rem; max-width: 900px; margin: 0 auto; border-bottom: 1px solid var(--border); }
+  .back-link { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.5rem; border-radius: 6px; white-space: nowrap; transition: color 0.2s, background 0.2s; }
+  .back-link:hover { color: var(--accent-4); background: rgba(74,222,128,0.07); }
+  .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
+  .header-tag { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent-4); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 0.3rem 0.8rem; border-radius: 100px; display: inline-block; margin-bottom: 1.2rem; }
+  .header h1 { font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 400; line-height: 1.1; margin-bottom: 1rem; }
+  .header h1 em { font-style: italic; color: var(--accent-4); }
+  .header-desc { font-size: 1rem; color: var(--text-dim); font-weight: 300; max-width: 650px; line-height: 1.7; }
+  .header-desc code { font-family: 'Space Mono', monospace; color: var(--accent-4); }
+
+  .progress-bar { position: sticky; top: 0; z-index: 100; background: rgba(10,10,15,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; }
+  .progress-inner { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 0; overflow-x: auto; }
+  .step-pill { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.8rem; border-radius: 100px; font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); cursor: pointer; transition: all 0.3s; text-decoration: none; white-space: nowrap; }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(74,222,128,0.1); color: var(--accent-4); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 10px; }
+
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; }
+
+  .step-section { padding: 4rem 0 2rem; opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .step-section.visible { opacity: 1; transform: translateY(0); }
+  .step-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .step-number-badge { font-family: 'Instrument Serif', serif; font-size: 4rem; line-height: 1; opacity: 0.15; flex-shrink: 0; color: var(--step-color, var(--accent-4)); }
+  .step-fn { font-family: 'Space Mono', monospace; font-size: 1.4rem; font-weight: 700; color: var(--step-color, var(--accent-4)); margin-bottom: 0.3rem; }
+  .step-subtitle { font-family: 'Instrument Serif', serif; font-size: 1.8rem; font-weight: 400; color: var(--text); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .progress-inner { overflow-x: auto; } }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.8rem; position: relative; overflow: hidden; }
+  .panel::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--step-color, var(--accent-4)); opacity: 0.6; }
+  .panel-label { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--step-color, var(--accent-4)); margin-bottom: 1rem; opacity: 0.8; }
+  .panel p { font-size: 0.88rem; color: var(--text-dim); line-height: 1.75; font-weight: 300; }
+  .panel p + p { margin-top: 0.8rem; }
+  .panel p strong { color: var(--text); font-weight: 500; }
+  .panel p code { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--step-color, var(--accent-4)); background: rgba(74,222,128,0.06); padding: 0.1em 0.3em; border-radius: 3px; }
+  .panel ul { list-style: none; margin-top: 0.8rem; }
+  .panel ul li { font-size: 0.85rem; color: var(--text-dim); line-height: 1.75; font-weight: 300; padding-left: 1.2rem; position: relative; }
+  .panel ul li::before { content: '→'; position: absolute; left: 0; color: var(--step-color, var(--accent-4)); opacity: 0.6; }
+  .panel ul li code { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--step-color, var(--accent-4)); background: rgba(74,222,128,0.06); padding: 0.1em 0.3em; border-radius: 3px; }
+  .panel ul li strong { color: var(--text); font-weight: 500; }
+
+  .analogy-panel { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 1.8rem; display: flex; gap: 1.2rem; align-items: flex-start; }
+  .analogy-icon { font-size: 2.5rem; flex-shrink: 0; line-height: 1; margin-top: 0.1rem; }
+  .analogy-label { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--text-muted); margin-bottom: 0.5rem; }
+  .analogy-text p { font-family: 'Instrument Serif', serif; font-size: 1.05rem; font-style: italic; color: var(--text-dim); line-height: 1.7; }
+
+  .code-panel { background: #0d0d14; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem; }
+  .code-header { background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 0.7rem 1.2rem; display: flex; align-items: center; justify-content: space-between; }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.05em; }
+  .code-tag { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.2em; padding: 0.2rem 0.6rem; border-radius: 4px; }
+  pre { padding: 1.5rem; overflow-x: auto; font-family: 'Space Mono', monospace; font-size: 0.73rem; line-height: 1.8; color: #c9c7de; }
+  .kw { color: #c084fc; } .fn-name { color: #4ae0ff; } .type { color: #4ade80; }
+  .str { color: #facc15; } .num { color: #fb923c; } .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; } .var { color: #e8e6f0; } .punct { color: #5c5a72; }
+  .highlight-line { display: block; background: rgba(74,222,128,0.06); border-left: 2px solid var(--accent-4); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; }
+  .highlight-new { display: block; background: rgba(74,224,255,0.06); border-left: 2px solid var(--accent-2); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; }
+  .highlight-old { display: block; background: rgba(255,107,74,0.05); border-left: 2px solid rgba(255,107,74,0.3); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; text-decoration: line-through; opacity: 0.5; }
+
+  .key-points { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; margin-top: 1.5rem; }
+  .key-point { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
+  .key-point code { font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--accent-4); }
+  .key-point-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+  .warning { background: rgba(255,107,74,0.06); border: 1px solid rgba(255,107,74,0.2); border-radius: 10px; padding: 1.2rem 1.5rem; margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .warning strong { color: var(--accent-1); }
+  .warning code { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--accent-1); }
+  .info-box { background: rgba(74,222,128,0.04); border: 1px solid rgba(74,222,128,0.15); border-radius: 10px; padding: 1.2rem 1.5rem; margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .info-box strong { color: var(--accent-4); }
+  .info-box code { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--accent-4); }
+
+  .quote-box { border-left: 3px solid var(--accent-4); padding: 1.2rem 1.5rem; margin: 1.5rem 0; background: rgba(74,222,128,0.03); border-radius: 0 8px 8px 0; }
+  .quote-box p { font-family: 'Space Mono', monospace; font-size: 0.75rem; font-style: italic; color: var(--text-dim); line-height: 1.8; margin-bottom: 0.3rem; }
+  .quote-box cite { font-family: 'Space Mono', monospace; font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.05em; }
+
+  .step-divider { height: 1px; background: linear-gradient(to right, transparent, var(--border), transparent); margin: 1rem 0; }
+
+  .summary-section { margin-top: 4rem; padding: 3rem; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; position: relative; overflow: hidden; }
+  .summary-section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, var(--accent-4), var(--accent-2), var(--accent-3), var(--accent-1)); }
+  .summary-title { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; margin-bottom: 0.5rem; }
+  .summary-title em { font-style: italic; color: var(--accent-4); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+
+  .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); margin-top: 4rem; }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-4); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#avant" class="step-pill active" id="nav-avant"><span class="step-dot"></span>Avant</a>
+    <div class="step-connector"></div>
+    <a href="#main" class="step-pill" id="nav-main"><span class="step-dot"></span>main()</a>
+    <div class="step-connector"></div>
+    <a href="#accept" class="step-pill" id="nav-accept"><span class="step-dot"></span>accept</a>
+    <div class="step-connector"></div>
+    <a href="#handle" class="step-pill" id="nav-handle"><span class="step-dot"></span>handle</a>
+    <div class="step-connector"></div>
+    <a href="#cgi" class="step-pill" id="nav-cgi"><span class="step-dot"></span>CGI</a>
+    <div class="step-connector"></div>
+    <a href="#final" class="step-pill" id="nav-final"><span class="step-dot"></span>Code final</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Concept — I/O Multiplexing</div>
+  <h1>La boucle <em>événementielle</em><br>Intégrer epoll dans le serveur</h1>
+  <p class="header-desc">
+    On part du code <code>main.cpp</code> actuel — un serveur busy-wait qui brûle du CPU —
+    et on le transforme fonction par fonction en un serveur <strong>event-driven</strong> avec <code>epoll</code>.
+    Chaque étape montre l'avant, explique le pourquoi, puis montre l'après.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 1 : L'ÉTAT ACTUEL     -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="avant" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Le code actuel</div>
+        <div class="step-subtitle">Ce qui ne va pas — et pourquoi</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Le problème</div>
+        <p>
+          Le serveur actuel est <strong>non-bloquant</strong> (on a mis <code>O_NONBLOCK</code>),
+          mais il n'utilise pas <code>epoll</code>. Il tourne dans une boucle <code>while(true)</code>
+          qui appelle <code>accept()</code> en continu.
+        </p>
+        <p>
+          Quand personne ne se connecte, <code>accept()</code> retourne <code>EAGAIN</code>
+          et on re-boucle immédiatement. Le CPU tourne à <strong>100%</strong> pour rien.
+          C'est du <strong>busy-waiting</strong>.
+        </p>
+        <p>
+          De plus, <code>handle_client()</code> fait un <code>do/while</code> avec <code>recv()</code>
+          qui boucle sur <code>EAGAIN</code> — encore du busy-wait. Et on ne gère qu'<strong>un seul client à la fois</strong>.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Ce qu'on veut</div>
+        <ul>
+          <li><strong>0% CPU au repos</strong> — <code>epoll_wait()</code> dort quand rien ne se passe</li>
+          <li><strong>Plusieurs clients simultanés</strong> — pas de traitement séquentiel</li>
+          <li><strong>Jamais de recv/send sans epoll</strong> — respecter la règle du sujet</li>
+          <li><strong>Transition EPOLLIN → EPOLLOUT</strong> — lire la requête, puis envoyer la réponse</li>
+          <li><strong>Un seul point de blocage</strong> — <code>epoll_wait()</code> dans le main</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant — busy-wait</span>
+      </div>
+      <pre><span class="cmt">// La boucle actuelle — le problème est ici</span>
+
+<span class="kw">while</span> (<span class="num">true</span>) {
+<span class="highlight-old">    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>);  <span class="cmt">// ← EAGAIN en boucle = CPU 100%</span></span>
+<span class="highlight-old">    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span> || <span class="var">client_fd</span> == -<span class="num">2</span>)</span>
+<span class="highlight-old">        <span class="kw">continue</span>;                                 <span class="cmt">// ← on re-boucle immédiatement</span></span>
+<span class="highlight-old">    <span class="fn-name">handle_client</span>(<span class="var">client_fd</span>);                     <span class="cmt">// ← un seul client à la fois</span></span>
+}
+
+<span class="cmt">// Et dans handle_client() :</span>
+<span class="kw">do</span> {
+<span class="highlight-old">    <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">client_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
+<span class="highlight-old">} <span class="kw">while</span> (<span class="var">n</span> == -<span class="num">1</span> &amp;&amp; <span class="var">errno</span> == <span class="macro">EAGAIN</span>);   <span class="cmt">// ← busy-wait sur recv aussi !</span></span></pre>
+    </div>
+
+    <div class="quote-box">
+      <p>« It must be non-blocking and use only 1 poll() (or equivalent) for all the I/O operations between the clients and the server (listen included). »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 2 : MODIFIER main()   -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="main" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">main()</div>
+        <div class="step-subtitle">Créer epoll et construire la boucle</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Ce qu'on va modifier</div>
+      <p>
+        Le <code>main()</code> doit faire 3 choses nouvelles :
+      </p>
+      <ul>
+        <li><strong>Créer l'instance epoll</strong> — <code>epoll_create1(0)</code>, une seule fois au démarrage</li>
+        <li><strong>Enregistrer le listen_fd</strong> — <code>epoll_ctl(ADD)</code> avec <code>EPOLLIN</code> pour détecter les connexions entrantes</li>
+        <li><strong>Remplacer la boucle</strong> — <code>epoll_wait()</code> au lieu du <code>while(true)</code> + <code>accept()</code> direct</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp — main()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant</span>
+      </div>
+      <pre><span class="type">int</span> <span class="fn-name">main</span>() {
+    <span class="type">int</span> <span class="var">server_fd</span> = <span class="fn-name">create_server_socket</span>();
+    <span class="kw">if</span> (<span class="var">server_fd</span> == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
+
+    <span class="kw">if</span> (<span class="fn-name">bind_address</span>(<span class="var">server_fd</span>, <span class="macro">PORT</span>) == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
+
+    <span class="kw">if</span> (<span class="fn-name">listen</span>(<span class="var">server_fd</span>, <span class="macro">BACKLOG</span>) == -<span class="num">1</span>)
+        { <span class="fn-name">perror</span>(<span class="str">"listen"</span>); <span class="kw">return</span> <span class="num">1</span>; }
+
+    <span class="cmt">// Boucle busy-wait :</span>
+    <span class="kw">while</span> (<span class="num">true</span>) {
+        <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>);
+        <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span> || <span class="var">client_fd</span> == -<span class="num">2</span>) <span class="kw">continue</span>;
+        <span class="fn-name">handle_client</span>(<span class="var">client_fd</span>);
+    }
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp — main()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — avec epoll</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;csignal&gt;</span>
+
+<span class="kw">static const</span> <span class="type">int</span> <span class="macro">MAX_EVENTS</span> = <span class="num">64</span>;
+
+<span class="type">int</span> <span class="fn-name">main</span>() {
+<span class="highlight-new">    <span class="fn-name">signal</span>(<span class="macro">SIGPIPE</span>, <span class="macro">SIG_IGN</span>);  <span class="cmt">// ignorer SIGPIPE — send() sur socket fermé ne crash plus</span></span>
+
+    <span class="type">int</span> <span class="var">server_fd</span> = <span class="fn-name">create_server_socket</span>();
+    <span class="kw">if</span> (<span class="var">server_fd</span> == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
+    <span class="kw">if</span> (<span class="fn-name">bind_address</span>(<span class="var">server_fd</span>, <span class="macro">PORT</span>) == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
+    <span class="kw">if</span> (<span class="fn-name">listen</span>(<span class="var">server_fd</span>, <span class="macro">BACKLOG</span>) == -<span class="num">1</span>)
+        { <span class="fn-name">perror</span>(<span class="str">"listen"</span>); <span class="kw">return</span> <span class="num">1</span>; }
+
+    <span class="cmt">// ── NOUVEAU : créer l'instance epoll ──────────────────</span>
+<span class="highlight-new">    <span class="type">int</span> <span class="var">epfd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);</span>
+<span class="highlight-new">    <span class="kw">if</span> (<span class="var">epfd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"epoll_create1"</span>); <span class="kw">return</span> <span class="num">1</span>; }</span>
+
+    <span class="cmt">// ── NOUVEAU : enregistrer le listen_fd dans epoll ────</span>
+    <span class="cmt">// On veut être notifié quand un client se connecte (EPOLLIN)</span>
+<span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;</span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">server_fd</span>;</span>
+<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">server_fd</span>, &amp;<span class="var">ev</span>);</span>
+
+    <span class="cmt">// ── NOUVEAU : la boucle événementielle ───────────────</span>
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="macro">MAX_EVENTS</span>];
+
+    <span class="kw">while</span> (<span class="num">true</span>) {
+        <span class="cmt">// LE seul point de blocage — dort quand rien ne se passe</span>
+<span class="highlight-new">        <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, -<span class="num">1</span>);</span>
+
+        <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
+            <span class="type">int</span> <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;
+
+            <span class="kw">if</span> (<span class="var">fd</span> == <span class="var">server_fd</span>) {
+                <span class="cmt">// Connexion entrante → accept</span>
+                <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>, <span class="var">epfd</span>);
+            }
+            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>) {
+                <span class="cmt">// Client prêt en lecture → recv</span>
+                <span class="fn-name">handle_read</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
+            }
+            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>) {
+                <span class="cmt">// Client prêt en écriture → send</span>
+                <span class="fn-name">handle_write</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
+            }
+
+            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
+                <span class="cmt">// Erreur ou déconnexion → nettoyer</span>
+                <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+                <span class="fn-name">close</span>(<span class="var">fd</span>);
+            }
+        }
+    }
+}</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">💤</span>
+        <span><strong>epoll_wait(-1)</strong> dort indéfiniment s'il n'y a rien. 0% CPU au repos. Le kernel te réveille uniquement quand un fd est prêt.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🔀</span>
+        <span><strong>Un seul point de blocage.</strong> Avant, le blocage était dispersé (accept, recv). Maintenant tout passe par epoll_wait().</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">👥</span>
+        <span><strong>Plusieurs clients.</strong> epoll_wait() peut retourner plusieurs événements. On les traite tous dans la boucle for.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 3 : MODIFIER accept   -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="accept" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">accept_next_client()</div>
+        <div class="step-subtitle">Enregistrer le nouveau client dans epoll</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Ce qu'on va modifier</div>
+      <p>
+        L'ancienne fonction acceptait un client et le retournait. La nouvelle doit en plus :
+      </p>
+      <ul>
+        <li><strong>Enregistrer le client_fd dans epoll</strong> — <code>epoll_ctl(ADD, client_fd, EPOLLIN)</code></li>
+        <li><strong>Ne plus retourner le fd au main</strong> — c'est epoll qui le gérera désormais</li>
+        <li><strong>Supprimer le test EAGAIN</strong> — epoll garantit que accept() va réussir (il nous a dit EPOLLIN)</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp — accept_next_client()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant</span>
+      </div>
+      <pre><span class="type">int</span> <span class="fn-name">accept_next_client</span>(<span class="type">int</span> <span class="var">server_fd</span>) {
+    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
+    <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
+    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">server_fd</span>,
+                           (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
+    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span>) {
+        <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span>) <span class="kw">return</span> -<span class="num">2</span>;  <span class="cmt">// ← plus besoin de ça</span>
+        <span class="fn-name">perror</span>(<span class="str">"accept"</span>); <span class="kw">return</span> -<span class="num">1</span>;
+    }
+
+    <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>);
+    <span class="kw">return</span> <span class="var">client_fd</span>;  <span class="cmt">// ← retournait le fd au main</span>
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp — accept_next_client()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — avec epoll</span>
+      </div>
+      <pre><span class="cmt">// Nouvelle signature : on reçoit epfd pour enregistrer le client</span>
+<span class="type">void</span> <span class="fn-name">accept_next_client</span>(<span class="type">int</span> <span class="var">server_fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
+    <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
+    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">server_fd</span>,
+                           (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
+
+    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"accept"</span>); <span class="kw">return</span>; }
+
+    <span class="cmt">// Mettre en non-bloquant (identique à avant)</span>
+    <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>);
+
+    <span class="cmt">// ── NOUVEAU : enregistrer le client dans epoll ──────</span>
+    <span class="cmt">// On veut savoir quand le client envoie des données (EPOLLIN)</span>
+    <span class="cmt">// PAS de recv() ici ! On attend le prochain epoll_wait()</span>
+<span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;       <span class="cmt">// surveiller en lecture</span></span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;    <span class="cmt">// stocker le fd pour le retrouver</span></span>
+<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);</span>
+
+    std::cout &lt;&lt; <span class="str">"[+] client fd="</span> &lt;&lt; <span class="var">client_fd</span>
+              &lt;&lt; <span class="str">" from "</span> &lt;&lt; <span class="fn-name">inet_ntoa</span>(<span class="var">client_addr</span>.<span class="var">sin_addr</span>) &lt;&lt; <span class="str">"\n"</span>;
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Pourquoi pas de recv() ici ?</strong> Le client vient de se connecter (TCP handshake OK),
+        mais il n'a <strong>peut-être pas encore envoyé sa requête HTTP</strong>. On l'enregistre dans epoll
+        et on retourne dans la boucle. Quand le client enverra ses données, <code>epoll_wait()</code>
+        nous réveillera avec <code>EPOLLIN</code> sur ce fd.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 4 : handle_client     -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="handle" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">handle_client()</div>
+        <div class="step-subtitle">Séparer lecture et écriture</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le changement fondamental</div>
+      <p>
+        L'ancienne <code>handle_client()</code> faisait <strong>tout d'un coup</strong> :
+        recv + parse + send + close. C'est impossible avec epoll car on ne peut pas savoir
+        si <code>send()</code> va réussir immédiatement.
+      </p>
+      <p>
+        On doit <strong>séparer en deux fonctions</strong> :
+      </p>
+      <ul>
+        <li><strong><code>handle_read(fd, epfd)</code></strong> — appelée quand <code>EPOLLIN</code> arrive. Lit les données, prépare la réponse, puis passe le fd en <code>EPOLLOUT</code></li>
+        <li><strong><code>handle_write(fd, epfd)</code></strong> — appelée quand <code>EPOLLOUT</code> arrive. Envoie la réponse, puis ferme le fd</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp — handle_client()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant — tout d'un bloc</span>
+      </div>
+      <pre><span class="type">void</span> <span class="fn-name">handle_client</span>(<span class="type">int</span> <span class="var">client_fd</span>) {
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+    <span class="type">int</span> <span class="var">n</span>;
+
+    <span class="kw">do</span> {
+        <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">client_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);
+    } <span class="kw">while</span> (<span class="var">n</span> == -<span class="num">1</span> &amp;&amp; <span class="var">errno</span> == <span class="macro">EAGAIN</span>);  <span class="cmt">// busy-wait !</span>
+
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) { <span class="fn-name">close</span>(<span class="var">client_fd</span>); <span class="kw">return</span>; }
+    <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
+
+    <span class="kw">const char</span>* <span class="var">response</span> = <span class="str">"HTTP/1.1 200 OK\r\n..."</span>;
+    <span class="fn-name">send</span>(<span class="var">client_fd</span>, <span class="var">response</span>, <span class="fn-name">strlen</span>(<span class="var">response</span>), <span class="num">0</span>);  <span class="cmt">// sans vérifier EPOLLOUT !</span>
+    <span class="fn-name">close</span>(<span class="var">client_fd</span>);
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="analogy-panel">
+        <div class="analogy-icon">📥</div>
+        <div class="analogy-text">
+          <div class="analogy-label">handle_read — EPOLLIN</div>
+          <p>
+            Le client a envoyé des données. On les lit avec recv(). Quand la requête est complète,
+            on prépare la réponse et on passe en EPOLLOUT pour attendre que le buffer d'envoi soit prêt.
+          </p>
+        </div>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">📤</div>
+        <div class="analogy-text">
+          <div class="analogy-label">handle_write — EPOLLOUT</div>
+          <p>
+            Le kernel dit que le buffer d'envoi est prêt. On envoie la réponse avec send().
+            Si tout est envoyé, on ferme. Sinon, on attend le prochain EPOLLOUT pour le reste.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp — handle_read()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — lecture séparée</span>
+      </div>
+      <pre><span class="cmt">// La réponse HTTP — pour l'instant en dur, plus tard dynamique</span>
+<span class="kw">static const char</span>* <span class="macro">RESPONSE</span> =
+    <span class="str">"HTTP/1.1 200 OK\r\n"</span>
+    <span class="str">"Content-Type: text/html\r\n"</span>
+    <span class="str">"Content-Length: 22\r\n"</span>
+    <span class="str">"Connection: close\r\n"</span>
+    <span class="str">"\r\n"</span>
+    <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span>;
+
+<span class="type">void</span> <span class="fn-name">handle_read</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+
+    <span class="cmt">// epoll a confirmé EPOLLIN → recv() ne fera pas EAGAIN</span>
+<span class="highlight-new">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
+
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
+        <span class="cmt">// 0 = client déconnecté, -1 = erreur</span>
+        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+        <span class="fn-name">close</span>(<span class="var">fd</span>);
+        <span class="kw">return</span>;
+    }
+
+    <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
+    std::cout &lt;&lt; <span class="var">buf</span>;  <span class="cmt">// afficher la requête (debug)</span>
+
+    <span class="cmt">// Requête lue — maintenant on veut ENVOYER la réponse</span>
+    <span class="cmt">// On passe le fd de EPOLLIN → EPOLLOUT</span>
+<span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span>;  <span class="cmt">// maintenant on surveille l'écriture</span></span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;</span>
+<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);  <span class="cmt">// MOD, pas ADD (fd déjà enregistré)</span></span>
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp — handle_write()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Après — écriture séparée</span>
+      </div>
+      <pre><span class="type">void</span> <span class="fn-name">handle_write</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="cmt">// epoll a confirmé EPOLLOUT → le buffer d'envoi a de la place</span>
+<span class="highlight-new">    <span class="type">ssize_t</span> <span class="var">sent</span> = <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="macro">RESPONSE</span>, <span class="fn-name">strlen</span>(<span class="macro">RESPONSE</span>), <span class="num">0</span>);</span>
+
+    <span class="cmt">// Pour une réponse si petite (~ 100 octets), send() enverra tout d'un coup.</span>
+    <span class="cmt">// Pour des grosses réponses, il faudra gérer les envois partiels :</span>
+    <span class="cmt">// → sauvegarder l'offset, rester en EPOLLOUT, et reprendre au prochain tour.</span>
+
+    <span class="cmt">// Réponse envoyée — nettoyer</span>
+<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);  <span class="cmt">// retirer d'epoll</span></span>
+<span class="highlight-new">    <span class="fn-name">close</span>(<span class="var">fd</span>);                                  <span class="cmt">// fermer la connexion</span></span>
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>EPOLL_CTL_MOD, pas ADD !</strong> Le client_fd est <strong>déjà</strong> dans epoll (ajouté lors de l'accept).
+        On utilise <code>EPOLL_CTL_MOD</code> pour <strong>changer</strong> les événements surveillés
+        (de EPOLLIN à EPOLLOUT). <code>EPOLL_CTL_ADD</code> sur un fd déjà enregistré retournerait
+        <code>EEXIST</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 5 : CGI APERÇU        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="cgi" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">Et le CGI ?</div>
+        <div class="step-subtitle">Comment ça s'intègre — aperçu</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">On verra les détails plus tard — voici le principe</div>
+      <p>
+        Quand une requête déclenche un CGI (<code>fork()</code> + <code>execve()</code> d'un script Python/PHP),
+        le processus fils écrit sa sortie dans un <strong>pipe</strong>. Ce pipe est un fd comme un autre.
+      </p>
+      <p>
+        Le principe est identique aux sockets clients :
+      </p>
+      <ul>
+        <li><strong>Enregistrer le pipe dans epoll</strong> — <code>epoll_ctl(ADD, pipe_fd, EPOLLIN)</code></li>
+        <li><strong>Attendre EPOLLIN</strong> — quand le CGI produit de la sortie, epoll nous réveille</li>
+        <li><strong>Lire le pipe</strong> — <code>read(pipe_fd)</code> uniquement après EPOLLIN</li>
+        <li><strong>Transmettre au client</strong> — une fois la réponse CGI complète, passer le client_fd en EPOLLOUT</li>
+      </ul>
+      <p>
+        Le pipe du CGI est aussi en <strong>mode non-bloquant</strong>. Jamais de <code>read()</code>
+        sur un pipe sans que <code>epoll_wait()</code> l'ait confirmé. Même règle que pour les sockets.
+      </p>
+    </div>
+
+    <div class="info-box" style="border-color: rgba(192,132,252,0.15); background: rgba(192,132,252,0.04);">
+      <span>📌</span>
+      <div>
+        <strong style="color:var(--accent-3)">Le CGI aura son propre chapitre.</strong>
+        Pour l'instant, retiens juste : un pipe CGI se gère <strong>exactement comme un socket client</strong>
+        dans la boucle événementielle — enregistrer dans epoll, lire/écrire après notification, nettoyer à la fin.
+        La seule différence est <code>fork()</code> + <code>waitpid(WNOHANG)</code> pour le processus fils.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 6 : CODE FINAL        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="final" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">Code final</div>
+        <div class="step-subtitle">Le serveur complet avec epoll</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
+      <div class="panel-label">Ce qui a changé en résumé</div>
+      <ul>
+        <li><strong><code>create_server_socket()</code></strong> — inchangée (socket + SO_REUSEADDR + O_NONBLOCK)</li>
+        <li><strong><code>bind_address()</code></strong> — inchangée</li>
+        <li><strong><code>accept_next_client()</code></strong> — reçoit epfd, enregistre le client dans epoll avec EPOLLIN</li>
+        <li><strong><code>handle_client()</code></strong> — supprimée, remplacée par <code>handle_read()</code> et <code>handle_write()</code></li>
+        <li><strong><code>main()</code></strong> — crée epoll, enregistre listen_fd, boucle sur epoll_wait()</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Code final complet</span>
+      </div>
+      <pre><span class="macro">#include</span> <span class="str">&lt;sys/socket.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;arpa/inet.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;unistd.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;fcntl.h&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;csignal&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;cstring&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;cerrno&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;iostream&gt;</span>
+
+<span class="kw">static const</span> <span class="type">int</span> <span class="macro">PORT</span>       = <span class="num">8080</span>;
+<span class="kw">static const</span> <span class="type">int</span> <span class="macro">BACKLOG</span>    = <span class="num">10</span>;
+<span class="kw">static const</span> <span class="type">int</span> <span class="macro">MAX_EVENTS</span> = <span class="num">64</span>;
+
+<span class="kw">static const char</span>* <span class="macro">RESPONSE</span> =
+    <span class="str">"HTTP/1.1 200 OK\r\n"</span>
+    <span class="str">"Content-Type: text/html\r\n"</span>
+    <span class="str">"Content-Length: 22\r\n"</span>
+    <span class="str">"Connection: close\r\n"</span>
+    <span class="str">"\r\n"</span>
+    <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span>;
+
+<span class="cmt">// ── Crée le socket serveur (inchangé) ─────────────────</span>
+<span class="type">int</span> <span class="fn-name">create_server_socket</span>() {
+    <span class="type">int</span> <span class="var">fd</span> = <span class="fn-name">socket</span>(<span class="macro">AF_INET</span>, <span class="macro">SOCK_STREAM</span>, <span class="num">0</span>);
+    <span class="kw">if</span> (<span class="var">fd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"socket"</span>); <span class="kw">return</span> -<span class="num">1</span>; }
+
+    <span class="type">int</span> <span class="var">opt</span> = <span class="num">1</span>;
+    <span class="fn-name">setsockopt</span>(<span class="var">fd</span>, <span class="macro">SOL_SOCKET</span>, <span class="macro">SO_REUSEADDR</span>, &amp;<span class="var">opt</span>, <span class="kw">sizeof</span>(<span class="var">opt</span>));
+    <span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>);
+    <span class="kw">return</span> <span class="var">fd</span>;
+}
+
+<span class="cmt">// ── Bind IP:port (inchangé) ───────────────────────────</span>
+<span class="type">int</span> <span class="fn-name">bind_address</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">port</span>) {
+    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">addr</span>;
+    <span class="fn-name">memset</span>(&amp;<span class="var">addr</span>, <span class="num">0</span>, <span class="kw">sizeof</span>(<span class="var">addr</span>));
+    <span class="var">addr</span>.<span class="var">sin_family</span>      = <span class="macro">AF_INET</span>;
+    <span class="var">addr</span>.<span class="var">sin_port</span>        = <span class="fn-name">htons</span>(<span class="var">port</span>);
+    <span class="var">addr</span>.<span class="var">sin_addr</span>.<span class="var">s_addr</span> = <span class="macro">INADDR_ANY</span>;
+
+    <span class="kw">if</span> (<span class="fn-name">bind</span>(<span class="var">fd</span>, (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">addr</span>, <span class="kw">sizeof</span>(<span class="var">addr</span>)) == -<span class="num">1</span>)
+        { <span class="fn-name">perror</span>(<span class="str">"bind"</span>); <span class="kw">return</span> -<span class="num">1</span>; }
+    <span class="kw">return</span> <span class="num">0</span>;
+}
+
+<span class="cmt">// ── Accept : enregistre le client dans epoll ─────────</span>
+<span class="type">void</span> <span class="fn-name">accept_next_client</span>(<span class="type">int</span> <span class="var">server_fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
+    <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
+    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">server_fd</span>,
+                           (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
+    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"accept"</span>); <span class="kw">return</span>; }
+
+    <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>);
+
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;
+    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;
+    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);
+
+    std::cout &lt;&lt; <span class="str">"[+] client fd="</span> &lt;&lt; <span class="var">client_fd</span>
+              &lt;&lt; <span class="str">" from "</span> &lt;&lt; <span class="fn-name">inet_ntoa</span>(<span class="var">client_addr</span>.<span class="var">sin_addr</span>) &lt;&lt; <span class="str">"\n"</span>;
+}
+
+<span class="cmt">// ── Lecture : EPOLLIN → recv, puis passe en EPOLLOUT ──</span>
+<span class="type">void</span> <span class="fn-name">handle_read</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);
+
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
+        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+        <span class="fn-name">close</span>(<span class="var">fd</span>);
+        <span class="kw">return</span>;
+    }
+
+    <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
+    std::cout &lt;&lt; <span class="var">buf</span>;
+
+    <span class="cmt">// Passer de lecture → écriture</span>
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span>;
+    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;
+    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);
+}
+
+<span class="cmt">// ── Écriture : EPOLLOUT → send, puis close ───────────</span>
+<span class="type">void</span> <span class="fn-name">handle_write</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="macro">RESPONSE</span>, <span class="fn-name">strlen</span>(<span class="macro">RESPONSE</span>), <span class="num">0</span>);
+
+    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+    <span class="fn-name">close</span>(<span class="var">fd</span>);
+}
+
+<span class="cmt">// ── La boucle événementielle ─────────────────────────</span>
+<span class="type">int</span> <span class="fn-name">main</span>() {
+    <span class="fn-name">signal</span>(<span class="macro">SIGPIPE</span>, <span class="macro">SIG_IGN</span>);
+
+    <span class="type">int</span> <span class="var">server_fd</span> = <span class="fn-name">create_server_socket</span>();
+    <span class="kw">if</span> (<span class="var">server_fd</span> == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
+    <span class="kw">if</span> (<span class="fn-name">bind_address</span>(<span class="var">server_fd</span>, <span class="macro">PORT</span>) == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
+    <span class="kw">if</span> (<span class="fn-name">listen</span>(<span class="var">server_fd</span>, <span class="macro">BACKLOG</span>) == -<span class="num">1</span>)
+        { <span class="fn-name">perror</span>(<span class="str">"listen"</span>); <span class="kw">return</span> <span class="num">1</span>; }
+
+    <span class="cmt">// Créer epoll + enregistrer le listen socket</span>
+    <span class="type">int</span> <span class="var">epfd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);
+    <span class="kw">if</span> (<span class="var">epfd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"epoll_create1"</span>); <span class="kw">return</span> <span class="num">1</span>; }
+
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;
+    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">server_fd</span>;
+    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">server_fd</span>, &amp;<span class="var">ev</span>);
+
+    std::cout &lt;&lt; <span class="str">"Serveur sur http://localhost:"</span> &lt;&lt; <span class="macro">PORT</span> &lt;&lt; <span class="str">"\n"</span>;
+
+    <span class="cmt">// Boucle événementielle</span>
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="macro">MAX_EVENTS</span>];
+
+    <span class="kw">while</span> (<span class="num">true</span>) {
+<span class="highlight-line">        <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, -<span class="num">1</span>);</span>
+
+        <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
+            <span class="type">int</span> <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;
+
+            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
+                <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+                <span class="fn-name">close</span>(<span class="var">fd</span>);
+                <span class="kw">continue</span>;
+            }
+
+            <span class="kw">if</span> (<span class="var">fd</span> == <span class="var">server_fd</span>)
+                <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>, <span class="var">epfd</span>);
+            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>)
+                <span class="fn-name">handle_read</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
+            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>)
+                <span class="fn-name">handle_write</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
+        }
+    }
+
+    <span class="fn-name">close</span>(<span class="var">epfd</span>);
+    <span class="fn-name">close</span>(<span class="var">server_fd</span>);
+    <span class="kw">return</span> <span class="num">0</span>;
+}</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">💤</span>
+        <span><strong>0% CPU au repos.</strong> epoll_wait(-1) dort. Plus de busy-wait.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">👥</span>
+        <span><strong>Multi-clients.</strong> Chaque client est un fd dans epoll. Ils sont tous gérés en parallèle dans la même boucle.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">✅</span>
+        <span><strong>Règle respectée.</strong> Aucun recv/send sans epoll_wait() avant. Aucun errno vérifié après.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🔀</span>
+        <span><strong>Transition claire.</strong> EPOLLIN → recv → EPOLL_CTL_MOD(EPOLLOUT) → send → close. Le cycle de vie d'une requête.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- RÉSUMÉ                         -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">Résumé — La boucle <em>événementielle</em></div>
+    <div class="summary-subtitle">Le busy-wait est mort. Vive epoll.</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">🏗️</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">epoll_create1() + epoll_ctl(ADD, listen_fd)</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Au démarrage : créer l'instance epoll et enregistrer le socket d'écoute.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">🔁</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">epoll_wait() → dispatch par type d'événement</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">La boucle : dormir → réveillé par un événement → accept/recv/send selon le fd et l'événement.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">🔀</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">EPOLLIN → recv → EPOLL_CTL_MOD(EPOLLOUT) → send → close</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Le cycle de vie d'une requête : lire, changer de mode, écrire, fermer.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — La boucle événementielle. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['avant','main','accept','handle','cgi','final'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>
