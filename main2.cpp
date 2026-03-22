@@ -53,7 +53,10 @@ void accept_next_client(int server_fd, int epfd) {
 }
 
 void handle_recv(int fd, int epfd) {
+	char buf[4096];
+	std::string requests;
 
+	
 }
 
 void handle_send(int fd, int epfd) {

@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture complète — Du main() au close()</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ========== STICKY NAV (même style que mindmap) ========== */
+  .top-nav {
+    position: sticky;
+    top: 0;
+    z-index: 300;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+  }
+  .top-nav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    justify-content: center;
+  }
+  .nav-back {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.9rem 1.2rem 0.9rem 0;
+    border-bottom: 2px solid transparent;
+    border-right: 1px solid var(--border);
+    margin-right: 0.5rem;
+    white-space: nowrap;
+    transition: color 0.2s;
+    flex-shrink: 0;
+  }
+  .nav-back:hover { color: var(--accent-2); }
+  .nav-back span { opacity: 0.5; font-size: 0.75rem; }
+
+  /* nav items */
+  .nav-item {
+    padding: 1rem 1rem;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s;
+    white-space: nowrap;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    position: relative;
+  }
+  .nav-item:hover, .nav-item.active {
+    color: var(--accent-1);
+    border-bottom-color: var(--accent-1);
+  }
+  .nav-item .caret {
+    font-size: 0.45rem;
+    opacity: 0.5;
+    transition: transform 0.2s;
+  }
+  .nav-item:hover .caret { transform: rotate(180deg); opacity: 1; }
+
+  /* nav dropdown */
+  .nav-group {
+    position: relative;
+  }
+  .nav-dropdown {
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 0;
+    min-width: 230px;
+    background: rgba(12,12,20,0.98);
+    border: 1px solid var(--border-glow);
+    border-top: 2px solid var(--accent-1);
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 400;
+    backdrop-filter: blur(20px);
+    /* delay on hide so click registers */
+    transition-delay: 0s;
+  }
+  .nav-group:hover .nav-dropdown {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+  /* keep open briefly after mouse leaves */
+  .nav-group .nav-dropdown {
+    transition: opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s;
+  }
+  .nav-group:hover .nav-item {
+    color: var(--accent-1);
+    border-bottom-color: var(--accent-1);
+  }
+  .nav-dd-item {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.65rem 1.2rem;
+    text-decoration: none;
+    color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav-dd-item:last-child { border-bottom: none; }
+  .nav-dd-item:hover { background: rgba(255,107,74,0.06); color: var(--text); }
+  .nav-dd-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .nav-dd-fn {
+    color: var(--text);
+    min-width: 120px;
+  }
+  .nav-dd-sub {
+    color: var(--text-muted);
+    font-size: 0.55rem;
+  }
+
+  /* ========== PAGE HERO ========== */
+  .page-hero {
+    padding: 5rem 2rem 4rem;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: visible;
+    text-align: center;
+  }
+  /* glow gauche */
+  .page-hero::before {
+    content: '';
+    position: fixed;
+    width: 900px; height: 900px;
+    background: radial-gradient(circle, rgba(255,107,74,0.07) 0%, transparent 60%);
+    top: -300px; right: -250px;
+    pointer-events: none;
+    z-index: -1;
+  }
+  /* glow droit */
+  .page-hero::after {
+    content: '';
+    position: fixed;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(192,132,252,0.05) 0%, transparent 60%);
+    top: -100px; left: -200px;
+    pointer-events: none;
+    z-index: -1;
+  }
+  .page-hero-inner {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .page-hero-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-1);
+    background: rgba(255,107,74,0.08);
+    border: 1px solid rgba(255,107,74,0.2);
+    padding: 0.3rem 0.9rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.5rem;
+  }
+  .page-hero h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2.8rem, 6vw, 4.5rem);
+    font-weight: 400;
+    line-height: 1.05;
+    margin-bottom: 1.2rem;
+  }
+  .page-hero h1 em { font-style: italic; color: var(--accent-1); }
+  .page-hero-desc {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 560px;
+    line-height: 1.8;
+    margin: 0 auto;
+  }
+  .page-hero-meta {
+    display: flex;
+    gap: 2.5rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .page-hero-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+  }
+  .page-hero-meta-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%; flex-shrink: 0;
+  }
+
+  /* ========== MAP SECTION ========== */
+  .map-section {
+    padding: 4rem 2rem 4rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .map-section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  /* ========== FLOWCHART ========== */
+  .flowchart {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 0 1rem;
+  }
+
+  /* Node */
+  .node {
+    width: 100%;
+    max-width: 700px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.4rem 1.8rem;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    text-decoration: none;
+    display: block;
+    color: inherit;
+    overflow: hidden;
+  }
+  .node::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--node-color, var(--accent-1));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .node:hover {
+    border-color: var(--node-color, var(--accent-1));
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5), 0 0 20px var(--node-glow, rgba(255,107,74,0.08));
+  }
+  .node:hover::before { opacity: 1; }
+  .node-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--node-color, var(--accent-1));
+    opacity: 0.8;
+    margin-bottom: 0.3rem;
+  }
+  .node-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.3rem;
+    font-weight: 400;
+    margin-bottom: 0.25rem;
+  }
+  .node-desc {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    line-height: 1.5;
+  }
+  .node-code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    background: rgba(0,0,0,0.3);
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    margin-top: 0.6rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .node-hint {
+    position: absolute;
+    top: 1.2rem;
+    right: 1.4rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .node:hover .node-hint { opacity: 1; }
+
+  /* Arrow connector */
+  .arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.2rem 0;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .arrow-line {
+    width: 1px;
+    height: 22px;
+    background: linear-gradient(to bottom, var(--border-glow), var(--border));
+  }
+  .arrow-head { font-size: 0.7rem; line-height: 1; margin-top: -2px; }
+
+  /* Fork — visual branching with SVG lines */
+  .fork-wrapper {
+    width: 100%;
+    position: relative;
+  }
+  .fork-svg {
+    display: block;
+    width: 100%;
+    overflow: visible;
+  }
+  .fork-line {
+    stroke: var(--border-glow);
+    stroke-width: 1.5;
+    fill: none;
+  }
+  .fork-dot {
+    fill: var(--border-glow);
+  }
+  .fork-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 0.5rem 0 0;
+    width: 100%;
+  }
+  .fork-branches {
+    width: 100%;
+    display: grid;
+    gap: 1rem;
+    position: relative;
+  }
+  .fork-branches.cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .fork-branches .node {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100%;
+    border-left: 3px solid var(--node-color, var(--accent-1));
+  }
+  .fork-branches .node::before {
+    display: none;
+  }
+  .fork-merge-svg {
+    display: block;
+    width: 100%;
+    overflow: visible;
+  }
+
+  @media (max-width: 768px) {
+    .fork-branches.cols-3 {
+      grid-template-columns: 1fr;
+    }
+    .fork-svg, .fork-merge-svg {
+      display: none;
+    }
+    .fork-branches .node {
+      border-left: 3px solid var(--node-color, var(--accent-1));
+      border-top: none;
+    }
+  }
+
+  /* Hover dropdown on fork nodes */
+  .fork-node-wrap {
+    position: relative;
+  }
+  .fork-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--surface-2);
+    border: 1px solid var(--border-glow);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    padding: 0;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.3s ease,
+                padding 0.3s ease;
+    pointer-events: none;
+  }
+  .fork-node-wrap:hover .fork-dropdown {
+    max-height: 300px;
+    opacity: 1;
+    padding: 1rem 1.4rem;
+    pointer-events: auto;
+  }
+  .fork-node-wrap:hover .node {
+    border-radius: 12px 12px 0 0;
+    border-bottom-color: var(--border-glow);
+  }
+  .fork-dropdown-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    margin-bottom: 0.6rem;
+  }
+  .fork-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.45rem 0;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .fork-dropdown-item:last-child { border-bottom: none; }
+  .fork-dropdown-item:hover { color: var(--text); }
+  .fork-dropdown-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .fork-dropdown-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text);
+    min-width: 110px;
+  }
+  .fork-dropdown-desc {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+  }
+
+  /* Section label in flowchart */
+  .flow-section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.25em;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 1.8rem 0 0.6rem;
+    width: 100%;
+  }
+
+  /* ========== CHAPTERS ========== */
+  .chapters-hero {
+    text-align: center;
+    padding: 5rem 2rem 2rem;
+    border-top: 1px solid var(--border);
+    position: relative;
+  }
+  .chapters-hero::before {
+    content: '';
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(192,132,252,0.06) 0%, transparent 70%);
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .chapters-hero-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-3);
+    margin-bottom: 1rem;
+  }
+  .chapters-hero h2 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 400;
+    line-height: 1.1;
+  }
+  .chapters-hero h2 em { font-style: italic; color: var(--accent-3); }
+  .chapters-hero p {
+    font-size: 0.95rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    margin-top: 0.8rem;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .chapters {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+  .chapter {
+    padding: 5rem 0 3rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .chapter.visible { opacity: 1; transform: translateY(0); }
+  .chapter-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.2rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .chapter-num {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2.8rem;
+    line-height: 1;
+    opacity: 0.5;
+  }
+  .chapter-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+  .chapter-title em { font-style: italic; color: var(--accent-3); }
+  .chapter-sub {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    margin-top: 0.4rem;
+    line-height: 1.6;
+  }
+
+  /* Prose text */
+  .prose {
+    font-size: 0.92rem;
+    color: var(--text-dim);
+    line-height: 1.8;
+    font-weight: 300;
+    margin-bottom: 1.5rem;
+  }
+  .prose strong { color: var(--text); font-weight: 500; }
+  .prose code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--accent-2);
+  }
+
+  /* Code blocks */
+  .code-block {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 1.2rem 0;
+    width: 100%;
+  }
+  .code-header {
+    padding: 0.6rem 1rem;
+    background: var(--surface-3);
+    border-bottom: 1px solid var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .code-body {
+    padding: 1.2rem 1.4rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    line-height: 1.9;
+    color: var(--text-dim);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .kw { color: var(--accent-3); }
+  .fn { color: var(--accent-4); }
+  .str { color: var(--accent-5); }
+  .cm { color: var(--text-muted); }
+  .hl { color: var(--accent-2); }
+  .accent { color: var(--accent-1); }
+
+  /* Flow diagrams inside chapters */
+  .flow-inline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 1.5rem 0;
+    gap: 0;
+    width: 100%;
+  }
+  .flow-inline-step {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .flow-inline-step .fi-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-2);
+    white-space: nowrap;
+    min-width: 120px;
+  }
+  .flow-inline-step .fi-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+  .flow-inline .arrow-line { height: 14px; }
+
+  /* FN TAGS */
+  .fn-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 1rem;
+  }
+  .fn-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    background: var(--surface-3);
+    color: var(--text-dim);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* Boxes */
+  .warning-box {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+  }
+  .warning-box .icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .warning-box p { font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .warning-box strong { color: var(--accent-1); }
+
+  .info-box {
+    background: rgba(74,224,255,0.05);
+    border: 1px solid rgba(74,224,255,0.15);
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+  }
+  .info-box .icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .info-box p { font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .info-box code { font-family: 'Space Mono', monospace; color: var(--accent-2); font-size: 0.8rem; }
+
+  /* Quote */
+  .quote-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    margin: 2rem 0;
+    position: relative;
+  }
+  .quote-block::before {
+    content: '\201C';
+    font-family: 'Instrument Serif', serif;
+    font-size: 5rem;
+    color: var(--accent-1);
+    opacity: 0.15;
+    position: absolute;
+    top: -0.3rem;
+    left: 1rem;
+    line-height: 1;
+  }
+  .quote-block p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.15rem;
+    font-style: italic;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .quote-block cite {
+    display: block;
+    margin-top: 0.8rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    font-style: normal;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 3rem;
+  }
+  .footer p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  @media (max-width: 600px) {
+    .map-hero { padding: 4.5rem 1rem 3rem; }
+    .flowchart { max-width: 100%; }
+    .node { padding: 1rem 1.2rem; }
+    .chapters { padding: 0 1rem 4rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- STICKY NAV -->
+<nav class="top-nav">
+  <div class="top-nav-inner">
+
+    <a href="../webserv-mindmap.html" class="nav-back">
+      <span>&#8592;</span> Mindmap
+    </a>
+
+    <!-- ① Démarrage — dropdown -->
+    <div class="nav-group">
+      <a href="#ch-startup" class="nav-item">① Démarrage <span class="caret">▾</span></a>
+      <div class="nav-dropdown">
+        <a href="#ch-main" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-1);"></span>
+          <span class="nav-dd-fn">main()</span>
+          <span class="nav-dd-sub">point d'entrée</span>
+        </a>
+        <a href="#ch-config" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-3);"></span>
+          <span class="nav-dd-fn">Config::parse()</span>
+          <span class="nav-dd-sub">lit le .conf</span>
+        </a>
+      </div>
+    </div>
+
+    <a href="#ch-sockets" class="nav-item">② Sockets</a>
+
+    <!-- ③ Boucle — dropdown -->
+    <div class="nav-group">
+      <a href="#ch-loop" class="nav-item">③ Boucle <span class="caret">▾</span></a>
+      <div class="nav-dropdown">
+        <a href="#ch-epoll" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-3);"></span>
+          <span class="nav-dd-fn">epoll_wait()</span>
+          <span class="nav-dd-sub">le dispatcheur</span>
+        </a>
+        <a href="#ch-accept" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-2);"></span>
+          <span class="nav-dd-fn">accept()</span>
+          <span class="nav-dd-sub">nouvelle connexion</span>
+        </a>
+        <a href="#ch-epollin" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-1);"></span>
+          <span class="nav-dd-fn">EPOLLIN</span>
+          <span class="nav-dd-sub">lecture</span>
+        </a>
+        <a href="#ch-epollout" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-5);"></span>
+          <span class="nav-dd-fn">EPOLLOUT</span>
+          <span class="nav-dd-sub">envoi</span>
+        </a>
+      </div>
+    </div>
+
+    <a href="#ch-parsing" class="nav-item">④ Parsing</a>
+    <a href="#ch-routing" class="nav-item">⑤ Routing</a>
+
+    <!-- ⑥ Handlers — dropdown -->
+    <div class="nav-group">
+      <a href="#ch-handlers" class="nav-item">⑥ Handlers <span class="caret">▾</span></a>
+      <div class="nav-dropdown">
+        <a href="#ch-static" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-4);"></span>
+          <span class="nav-dd-fn">StaticHandler</span>
+          <span class="nav-dd-sub">fichier statique</span>
+        </a>
+        <a href="#ch-cgi" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-6);"></span>
+          <span class="nav-dd-fn">CgiHandler</span>
+          <span class="nav-dd-sub">fork + execve</span>
+        </a>
+        <a href="#ch-error" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-1);"></span>
+          <span class="nav-dd-fn">ErrorHandler</span>
+          <span class="nav-dd-sub">404 / 403 / 500</span>
+        </a>
+      </div>
+    </div>
+
+    <a href="#ch-response" class="nav-item">⑦ Réponse</a>
+    <a href="#ch-close" class="nav-item">⑧ Fermeture</a>
+
+  </div>
+</nav>
+
+<!-- PAGE HERO -->
+<div class="page-hero">
+  <div class="page-hero-inner">
+    <div class="page-hero-tag">07 — Architecture complète</div>
+    <h1>Le parcours d'une <em>requête</em></h1>
+    <p class="page-hero-desc">
+      Du moment où un client se connecte jusqu'à la fermeture du socket,
+      voici chaque étape que traverse ta requête dans le serveur.
+      Comprendre ce flux, c'est comprendre tout webserv.
+    </p>
+    <div class="page-hero-meta">
+      <div class="page-hero-meta-item">
+        <span class="page-hero-meta-dot" style="background:var(--accent-1);"></span>
+        8 étapes
+      </div>
+      <div class="page-hero-meta-item">
+        <span class="page-hero-meta-dot" style="background:var(--accent-4);"></span>
+        3 handlers
+      </div>
+      <div class="page-hero-meta-item">
+        <span class="page-hero-meta-dot" style="background:var(--accent-2);"></span>
+        main() → close()
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<!-- FLOWCHART SCHEMA                                                   -->
+<!-- ================================================================== -->
+<div class="map-section">
+  <div class="map-section-label">&#9660; Schéma du flux — clique sur un bloc pour voir le détail</div>
+
+  <div class="flowchart">
+
+    <!-- ① DÉMARRAGE -->
+    <div class="flow-section-label">① Démarrage</div>
+
+    <a href="#ch-startup" class="node" style="--node-color: var(--accent-1); --node-glow: rgba(255,107,74,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Point d'entrée</div>
+      <div class="node-title">main()</div>
+      <div class="node-desc">Lit argv[1], parse la config, crée le serveur, lance la boucle infinie.</div>
+      <div class="node-code">./webserv config.conf</div>
+    </a>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+
+    <a href="#ch-startup" class="node" style="--node-color: var(--accent-3); --node-glow: rgba(192,132,252,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Configuration</div>
+      <div class="node-title">Config::parse()</div>
+      <div class="node-desc">Lit le fichier .conf, construit les blocs server et location en mémoire.</div>
+      <div class="node-code">server { listen 8080; location / { root /var/www; } }</div>
+    </a>
+
+    <!-- ② SOCKETS -->
+    <div class="flow-section-label">② Création des sockets serveur</div>
+
+    <a href="#ch-sockets" class="node" style="--node-color: var(--accent-2); --node-glow: rgba(74,224,255,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Pour chaque bloc server</div>
+      <div class="node-title">Server::Server(port)</div>
+      <div class="node-desc">Crée un socket, l'attache au port, le rend non-bloquant, et l'enregistre dans epoll.</div>
+      <div class="node-code">socket() → bind() → listen() → fcntl(O_NONBLOCK) → epoll_ctl(ADD, EPOLLIN)</div>
+    </a>
+
+    <!-- ③ BOUCLE -->
+    <div class="flow-section-label">③ Boucle principale — tourne indéfiniment</div>
+
+    <div class="fork-node-wrap" style="max-width: 700px; width: 100%;">
+      <a href="#ch-loop" class="node" style="--node-color: var(--accent-3); --node-glow: rgba(192,132,252,0.1);">
+        <span class="node-hint">survole pour voir les 3 branches ↓</span>
+        <div class="node-label">Cœur du serveur</div>
+        <div class="node-title">epoll_wait() — le dispatcheur</div>
+        <div class="node-desc">Bloque jusqu'à ce qu'un fd soit prêt. Dispatche vers le bon handler selon le type de fd et l'événement.</div>
+        <div class="node-code">int n = epoll_wait(epfd, events, 64, -1);
+for (int i = 0; i &lt; n; i++) { dispatch(events[i]); }</div>
+      </a>
+      <div class="fork-dropdown">
+        <div class="fork-dropdown-title">Dispatche selon le type d'événement</div>
+        <a href="#ch-accept" class="fork-dropdown-item">
+          <span class="fork-dropdown-dot" style="background: var(--accent-2);"></span>
+          <span class="fork-dropdown-fn">fd == server_fd</span>
+          <span class="fork-dropdown-desc">→ accept() → nouveau client</span>
+        </a>
+        <a href="#ch-epollin" class="fork-dropdown-item">
+          <span class="fork-dropdown-dot" style="background: var(--accent-1);"></span>
+          <span class="fork-dropdown-fn">EPOLLIN</span>
+          <span class="fork-dropdown-desc">→ recv() → accumule → parse</span>
+        </a>
+        <a href="#ch-epollout" class="fork-dropdown-item">
+          <span class="fork-dropdown-dot" style="background: var(--accent-5);"></span>
+          <span class="fork-dropdown-fn">EPOLLOUT</span>
+          <span class="fork-dropdown-desc">→ send() → vide le buffer</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="fork-wrapper">
+      <svg class="fork-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="400" y1="0" x2="400" y2="15" class="fork-line"/>
+        <circle cx="400" cy="15" r="3" class="fork-dot"/>
+        <line x1="400" y1="15" x2="133" y2="15" class="fork-line"/>
+        <line x1="400" y1="15" x2="667" y2="15" class="fork-line"/>
+        <line x1="133" y1="15" x2="133" y2="50" class="fork-line"/>
+        <line x1="400" y1="15" x2="400" y2="50" class="fork-line"/>
+        <line x1="667" y1="15" x2="667" y2="50" class="fork-line"/>
+        <polygon points="130,46 133,52 136,46" class="fork-dot"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+        <polygon points="664,46 667,52 670,46" class="fork-dot"/>
+      </svg>
+      <div class="fork-branches cols-3">
+        <a href="#ch-loop" class="node" style="--node-color: var(--accent-2); --node-glow: rgba(74,224,255,0.1);">
+          <div class="node-label">Nouvelle connexion</div>
+          <div class="node-title">fd == server_fd</div>
+          <div class="node-desc">Un nouveau client frappe à la porte. On crée un fd pour lui.</div>
+          <div class="node-code">accept() → fcntl(O_NONBLOCK)
+→ epoll_ctl(ADD, EPOLLIN)</div>
+        </a>
+        <a href="#ch-loop" class="node" style="--node-color: var(--accent-1); --node-glow: rgba(255,107,74,0.1);">
+          <div class="node-label">Données à lire</div>
+          <div class="node-title">EPOLLIN</div>
+          <div class="node-desc">Le client envoie des données. On accumule et on attend \r\n\r\n.</div>
+          <div class="node-code">recv() → recvBuf += data
+si \r\n\r\n → parse</div>
+        </a>
+        <a href="#ch-loop" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1);">
+          <div class="node-label">Prêt à écrire</div>
+          <div class="node-title">EPOLLOUT</div>
+          <div class="node-desc">Le socket est prêt. On envoie le sendBuf et on efface ce qui est parti.</div>
+          <div class="node-code">send(sendBuf)
+sendBuf.erase(0, n)</div>
+        </a>
+      </div>
+      <svg class="fork-merge-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="133" y1="0" x2="133" y2="35" class="fork-line"/>
+        <line x1="400" y1="0" x2="400" y2="35" class="fork-line"/>
+        <line x1="667" y1="0" x2="667" y2="35" class="fork-line"/>
+        <line x1="133" y1="35" x2="667" y2="35" class="fork-line"/>
+        <circle cx="400" cy="35" r="3" class="fork-dot"/>
+        <line x1="400" y1="35" x2="400" y2="50" class="fork-line"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+      </svg>
+    </div>
+
+    <!-- ④ PARSING -->
+    <div class="flow-section-label">④ Parsing HTTP</div>
+
+    <a href="#ch-parsing" class="node" style="--node-color: var(--accent-4); --node-glow: rgba(74,222,128,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Texte brut → structure</div>
+      <div class="node-title">HttpRequest::parse(recvBuf)</div>
+      <div class="node-desc">Découpe la requête brute en champs exploitables : méthode, path, headers, body.</div>
+      <div class="node-code">"GET /img/a.png HTTP/1.1\r\nHost: localhost\r\n\r\n"
+→ method="GET"  path="/img/a.png"  headers={Host:localhost}</div>
+    </a>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+
+    <!-- ⑤ ROUTING -->
+    <div class="flow-section-label">⑤ Routing</div>
+
+    <div class="fork-node-wrap" style="max-width: 700px; width: 100%;">
+      <a href="#ch-routing" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1);">
+        <span class="node-hint">survole pour voir les 3 handlers ↓</span>
+        <div class="node-label">Longest prefix match</div>
+        <div class="node-title">Router::getHandler(req)</div>
+        <div class="node-desc">Trouve le bloc location qui matche le mieux. Vérifie la méthode. Retourne le bon handler.</div>
+        <div class="node-code">"/img/a.png" → location "/img" → root="/var/www/img" → new StaticHandler(root)</div>
+      </a>
+      <div class="fork-dropdown">
+        <div class="fork-dropdown-title">Retourne un handler selon le contexte</div>
+        <a href="#ch-static" class="fork-dropdown-item">
+          <span class="fork-dropdown-dot" style="background: var(--accent-4);"></span>
+          <span class="fork-dropdown-fn">StaticHandler</span>
+          <span class="fork-dropdown-desc">→ stat() + read() → fichier statique</span>
+        </a>
+        <a href="#ch-cgi" class="fork-dropdown-item">
+          <span class="fork-dropdown-dot" style="background: var(--accent-6);"></span>
+          <span class="fork-dropdown-fn">CgiHandler</span>
+          <span class="fork-dropdown-desc">→ fork() + execve() → script .py .php</span>
+        </a>
+        <a href="#ch-error" class="fork-dropdown-item">
+          <span class="fork-dropdown-dot" style="background: var(--accent-1);"></span>
+          <span class="fork-dropdown-fn">ErrorHandler</span>
+          <span class="fork-dropdown-desc">→ 404, 403, 405, 500</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="fork-wrapper">
+      <svg class="fork-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="400" y1="0" x2="400" y2="15" class="fork-line"/>
+        <circle cx="400" cy="15" r="3" class="fork-dot"/>
+        <line x1="400" y1="15" x2="133" y2="15" class="fork-line"/>
+        <line x1="400" y1="15" x2="667" y2="15" class="fork-line"/>
+        <line x1="133" y1="15" x2="133" y2="50" class="fork-line"/>
+        <line x1="400" y1="15" x2="400" y2="50" class="fork-line"/>
+        <line x1="667" y1="15" x2="667" y2="50" class="fork-line"/>
+        <polygon points="130,46 133,52 136,46" class="fork-dot"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+        <polygon points="664,46 667,52 670,46" class="fork-dot"/>
+      </svg>
+      <div class="fork-branches cols-3">
+        <a href="#ch-handlers" class="node" style="--node-color: var(--accent-4); --node-glow: rgba(74,222,128,0.1);">
+          <div class="node-label">Fichier statique</div>
+          <div class="node-title">StaticHandler</div>
+          <div class="node-desc">Vérifie existence + permissions, lit le fichier, le met dans la réponse.</div>
+          <div class="node-code">stat() → open() + read()
+→ res.setBody()</div>
+        </a>
+        <a href="#ch-handlers" class="node" style="--node-color: var(--accent-6); --node-glow: rgba(244,114,182,0.1);">
+          <div class="node-label">Script dynamique</div>
+          <div class="node-title">CgiHandler</div>
+          <div class="node-desc">Fork un processus fils, exécute le script, récupère sa sortie via un pipe.</div>
+          <div class="node-code">pipe() + fork()
+→ execve(script) → body</div>
+        </a>
+        <a href="#ch-handlers" class="node" style="--node-color: var(--accent-1); --node-glow: rgba(255,107,74,0.1);">
+          <div class="node-label">Erreur</div>
+          <div class="node-title">ErrorHandler</div>
+          <div class="node-desc">404, 403, 405, 500 — page d'erreur custom ou par défaut.</div>
+          <div class="node-code">res.setStatus(404)
+→ page custom ou défaut</div>
+        </a>
+      </div>
+      <svg class="fork-merge-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="133" y1="0" x2="133" y2="35" class="fork-line"/>
+        <line x1="400" y1="0" x2="400" y2="35" class="fork-line"/>
+        <line x1="667" y1="0" x2="667" y2="35" class="fork-line"/>
+        <line x1="133" y1="35" x2="667" y2="35" class="fork-line"/>
+        <circle cx="400" cy="35" r="3" class="fork-dot"/>
+        <line x1="400" y1="35" x2="400" y2="50" class="fork-line"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+      </svg>
+    </div>
+
+    <!-- ⑥ RESPONSE -->
+    <div class="flow-section-label">⑥ Construction de la réponse</div>
+
+    <a href="#ch-response" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Sérialisation</div>
+      <div class="node-title">HttpResponse::build() → sendBuf</div>
+      <div class="node-desc">Assemble status line + headers + body. Met le tout dans sendBuf. Passe le fd en EPOLLOUT.</div>
+      <div class="node-code">"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 42\r\n\r\n&lt;html&gt;..."</div>
+    </a>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+
+    <!-- ⑦ FERMETURE -->
+    <div class="flow-section-label">⑦ Fermeture</div>
+
+    <a href="#ch-close" class="node" style="--node-color: var(--text-muted); --node-glow: rgba(92,90,114,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Nettoyage</div>
+      <div class="node-title">close_client(fd)</div>
+      <div class="node-desc">sendBuf vide, erreur réseau, ou client déconnecté (recv=0).</div>
+      <div class="node-code">epoll_ctl(DEL, fd) → close(fd) → clients.erase(fd)</div>
+    </a>
+
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<!-- CHAPITRES DÉTAILLÉS                                                -->
+<!-- ================================================================== -->
+<div class="chapters-hero">
+  <div class="chapters-hero-tag">Chapitres détaillés</div>
+  <h2>Chaque étape, <em>en profondeur</em></h2>
+  <p>Le code conseillé, les pièges à éviter, et les explications pour chaque bloc du schéma ci-dessus.</p>
+</div>
+
+<div class="chapters">
+
+  <!-- ========== CHAPITRE 0 : STARTUP ========== -->
+  <section class="chapter" id="ch-startup">
+    <div id="ch-main" style="scroll-margin-top: 80px;"></div>
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-1);">0</span>
+      <div>
+        <h2 class="chapter-title"><em>Démarrage</em> du serveur</h2>
+        <p class="chapter-sub">
+          Le point d'entrée. Le programme lit le fichier de configuration,
+          construit toutes les structures en mémoire, puis lance la boucle infinie.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Le programme prend un seul argument : le chemin vers le fichier <code>.conf</code>.
+      Il ignore <strong>SIGPIPE</strong> pour éviter de crash quand un client se déconnecte pendant un send.
+      Ensuite il parse la config, crée le serveur, et lance la boucle. C'est tout.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">main.cpp</div>
+      <div class="code-body"><span class="kw">int</span> <span class="fn">main</span>(<span class="kw">int</span> argc, <span class="kw">char</span>* argv[]) {
+    <span class="fn">signal</span>(SIGPIPE, SIG_IGN);       <span class="cm">// évite le crash sur write à un client mort</span>
+    Config  cfg(argv[1]);           <span class="cm">// parse tout le fichier .conf</span>
+    Webserv serv(cfg);              <span class="cm">// crée les sockets + epoll</span>
+    serv.<span class="fn">run</span>();                     <span class="cm">// boucle infinie — ne retourne jamais</span>
+    <span class="kw">return</span> <span class="hl">0</span>;
+}</div>
+    </div>
+
+    <div id="ch-config" style="scroll-margin-top: 80px;"></div>
+    <p class="prose">
+      Le parser de config lit le fichier <code>.conf</code> et construit un arbre de blocs <code>server</code>,
+      chacun contenant ses blocs <code>location</code>. Chaque server a un port, un host,
+      des limites de body, et chaque location définit les méthodes autorisées, le root, l'index, le CGI.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Structures de configuration — ce qu'il faut stocker</div>
+      <div class="code-body"><span class="kw">struct</span> <span class="hl">Location</span> {
+    std::string              path;       <span class="cm">// "/static"</span>
+    std::string              root;       <span class="cm">// "/var/www"</span>
+    std::vector&lt;std::string&gt; methods;   <span class="cm">// ["GET","POST"]</span>
+    <span class="kw">bool</span>                     autoindex;  <span class="cm">// listing de dossier</span>
+    std::string              index;      <span class="cm">// "index.html"</span>
+    std::string              cgi_ext;    <span class="cm">// ".py"</span>
+};
+
+<span class="kw">struct</span> <span class="hl">ServerBlock</span> {
+    <span class="kw">int</span>                    port;        <span class="cm">// 8080</span>
+    std::string            host;        <span class="cm">// "localhost"</span>
+    std::string            server_name; <span class="cm">// "example.com"</span>
+    size_t                 max_body;    <span class="cm">// client_max_body_size</span>
+    std::vector&lt;Location&gt;  locations;
+};</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">💡</span>
+      <p>
+        <strong>Pourquoi c'est important :</strong> toute la logique du serveur dépend de la config.
+        Si ton parser est bancal, les routes ne matcheront pas, les méthodes seront mal filtrées,
+        et le CGI ne se lancera pas. C'est la fondation de tout.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 1 : SOCKETS ========== -->
+  <section class="chapter" id="ch-sockets">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-2);">1</span>
+      <div>
+        <h2 class="chapter-title">Création des <em>sockets</em> serveur</h2>
+        <p class="chapter-sub">
+          Pour chaque bloc server dans la config, on crée un socket d'écoute.
+          C'est la porte d'entrée par laquelle les clients viendront frapper.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Chaque bloc <code>server { listen 8080; }</code> dans la config crée son propre socket.
+      Le flow est toujours le même : créer le fd, activer la réutilisation d'adresse,
+      l'attacher au port, activer l'écoute, passer en non-bloquant, et l'enregistrer dans epoll.
+    </p>
+
+    <div class="flow-inline">
+      <div class="flow-inline-step"><span class="fi-name">socket()</span><span class="fi-desc">crée le file descriptor</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">setsockopt()</span><span class="fi-desc">SO_REUSEADDR — relancer sans attendre que le port se libère</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">bind()</span><span class="fi-desc">attache le socket au port choisi</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">listen()</span><span class="fi-desc">active l'écoute, backlog = 10 connexions en file</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">fcntl()</span><span class="fi-desc">O_NONBLOCK — indispensable pour ne jamais bloquer</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">epoll_ctl()</span><span class="fi-desc">ADD + EPOLLIN — surveille les connexions entrantes</span></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">Server::Server(port) — création du socket</div>
+      <div class="code-body"><span class="fn">Server</span>::Server(<span class="kw">int</span> port) {
+    _fd = <span class="fn">socket</span>(AF_INET, SOCK_STREAM, <span class="hl">0</span>);
+
+    <span class="kw">int</span> opt = <span class="hl">1</span>;
+    <span class="fn">setsockopt</span>(_fd, SOL_SOCKET, SO_REUSEADDR, &amp;opt, <span class="kw">sizeof</span>(opt));
+    <span class="fn">fcntl</span>(_fd, F_SETFL, <span class="fn">fcntl</span>(_fd, F_GETFL) | O_NONBLOCK);
+
+    <span class="kw">struct</span> sockaddr_in addr;
+    <span class="fn">memset</span>(&amp;addr, <span class="hl">0</span>, <span class="kw">sizeof</span>(addr));
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = <span class="fn">htons</span>(port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    <span class="fn">bind</span>(_fd, (<span class="kw">struct</span> sockaddr*)&amp;addr, <span class="kw">sizeof</span>(addr));
+    <span class="fn">listen</span>(_fd, <span class="hl">10</span>);
+}</div>
+    </div>
+
+    <p class="prose">
+      Ensuite on crée <strong>une seule instance epoll</strong> pour tout le serveur.
+      Chaque socket serveur est enregistré avec <code>EPOLLIN</code> :
+      "préviens-moi quand un client essaie de se connecter".
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Webserv::init() — epoll + enregistrement des serveurs</div>
+      <div class="code-body">_epfd = <span class="fn">epoll_create1</span>(<span class="hl">0</span>);
+
+<span class="kw">for</span> (size_t i = <span class="hl">0</span>; i &lt; cfg.<span class="fn">servers</span>().<span class="fn">size</span>(); i++) {
+    Server* s = <span class="kw">new</span> <span class="fn">Server</span>(cfg.<span class="fn">servers</span>()[i].port);
+
+    <span class="kw">struct</span> epoll_event ev;
+    ev.events  = EPOLLIN;
+    ev.data.fd = s-&gt;<span class="fn">fd</span>();
+    <span class="fn">epoll_ctl</span>(_epfd, EPOLL_CTL_ADD, s-&gt;<span class="fn">fd</span>(), &amp;ev);
+}</div>
+    </div>
+
+    <div class="fn-tags">
+      <span class="fn-tag">socket()</span>
+      <span class="fn-tag">setsockopt()</span>
+      <span class="fn-tag">bind()</span>
+      <span class="fn-tag">listen()</span>
+      <span class="fn-tag">fcntl()</span>
+      <span class="fn-tag">epoll_create1()</span>
+      <span class="fn-tag">epoll_ctl()</span>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">⚠️</span>
+      <p>
+        <strong>Piège classique :</strong> oublier <code>O_NONBLOCK</code> sur le socket serveur.
+        Si un client initie la connexion TCP puis ne finit pas le handshake, <code>accept()</code>
+        bloquera tout le serveur indéfiniment. Toujours non-bloquant.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 2 : BOUCLE ========== -->
+  <section class="chapter" id="ch-loop">
+    <div id="ch-epoll" style="scroll-margin-top: 80px;"></div>
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-3);">2</span>
+      <div>
+        <h2 class="chapter-title">La boucle <em>principale</em></h2>
+        <p class="chapter-sub">
+          Le cœur battant du serveur. epoll_wait() bloque jusqu'à ce qu'un événement
+          se produise, puis dispatche vers le bon handler.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      À chaque tour de boucle, <code>epoll_wait()</code> retourne la liste des fds prêts.
+      Pour chaque fd, on regarde : est-ce un socket serveur ? (nouvelle connexion)
+      Est-ce un client avec <code>EPOLLIN</code> ? (données à lire) <code>EPOLLOUT</code> ? (prêt à écrire).
+      C'est un aiguillage — rien de plus.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Webserv::run() — la boucle infinie</div>
+      <div class="code-body"><span class="kw">void</span> Webserv::<span class="fn">run</span>() {
+    <span class="kw">struct</span> epoll_event events[<span class="hl">64</span>];
+    <span class="kw">while</span> (<span class="kw">true</span>) {
+        <span class="kw">int</span> n = <span class="fn">epoll_wait</span>(_epfd, events, <span class="hl">64</span>, -<span class="hl">1</span>);
+        <span class="kw">for</span> (<span class="kw">int</span> i = <span class="hl">0</span>; i &lt; n; i++) {
+            <span class="kw">int</span> fd = events[i].data.fd;
+
+            <span class="cm">// Erreur ou déconnexion brutale ?</span>
+            <span class="kw">if</span> (events[i].events &amp; (EPOLLHUP | EPOLLERR)) {
+                <span class="fn">_closeClient</span>(fd); <span class="kw">continue</span>;
+            }
+            <span class="cm">// Nouvelle connexion sur un socket serveur ?</span>
+            <span class="kw">if</span> (<span class="fn">_isServerFd</span>(fd))
+                <span class="fn">_acceptClient</span>(fd);
+            <span class="cm">// Données à lire d'un client existant ?</span>
+            <span class="kw">else if</span> (events[i].events &amp; EPOLLIN)
+                <span class="fn">_handleRecv</span>(fd);
+            <span class="cm">// Prêt à envoyer la réponse au client ?</span>
+            <span class="kw">else if</span> (events[i].events &amp; EPOLLOUT)
+                <span class="fn">_handleSend</span>(fd);
+        }
+    }
+}</div>
+    </div>
+
+    <div id="ch-accept" style="scroll-margin-top: 80px;"></div>
+    <p class="prose">
+      <strong>Quand fd == server_fd :</strong> un nouveau client arrive.
+      <code>accept()</code> crée un nouveau fd dédié à ce client.
+      On le met en non-bloquant et on l'enregistre dans epoll pour surveiller ses données.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">_acceptClient() — nouvelle connexion</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">_acceptClient</span>(<span class="kw">int</span> server_fd) {
+    <span class="kw">struct</span> sockaddr_in addr;
+    socklen_t len = <span class="kw">sizeof</span>(addr);
+
+    <span class="kw">int</span> cfd = <span class="fn">accept</span>(server_fd, (<span class="kw">struct</span> sockaddr*)&amp;addr, &amp;len);
+    <span class="kw">if</span> (cfd == -<span class="hl">1</span>) <span class="kw">return</span>;
+
+    <span class="cm">// Non-bloquant obligatoire</span>
+    <span class="fn">fcntl</span>(cfd, F_SETFL, <span class="fn">fcntl</span>(cfd, F_GETFL) | O_NONBLOCK);
+
+    <span class="cm">// Stocker le client</span>
+    _clients.<span class="fn">insert</span>(std::make_pair(cfd, <span class="fn">Client</span>(cfd)));
+
+    <span class="cm">// Surveiller ses données entrantes</span>
+    <span class="kw">struct</span> epoll_event ev;
+    ev.events  = EPOLLIN;
+    ev.data.fd = cfd;
+    <span class="fn">epoll_ctl</span>(_epfd, EPOLL_CTL_ADD, cfd, &amp;ev);
+}</div>
+    </div>
+
+    <p class="prose">
+      <div id="ch-epollin" style="display:inline; scroll-margin-top: 80px;"></div><strong>Quand EPOLLIN sur un client :</strong> le client a envoyé des données.
+      On lit avec <code>recv()</code> et on accumule dans un buffer.
+      On ne parse qu'une fois le marqueur <code>\r\n\r\n</code> trouvé (fin des headers).
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">_handleRecv() — accumulation des données</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">_handleRecv</span>(<span class="kw">int</span> fd) {
+    Client&amp; c = _clients[fd];
+    <span class="kw">char</span> buf[<span class="hl">4096</span>];
+    ssize_t n = <span class="fn">recv</span>(fd, buf, <span class="kw">sizeof</span>(buf) - <span class="hl">1</span>, <span class="hl">0</span>);
+
+    <span class="kw">if</span> (n &lt;= <span class="hl">0</span>) {
+        <span class="fn">_closeClient</span>(fd); <span class="kw">return</span>;    <span class="cm">// client déconnecté ou erreur</span>
+    }
+    buf[n] = <span class="str">'\0'</span>;
+    c.<span class="fn">recvBuf</span>() += buf;              <span class="cm">// accumule les morceaux</span>
+
+    <span class="cm">// Requête complète = headers terminés par \r\n\r\n</span>
+    <span class="kw">if</span> (c.<span class="fn">recvBuf</span>().<span class="fn">find</span>(<span class="str">"\r\n\r\n"</span>) != std::string::npos) {
+        <span class="fn">_processRequest</span>(c);          <span class="cm">// → parse → route → handle → build</span>
+    }
+    <span class="cm">// Sinon : on attend le prochain recv (level-triggered renotifie)</span>
+}</div>
+    </div>
+
+    <p class="prose">
+      <div id="ch-epollout" style="display:inline; scroll-margin-top: 80px;"></div><strong>Quand EPOLLOUT sur un client :</strong> le socket est prêt à envoyer.
+      On écrit le contenu du <code>sendBuf</code>. Si <code>send()</code> n'envoie qu'une partie
+      (buffer kernel plein), on efface ce qui est parti et on attend le prochain tour.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">_handleSend() — envoi de la réponse</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">_handleSend</span>(<span class="kw">int</span> fd) {
+    Client&amp; c = _clients[fd];
+
+    ssize_t n = <span class="fn">send</span>(fd, c.<span class="fn">sendBuf</span>().<span class="fn">c_str</span>(), c.<span class="fn">sendBuf</span>().<span class="fn">size</span>(), <span class="hl">0</span>);
+
+    <span class="kw">if</span> (n > <span class="hl">0</span>)
+        c.<span class="fn">sendBuf</span>().<span class="fn">erase</span>(<span class="hl">0</span>, n);      <span class="cm">// retire les bytes envoyés</span>
+
+    <span class="kw">if</span> (c.<span class="fn">sendBuf</span>().<span class="fn">empty</span>())
+        <span class="fn">_closeClient</span>(fd);              <span class="cm">// tout envoyé → on ferme</span>
+}</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">🔄</span>
+      <p>
+        <strong>Le cycle complet :</strong>
+        accept → recv (EPOLLIN) → parse → handler → build response → send (EPOLLOUT) → close.
+        Ce cycle se répète pour chaque client, en parallèle grâce à epoll.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 3 : PARSING ========== -->
+  <section class="chapter" id="ch-parsing">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-4);">3</span>
+      <div>
+        <h2 class="chapter-title"><em>Parsing</em> de la requête HTTP</h2>
+        <p class="chapter-sub">
+          Transformer du texte brut en données structurées.
+          C'est de la chirurgie sur des strings — chaque \r\n compte.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Une requête HTTP c'est du texte avec un format précis. La première ligne
+      contient la <strong>méthode</strong>, le <strong>chemin</strong> et la <strong>version</strong>.
+      Ensuite viennent les <strong>headers</strong> (clé: valeur), séparés du body par une ligne vide.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Exemple de requête brute</div>
+      <div class="code-body"><span class="accent">GET</span> <span class="hl">/img/photo.png</span> <span class="str">HTTP/1.1</span>\r\n
+<span class="cm">Host:</span> localhost:8080\r\n
+<span class="cm">User-Agent:</span> Mozilla/5.0\r\n
+<span class="cm">Accept:</span> image/png\r\n
+\r\n                                   <span class="cm">← ligne vide = fin des headers</span>
+<span class="cm">(body ici si POST avec Content-Length)</span></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">HttpRequest::_parse() — découper la requête</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">_parse</span>(<span class="kw">const</span> std::string&amp; raw) {
+    <span class="cm">// ── Ligne 1 : méthode + path + version ──</span>
+    size_t eol = raw.<span class="fn">find</span>(<span class="str">"\r\n"</span>);
+    std::istringstream ss(raw.<span class="fn">substr</span>(<span class="hl">0</span>, eol));
+    ss >> _method >> _path >> _version;
+
+    <span class="cm">// ── Headers : "Clé: Valeur" un par ligne ──</span>
+    size_t pos = eol + <span class="hl">2</span>;
+    size_t hend = raw.<span class="fn">find</span>(<span class="str">"\r\n\r\n"</span>);
+    <span class="kw">while</span> (pos &lt; hend) {
+        size_t col = raw.<span class="fn">find</span>(<span class="str">':'</span>, pos);
+        size_t nl  = raw.<span class="fn">find</span>(<span class="str">"\r\n"</span>, pos);
+        _headers[raw.<span class="fn">substr</span>(pos, col - pos)]
+            = raw.<span class="fn">substr</span>(col + <span class="hl">2</span>, nl - col - <span class="hl">2</span>);
+        pos = nl + <span class="hl">2</span>;
+    }
+
+    <span class="cm">// ── Body : tout après la ligne vide ──</span>
+    _body = raw.<span class="fn">substr</span>(hend + <span class="hl">4</span>);
+}</div>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">⚠️</span>
+      <p>
+        <strong>Requêtes fragmentées :</strong> TCP ne garantit pas que toute la requête arrive d'un coup.
+        Un <code>recv()</code> peut ne donner que la moitié des headers.
+        Il faut <strong>toujours</strong> accumuler dans un buffer et ne parser qu'une fois
+        le <code>\r\n\r\n</code> trouvé. Sinon, ton parser crash sur des données incomplètes.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 4 : ROUTING ========== -->
+  <section class="chapter" id="ch-routing">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-5);">4</span>
+      <div>
+        <h2 class="chapter-title"><em>Routing</em> — trouver le bon handler</h2>
+        <p class="chapter-sub">
+          La requête est parsée, maintenant il faut décider qui la traite.
+          Le routeur cherche le bloc location qui correspond le mieux au chemin demandé.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Le routeur parcourt tous les blocs <code>location</code> de la config et garde celui
+      dont le <code>path</code> est le <strong>plus long préfixe</strong> de l'URL demandée.
+      C'est le "longest prefix match" — exactement comme NGINX.
+      Ensuite il vérifie que la méthode HTTP est autorisée, et décide s'il faut
+      un handler CGI ou un handler de fichier statique.
+    </p>
+
+    <div class="flow-inline">
+      <div class="flow-inline-step"><span class="fi-name">URL reçue</span><span class="fi-desc">/img/photo.png</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">Match location</span><span class="fi-desc">Cherche le plus long préfixe parmi les locations de la config</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">Vérif méthode</span><span class="fi-desc">GET est-il autorisé pour cette location ? sinon → 405</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">Choix handler</span><span class="fi-desc">Extension .py/.php → CgiHandler, sinon → StaticHandler</span></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">Router::getHandler() — trouver le bon handler</div>
+      <div class="code-body">AHandler* <span class="fn">getHandler</span>(<span class="kw">const</span> HttpRequest&amp; req, <span class="kw">const</span> ServerBlock&amp; cfg) {
+    Location* loc = <span class="fn">_findLocation</span>(req.<span class="fn">path</span>(), cfg);
+
+    <span class="kw">if</span> (!<span class="fn">_methodAllowed</span>(req, loc))     <span class="cm">// GET non autorisé ici ?</span>
+        <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(<span class="accent">405</span>);   <span class="cm">// Method Not Allowed</span>
+
+    <span class="kw">if</span> (<span class="fn">_isCgi</span>(req.<span class="fn">path</span>(), loc))        <span class="cm">// extension .py ou .php ?</span>
+        <span class="kw">return new</span> <span class="fn">CgiHandler</span>(loc);
+
+    <span class="kw">return new</span> <span class="fn">StaticHandler</span>(loc);     <span class="cm">// sinon : fichier statique</span>
+}
+
+<span class="cm">// Longest prefix match — retourne le location le plus spécifique</span>
+Location* <span class="fn">_findLocation</span>(<span class="kw">const</span> std::string&amp; url, <span class="kw">const</span> ServerBlock&amp; cfg) {
+    Location* best = NULL;
+    size_t best_len = <span class="hl">0</span>;
+    <span class="kw">for</span> (size_t i = <span class="hl">0</span>; i &lt; cfg.locations.<span class="fn">size</span>(); i++) {
+        <span class="kw">if</span> (url.<span class="fn">find</span>(cfg.locations[i].path) == <span class="hl">0</span>
+            &amp;&amp; cfg.locations[i].path.<span class="fn">size</span>() > best_len) {
+            best = &amp;cfg.locations[i];
+            best_len = cfg.locations[i].path.<span class="fn">size</span>();
+        }
+    }
+    <span class="kw">return</span> best;
+}</div>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 5 : HANDLERS ========== -->
+  <section class="chapter" id="ch-handlers">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-6);">5</span>
+      <div>
+        <h2 class="chapter-title">Les <em>handlers</em> — traitement concret</h2>
+        <p class="chapter-sub">
+          C'est ici que le serveur fait vraiment quelque chose : lire un fichier,
+          exécuter un script CGI, ou générer une erreur.
+        </p>
+      </div>
+    </div>
+
+    <!-- STATIC -->
+    <div id="ch-static" style="scroll-margin-top: 80px;"></div>
+    <p class="prose">
+      <strong>StaticHandler — fichier statique.</strong>
+      Le cas le plus courant : servir un fichier du disque. On construit le chemin
+      (<code>root + path</code>), on vérifie qu'il existe avec <code>stat()</code>,
+      on vérifie les permissions, puis on lit le contenu et on le met dans la réponse.
+      C'est 90% du trafic d'un serveur web.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">StaticHandler::handle()</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">handle</span>(<span class="kw">const</span> HttpRequest&amp; req, HttpResponse&amp; res) {
+    std::string path = _root + req.<span class="fn">path</span>();
+
+    <span class="cm">// Le fichier existe ?</span>
+    <span class="kw">struct</span> stat st;
+    <span class="kw">if</span> (<span class="fn">stat</span>(path.<span class="fn">c_str</span>(), &amp;st) != <span class="hl">0</span>) {
+        res.<span class="fn">setStatus</span>(<span class="accent">404</span>); <span class="kw">return</span>;          <span class="cm">// Not Found</span>
+    }
+    <span class="kw">if</span> (!(st.st_mode &amp; S_IROTH)) {
+        res.<span class="fn">setStatus</span>(<span class="accent">403</span>); <span class="kw">return</span>;          <span class="cm">// Forbidden</span>
+    }
+
+    <span class="cm">// Lire le fichier entier</span>
+    std::ifstream f(path.<span class="fn">c_str</span>());
+    std::string body(
+        (std::istreambuf_iterator&lt;<span class="kw">char</span>&gt;(f)),
+        std::istreambuf_iterator&lt;<span class="kw">char</span>&gt;());
+
+    res.<span class="fn">setStatus</span>(<span class="hl">200</span>);
+    res.<span class="fn">setHeader</span>(<span class="str">"Content-Type"</span>, <span class="fn">getMime</span>(path));
+    res.<span class="fn">setBody</span>(body);
+}</div>
+    </div>
+
+    <div class="fn-tags">
+      <span class="fn-tag">stat()</span>
+      <span class="fn-tag">open()</span>
+      <span class="fn-tag">read()</span>
+      <span class="fn-tag">ifstream</span>
+    </div>
+
+    <!-- CGI -->
+    <div id="ch-cgi" style="scroll-margin-top: 80px;"></div>
+    <p class="prose" style="margin-top: 2.5rem;">
+      <strong>CgiHandler — script dynamique.</strong>
+      Pour les fichiers <code>.py</code> ou <code>.php</code>, le serveur ne lit pas le fichier :
+      il l'<strong>exécute</strong>. On crée un pipe, on fork, le fils redirige stdout vers le pipe
+      et lance le script avec <code>execve()</code>. Le père lit la sortie du pipe
+      et l'utilise comme body de la réponse.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">CgiHandler::handle() — fork + pipe + execve</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">handle</span>(<span class="kw">const</span> HttpRequest&amp; req, HttpResponse&amp; res) {
+    <span class="kw">int</span> pipe_out[<span class="hl">2</span>];
+    <span class="fn">pipe</span>(pipe_out);
+
+    pid_t pid = <span class="fn">fork</span>();
+    <span class="kw">if</span> (pid == <span class="hl">0</span>) {
+        <span class="cm">// ENFANT : redirige stdout vers le pipe</span>
+        <span class="fn">dup2</span>(pipe_out[<span class="hl">1</span>], STDOUT_FILENO);
+        <span class="fn">close</span>(pipe_out[<span class="hl">0</span>]);
+        <span class="fn">close</span>(pipe_out[<span class="hl">1</span>]);
+
+        <span class="cm">// Variables d'environnement HTTP (protocole CGI)</span>
+        <span class="fn">setenv</span>(<span class="str">"REQUEST_METHOD"</span>, req.<span class="fn">method</span>().<span class="fn">c_str</span>(), <span class="hl">1</span>);
+        <span class="fn">setenv</span>(<span class="str">"PATH_INFO"</span>,       req.<span class="fn">path</span>().<span class="fn">c_str</span>(), <span class="hl">1</span>);
+        <span class="fn">setenv</span>(<span class="str">"QUERY_STRING"</span>,   req.<span class="fn">query</span>().<span class="fn">c_str</span>(), <span class="hl">1</span>);
+
+        <span class="kw">char</span>* args[] = {(<span class="kw">char</span>*)_script.<span class="fn">c_str</span>(), NULL};
+        <span class="fn">execve</span>(_script.<span class="fn">c_str</span>(), args, environ);
+        <span class="fn">exit</span>(<span class="hl">1</span>);                  <span class="cm">// si execve échoue</span>
+    }
+    <span class="cm">// PARENT : lit la sortie du script via le pipe</span>
+    <span class="fn">close</span>(pipe_out[<span class="hl">1</span>]);
+    <span class="cm">// read(pipe_out[0]) → body de la réponse</span>
+    <span class="fn">waitpid</span>(pid, NULL, <span class="hl">0</span>);
+}</div>
+    </div>
+
+    <div class="fn-tags">
+      <span class="fn-tag">pipe()</span>
+      <span class="fn-tag">fork()</span>
+      <span class="fn-tag">dup2()</span>
+      <span class="fn-tag">execve()</span>
+      <span class="fn-tag">waitpid()</span>
+    </div>
+
+    <!-- ERROR -->
+    <div id="ch-error" style="scroll-margin-top: 80px;"></div>
+    <p class="prose" style="margin-top: 2.5rem;">
+      <strong>ErrorHandler — pages d'erreur.</strong>
+      Quand quelque chose ne va pas (fichier introuvable, méthode interdite, erreur interne),
+      ce handler génère une page d'erreur. Il cherche d'abord une page custom dans la config.
+      Si aucune n'est définie, il génère du HTML basique par défaut.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">ErrorHandler::handle() — réponse d'erreur</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">handle</span>(<span class="kw">const</span> HttpRequest&amp; req, HttpResponse&amp; res) {
+    res.<span class="fn">setStatus</span>(_code);
+    res.<span class="fn">setHeader</span>(<span class="str">"Content-Type"</span>, <span class="str">"text/html"</span>);
+
+    <span class="cm">// Page custom dans la config ? (error_page 404 /custom_404.html;)</span>
+    std::string custom = _cfg.<span class="fn">errorPage</span>(_code);
+    <span class="kw">if</span> (!custom.<span class="fn">empty</span>())
+        res.<span class="fn">setBody</span>(<span class="fn">readFile</span>(custom));
+    <span class="kw">else</span>
+        res.<span class="fn">setBody</span>(<span class="str">"&lt;h1&gt;"</span> + <span class="fn">statusText</span>(_code) + <span class="str">"&lt;/h1&gt;"</span>);
+}</div>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 6 : RESPONSE ========== -->
+  <section class="chapter" id="ch-response">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-5);">6</span>
+      <div>
+        <h2 class="chapter-title">Construction de la <em>réponse</em></h2>
+        <p class="chapter-sub">
+          Le handler a fait son travail. Maintenant il faut emballer le résultat
+          dans le format HTTP et le préparer pour l'envoi.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      On assemble la <strong>status line</strong> (<code>HTTP/1.1 200 OK</code>), les <strong>headers</strong>
+      (dont <code>Content-Length</code> qui est obligatoire), une <strong>ligne vide</strong>,
+      puis le <strong>body</strong>. Le tout est mis dans le <code>sendBuf</code> du client,
+      et on passe le fd en <code>EPOLLOUT</code> pour que epoll nous prévienne
+      quand le socket est prêt à écrire.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">HttpResponse::build() — assembler la réponse</div>
+      <div class="code-body">std::string <span class="fn">build</span>() <span class="kw">const</span> {
+    std::ostringstream oss;
+
+    <span class="cm">// Status line</span>
+    oss &lt;&lt; <span class="str">"HTTP/1.1 "</span> &lt;&lt; _status
+        &lt;&lt; <span class="str">" "</span> &lt;&lt; <span class="fn">statusText</span>(_status) &lt;&lt; <span class="str">"\r\n"</span>;
+
+    <span class="cm">// Headers</span>
+    <span class="kw">for</span> (<span class="kw">auto</span> it = _headers.<span class="fn">begin</span>(); it != _headers.<span class="fn">end</span>(); ++it)
+        oss &lt;&lt; it->first &lt;&lt; <span class="str">": "</span> &lt;&lt; it->second &lt;&lt; <span class="str">"\r\n"</span>;
+
+    <span class="cm">// Content-Length obligatoire</span>
+    oss &lt;&lt; <span class="str">"Content-Length: "</span> &lt;&lt; _body.<span class="fn">size</span>() &lt;&lt; <span class="str">"\r\n"</span>;
+    oss &lt;&lt; <span class="str">"\r\n"</span>;                <span class="cm">// ligne vide = fin des headers</span>
+    oss &lt;&lt; _body;
+
+    <span class="kw">return</span> oss.<span class="fn">str</span>();             <span class="cm">// → client.sendBuf()</span>
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">Exemple de réponse HTTP complète</div>
+      <div class="code-body"><span class="accent">HTTP/1.1 200 OK</span>
+<span class="cm">Content-Type:</span> text/html
+<span class="cm">Content-Length:</span> <span class="hl">42</span>
+                                        <span class="cm">← ligne vide = fin des headers</span>
+<span class="str">&lt;html&gt;&lt;body&gt;Hello World!&lt;/body&gt;&lt;/html&gt;</span></div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">📋</span>
+      <p>
+        <strong>Après le build :</strong> on modifie l'événement epoll du client pour passer de
+        <code>EPOLLIN</code> à <code>EPOLLOUT</code> via <code>epoll_ctl(EPOLL_CTL_MOD)</code>.
+        C'est ce changement qui dit à la boucle
+        "ce client est en mode envoi maintenant".
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 7 : CLOSE ========== -->
+  <section class="chapter" id="ch-close">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--text-muted);">7</span>
+      <div>
+        <h2 class="chapter-title"><em>Fermeture</em> propre</h2>
+        <p class="chapter-sub">
+          La réponse est envoyée, le client s'est déconnecté, ou une erreur s'est produite.
+          Dans tous les cas, il faut nettoyer proprement dans le bon ordre.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Trois étapes dans cet <strong>ordre précis</strong>. D'abord retirer le fd d'epoll
+      (pour ne plus recevoir d'événements fantômes). Ensuite fermer le socket.
+      Enfin supprimer l'objet Client de la map. Si tu inverses l'ordre, tu risques un use-after-close.
+    </p>
+
+    <div class="flow-inline">
+      <div class="flow-inline-step"><span class="fi-name">epoll_ctl(DEL)</span><span class="fi-desc">Retire le fd de la surveillance — plus d'événements</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">close(fd)</span><span class="fi-desc">Ferme le socket — libère la connexion TCP</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">clients.erase()</span><span class="fi-desc">Détruit l'objet Client — libère recvBuf et sendBuf</span></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">_closeClient() — nettoyage propre</div>
+      <div class="code-body"><span class="kw">void</span> <span class="fn">_closeClient</span>(<span class="kw">int</span> fd) {
+    <span class="fn">epoll_ctl</span>(_epfd, EPOLL_CTL_DEL, fd, NULL);   <span class="cm">// 1. retire d'epoll</span>
+    <span class="fn">close</span>(fd);                                    <span class="cm">// 2. ferme le socket</span>
+    _clients.<span class="fn">erase</span>(fd);                            <span class="cm">// 3. libère le Client</span>
+}</div>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">⚠️</span>
+      <p>
+        <strong>Fuite de fd :</strong> si tu oublies de fermer un fd, tu atteins la limite système
+        (souvent 1024 par défaut) et plus aucun client ne peut se connecter.
+        Vérifie avec <code>lsof -p $(pidof webserv)</code> que le nombre de fds ouverts reste stable.
+      </p>
+    </div>
+
+    <div class="quote-block">
+      <p>
+        Chaque requête suit exactement ce chemin : connexion, lecture, parsing,
+        routage, traitement, réponse, fermeture. Maîtriser ce flux, c'est maîtriser webserv.
+      </p>
+      <cite>Le cycle de vie complet d'une requête HTTP</cite>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>Architecture Webserv — Vue d'ensemble du flux requête-réponse</p>
+  <p style="margin-top: 0.5rem; opacity: 0.5;">Document d'étude — eahmeti.</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    var savedScroll = sessionStorage.getItem('mindmap-scroll');
+    if (savedScroll !== null) {
+      window.scrollTo(0, parseInt(savedScroll, 10));
+      sessionStorage.removeItem('mindmap-scroll');
+    }
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  // Smooth scroll with nav offset for all internal links
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var navH = document.querySelector('.top-nav').offsetHeight;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  // Animate chapters on scroll
+  var chapters = document.querySelectorAll('.chapter');
+  var chapterObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.08 });
+  chapters.forEach(function(c) { chapterObserver.observe(c); });
+
+  // Active nav highlight on scroll
+  var navItems = document.querySelectorAll('.nav-item[href^="#"], .nav-dd-item[href^="#"]');
+  var sectionIds = ['ch-startup','ch-sockets','ch-loop','ch-parsing','ch-routing','ch-handlers','ch-response','ch-close'];
+  var navMap = {
+    'ch-startup': '#ch-startup', 'ch-sockets': '#ch-sockets',
+    'ch-loop': '#ch-loop', 'ch-parsing': '#ch-parsing',
+    'ch-routing': '#ch-routing', 'ch-handlers': '#ch-handlers',
+    'ch-response': '#ch-response', 'ch-close': '#ch-close'
+  };
+  var activeObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+        var match = document.querySelector('.nav-item[href="#' + entry.target.id + '"]');
+        if (match) match.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-25% 0px -65% 0px' });
+  sectionIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) activeObserver.observe(el);
+  });
+</script>
+</body>
+</html>

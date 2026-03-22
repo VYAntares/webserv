@@ -682,6 +682,7 @@
     <a href="#config" class="nav-item">Configuration</a>
     <a href="#cgi" class="nav-item">CGI</a>
     <a href="#robustesse" class="nav-item">Robustesse</a>
+    <a href="#architecture" class="nav-item">Architecture</a>
     <a href="#ressources" class="nav-item">Ressources</a>
   </div>
 </nav>
@@ -1379,11 +1380,62 @@
   </section>
 
   <!-- ═══════════════════════════════════════════ -->
-  <!-- SECTION 7 : RESSOURCES                     -->
+  <!-- SECTION 7 : ARCHITECTURE                    -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="section" id="architecture">
+    <div class="section-header">
+      <span class="section-number">07</span>
+      <h2 class="section-title">Architecture <em>complète</em></h2>
+    </div>
+
+    <p class="intro-text">
+      Tu maitrises les concepts individuels — sockets, epoll, HTTP, config, CGI.
+      Maintenant il faut voir comment tout s'assemble. Cette page retrace le
+      <span class="highlight">parcours complet d'une requête</span>, du main() au close(),
+      avec le code conseillé pour chaque étape.
+    </p>
+
+    <div class="concepts-grid">
+      <div class="card" data-page="07-architecture/full-architecture.html" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+        <span class="card-tag">Vue d'ensemble</span>
+        <h3><a href="07-architecture/full-architecture.html">Le parcours d'une requête</a></h3>
+        <p>
+          Du moment où un client se connecte jusqu'à la fermeture du socket :
+          démarrage, création des sockets, boucle epoll, parsing HTTP, routing,
+          handlers (statique, CGI, erreur), construction de la réponse, et fermeture propre.
+          Chaque étape est détaillée avec le code conseillé et les pièges à éviter.
+        </p>
+        <div class="card-quote">
+          main() → Config → socket/bind/listen → epoll_wait → accept/recv/send → parse → route → handle → build → close
+        </div>
+        <div class="card-functions">
+          <span class="fn-tag">socket()</span>
+          <span class="fn-tag">epoll_wait()</span>
+          <span class="fn-tag">accept()</span>
+          <span class="fn-tag">recv()</span>
+          <span class="fn-tag">send()</span>
+          <span class="fn-tag">fork()</span>
+          <span class="fn-tag">execve()</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">🗺️</span>
+      <p>
+        C'est <strong>la carte d'assemblage</strong> de tout le projet.
+        Clique sur la carte ci-dessus pour voir le diagramme complet avec le code de chaque étape,
+        les schémas de flux, et les erreurs classiques à chaque niveau.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SECTION 8 : RESSOURCES                     -->
   <!-- ═══════════════════════════════════════════ -->
   <section class="section" id="ressources">
     <div class="section-header">
-      <span class="section-number">07</span>
+      <span class="section-number">08</span>
       <h2 class="section-title"><em>Ressources</em> d'étude</h2>
     </div>
 
