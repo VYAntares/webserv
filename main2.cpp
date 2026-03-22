@@ -14,6 +14,14 @@ static const int PORT = 8080;
 static const int BACKLOGS = 10;
 static const int MAX_EVENTS = 64;
 
+const char* response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 22\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "<h1>Hello World!</h1>\n";
+
 int	create_socket_server() {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) { perror("socket"); return -1; }
@@ -49,18 +57,61 @@ void accept_next_client(int server_fd, int epfd) {
 	struct epoll_event ev;
 	ev.events = EPOLLIN;
 	ev.data.fd = client_fd;
-	epoll_ctl(epfd, EPOLL_CTL_DEL, client_fd, &ev);
+	epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &ev);
 }
 
 void handle_recv(int fd, int epfd) {
-	char buf[4096];
-	std::string requests;
+	std::string request;
 
-	
+	while (true) {
+		char buf[4096];
+		ssize_t n = recv(fd, buf, sizeof(buf) - 1, 0);
+
+		if (n < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) 
+				break; // Buffer kernel vide = on a tout lu, on sort
+			epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+			close(fd);
+			return;
+		}
+
+		if (n == 0) {
+			epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+			close(fd);
+			return;
+		}
+
+		buf[n] = '\0';
+		request += buf;
+	}
+	std::cout << request;
+
+	struct epoll_event ev;
+	ev.events = EPOLLOUT | EPOLLET;
+	ev.data.fd = fd;
+	epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
 }
 
 void handle_send(int fd, int epfd) {
+	size_t total = strlen(response);
+	size_t sent = 0;
 
+	while (sent < total) {
+		ssize_t n = send(fd, response + sent, total - sent, 0);
+		if (n < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				struct epoll_event ev;
+				ev.events = EPOLLOUT | EPOLLET;
+				ev.data.fd = fd;
+				epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+				return;
+			}
+			break;
+		}
+		sent += n;
+	}
+	epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+	close(fd);
 }
 
 int	main() {
@@ -80,16 +131,16 @@ int	main() {
 	ev.data.fd = server_fd;
 	epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev);
 
-	std::cout << "Server available at : http//localhost:" << PORT << "\n";
+	std::cout << "Server available at : http://localhost:" << PORT << "\n";
 
 	struct epoll_event events[MAX_EVENTS];
 	while (true) {
-		int n = epoll_wait(epfd, &ev, MAX_EVENTS, -1);
+		int n = epoll_wait(epfd, events, MAX_EVENTS, -1);
 		
 		for (int i = 0; i < n; i++) {
 			int fd = events[i].data.fd;
 			if (events[i].events & (EPOLLHUP | EPOLLERR)) {
-				epoll_ctl(epfd, EPOLL_CTL_DEL, fd, &ev);
+				epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
 				close(fd);
 				continue;
 			}
