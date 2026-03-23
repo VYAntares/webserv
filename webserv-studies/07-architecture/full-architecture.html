@@ -39,6 +39,12 @@
     z-index: 9999;
   }
 
+  /* ─── BACKGROUND GLOWS ─── */
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -200px; left: -150px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 600px; height: 600px; top: 40vh; right: -200px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 500px; height: 500px; bottom: 10vh; left: 20%; background: radial-gradient(ellipse, rgba(255,107,74,0.04) 0%, transparent 70%); }
+
   /* ========== STICKY NAV (même style que mindmap) ========== */
   .top-nav {
     position: sticky;
@@ -793,7 +799,10 @@
   }
 </style>
 </head>
-<body>
+<body id="top">
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
 
 <!-- STICKY NAV -->
 <nav class="top-nav">
@@ -802,6 +811,8 @@
     <a href="../webserv-mindmap.html" class="nav-back">
       <span>&#8592;</span> Mindmap
     </a>
+
+    <a href="#top" class="nav-item">⬡ Schéma</a>
 
     <!-- ① Démarrage — dropdown -->
     <div class="nav-group">
@@ -910,7 +921,7 @@
 <!-- ================================================================== -->
 <!-- FLOWCHART SCHEMA                                                   -->
 <!-- ================================================================== -->
-<div class="map-section">
+<div class="map-section" id="schema" style="scroll-margin-top: 80px;">
   <div class="map-section-label">&#9660; Schéma du flux — clique sur un bloc pour voir le détail</div>
 
   <div class="flowchart">
@@ -950,34 +961,13 @@
     <!-- ③ BOUCLE -->
     <div class="flow-section-label">③ Boucle principale — tourne indéfiniment</div>
 
-    <div class="fork-node-wrap" style="max-width: 700px; width: 100%;">
-      <a href="#ch-loop" class="node" style="--node-color: var(--accent-3); --node-glow: rgba(192,132,252,0.1);">
-        <span class="node-hint">survole pour voir les 3 branches ↓</span>
-        <div class="node-label">Cœur du serveur</div>
-        <div class="node-title">epoll_wait() — le dispatcheur</div>
-        <div class="node-desc">Bloque jusqu'à ce qu'un fd soit prêt. Dispatche vers le bon handler selon le type de fd et l'événement.</div>
-        <div class="node-code">int n = epoll_wait(epfd, events, 64, -1);
+    <a href="#ch-loop" class="node" style="--node-color: var(--accent-3); --node-glow: rgba(192,132,252,0.1); max-width: 700px; width: 100%;">
+      <div class="node-label">Cœur du serveur</div>
+      <div class="node-title">epoll_wait() — le dispatcheur</div>
+      <div class="node-desc">Bloque jusqu'à ce qu'un fd soit prêt. Dispatche vers le bon handler selon le type de fd et l'événement.</div>
+      <div class="node-code">int n = epoll_wait(epfd, events, 64, -1);
 for (int i = 0; i &lt; n; i++) { dispatch(events[i]); }</div>
-      </a>
-      <div class="fork-dropdown">
-        <div class="fork-dropdown-title">Dispatche selon le type d'événement</div>
-        <a href="#ch-accept" class="fork-dropdown-item">
-          <span class="fork-dropdown-dot" style="background: var(--accent-2);"></span>
-          <span class="fork-dropdown-fn">fd == server_fd</span>
-          <span class="fork-dropdown-desc">→ accept() → nouveau client</span>
-        </a>
-        <a href="#ch-epollin" class="fork-dropdown-item">
-          <span class="fork-dropdown-dot" style="background: var(--accent-1);"></span>
-          <span class="fork-dropdown-fn">EPOLLIN</span>
-          <span class="fork-dropdown-desc">→ recv() → accumule → parse</span>
-        </a>
-        <a href="#ch-epollout" class="fork-dropdown-item">
-          <span class="fork-dropdown-dot" style="background: var(--accent-5);"></span>
-          <span class="fork-dropdown-fn">EPOLLOUT</span>
-          <span class="fork-dropdown-desc">→ send() → vide le buffer</span>
-        </a>
-      </div>
-    </div>
+    </a>
 
     <div class="fork-wrapper">
       <svg class="fork-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
@@ -1043,33 +1033,12 @@ sendBuf.erase(0, n)</div>
     <!-- ⑤ ROUTING -->
     <div class="flow-section-label">⑤ Routing</div>
 
-    <div class="fork-node-wrap" style="max-width: 700px; width: 100%;">
-      <a href="#ch-routing" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1);">
-        <span class="node-hint">survole pour voir les 3 handlers ↓</span>
-        <div class="node-label">Longest prefix match</div>
-        <div class="node-title">Router::getHandler(req)</div>
-        <div class="node-desc">Trouve le bloc location qui matche le mieux. Vérifie la méthode. Retourne le bon handler.</div>
-        <div class="node-code">"/img/a.png" → location "/img" → root="/var/www/img" → new StaticHandler(root)</div>
-      </a>
-      <div class="fork-dropdown">
-        <div class="fork-dropdown-title">Retourne un handler selon le contexte</div>
-        <a href="#ch-static" class="fork-dropdown-item">
-          <span class="fork-dropdown-dot" style="background: var(--accent-4);"></span>
-          <span class="fork-dropdown-fn">StaticHandler</span>
-          <span class="fork-dropdown-desc">→ stat() + read() → fichier statique</span>
-        </a>
-        <a href="#ch-cgi" class="fork-dropdown-item">
-          <span class="fork-dropdown-dot" style="background: var(--accent-6);"></span>
-          <span class="fork-dropdown-fn">CgiHandler</span>
-          <span class="fork-dropdown-desc">→ fork() + execve() → script .py .php</span>
-        </a>
-        <a href="#ch-error" class="fork-dropdown-item">
-          <span class="fork-dropdown-dot" style="background: var(--accent-1);"></span>
-          <span class="fork-dropdown-fn">ErrorHandler</span>
-          <span class="fork-dropdown-desc">→ 404, 403, 405, 500</span>
-        </a>
-      </div>
-    </div>
+    <a href="#ch-routing" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1); max-width: 700px; width: 100%;">
+      <div class="node-label">Longest prefix match</div>
+      <div class="node-title">Router::getHandler(req)</div>
+      <div class="node-desc">Trouve le bloc location qui matche le mieux. Vérifie la méthode. Retourne le bon handler.</div>
+      <div class="node-code">"/img/a.png" → location "/img" → root="/var/www/img" → new StaticHandler(root)</div>
+    </a>
 
     <div class="fork-wrapper">
       <svg class="fork-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
@@ -1845,6 +1814,7 @@ Location* <span class="fn">_findLocation</span>(<span class="kw">const</span> st
 
   // Smooth scroll with nav offset for all internal links
   function scrollToId(id) {
+    if (id === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     var el = document.getElementById(id);
     if (!el) return;
     var navH = document.querySelector('.top-nav').offsetHeight;

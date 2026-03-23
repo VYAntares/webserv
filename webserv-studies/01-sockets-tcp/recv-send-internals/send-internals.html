@@ -39,6 +39,12 @@
     z-index: 9999;
   }
 
+  /* ─── BACKGROUND GLOWS ─── */
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -200px; left: -150px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 600px; height: 600px; top: 40vh; right: -200px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 500px; height: 500px; bottom: 10vh; left: 20%; background: radial-gradient(ellipse, rgba(255,107,74,0.04) 0%, transparent 70%); }
+
   /* HEADER */
   .header {
     padding: 3rem 2rem 2rem;
@@ -206,6 +212,9 @@
 </style>
 </head>
 <body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
 
 <div class="progress-bar">
   <div class="progress-inner">

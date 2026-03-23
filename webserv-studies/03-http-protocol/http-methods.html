@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GET, POST, DELETE — Les méthodes HTTP</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  body::after { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; }
+
+  /* ─── BACKGROUND GLOWS ─── */
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -200px; left: -150px; background: radial-gradient(ellipse, rgba(255,107,74,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 600px; height: 600px; top: 40vh; right: -200px; background: radial-gradient(ellipse, rgba(74,222,128,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 500px; height: 500px; bottom: 10vh; left: 20%; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,10,15,0.9); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px; margin: 0 auto;
+    display: flex; align-items: center; gap: 0;
+    justify-content: center;
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-muted); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.5rem; border-radius: 6px;
+    white-space: nowrap; flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-1); background: rgba(255,107,74,0.07); }
+  .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
+  .step-pill {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.8rem; border-radius: 100px;
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-muted); cursor: pointer;
+    transition: all 0.3s; text-decoration: none; white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(255,107,74,0.1); color: var(--accent-1); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 10px; }
+
+  /* ─── HEADER ─── */
+  .header {
+    padding: 3rem 2rem 2rem; max-width: 900px;
+    margin: 0 auto; border-bottom: 1px solid var(--border);
+    position: relative; z-index: 1;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.3em;
+    color: var(--accent-1); background: rgba(255,107,74,0.08);
+    border: 1px solid rgba(255,107,74,0.2); padding: 0.3rem 0.8rem;
+    border-radius: 100px; display: inline-block; margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400; line-height: 1.1; margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-1); }
+  .header-desc {
+    font-size: 1rem; color: var(--text-dim); font-weight: 300;
+    max-width: 600px; line-height: 1.7;
+  }
+  .header-desc code { font-family: 'Space Mono', monospace; color: var(--accent-1); }
+
+  /* ─── MAIN ─── */
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; position: relative; z-index: 1; }
+
+  /* ─── SECTIONS ─── */
+  .chapter {
+    padding: 4rem 0 2rem;
+    opacity: 0; transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    position: relative; z-index: 1;
+  }
+  .chapter.visible { opacity: 1; transform: translateY(0); }
+  .ch-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .ch-number {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem; line-height: 1;
+    opacity: 0.15; flex-shrink: 0;
+    color: var(--step-color, var(--accent-1));
+  }
+  .ch-fn {
+    font-family: 'Space Mono', monospace; font-size: 1.4rem;
+    font-weight: 700; color: var(--step-color, var(--accent-1));
+    margin-bottom: 0.3rem;
+  }
+  .ch-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem; font-weight: 400; color: var(--text);
+  }
+
+  .ch-divider {
+    height: 1px; background: linear-gradient(90deg, var(--border), transparent);
+    margin: 2rem 0;
+  }
+
+  /* ─── PANELS ─── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--step-color, var(--accent-1));
+    border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-1)); margin-bottom: 0.8rem;
+  }
+  .panel p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; margin-bottom: 0.6rem; }
+  .panel p:last-child { margin-bottom: 0; }
+  .panel ul { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; padding-left: 1.2rem; margin-top: 0.5rem; }
+  .panel li { margin-bottom: 0.4rem; }
+  .panel code {
+    font-family: 'Space Mono', monospace; font-size: 0.78rem;
+    color: var(--accent-1); background: rgba(255,107,74,0.06);
+    padding: 0.15rem 0.4rem; border-radius: 4px;
+  }
+  .panel strong { color: var(--text); }
+
+  /* ─── CODE BLOCKS ─── */
+  .code-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem;
+  }
+  .code-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 5px; }
+  .code-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-3); }
+  .code-dots .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dots .code-dot:nth-child(2) { background: #ffbd2e; }
+  .code-dots .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.55rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 0.2rem 0.5rem; border-radius: 4px;
+  }
+  .code-panel pre {
+    padding: 1.2rem 1.5rem; overflow-x: auto;
+    font-family: 'Space Mono', monospace; font-size: 0.78rem;
+    line-height: 1.8; color: var(--text-dim); tab-size: 4;
+  }
+
+  /* syntax */
+  .kw { color: var(--accent-3); }
+  .fn-name { color: var(--accent-2); }
+  .str { color: var(--accent-4); }
+  .num { color: var(--accent-1); }
+  .cmt { color: var(--text-muted); font-style: italic; }
+  .macro { color: var(--accent-5); }
+  .var { color: var(--text); }
+  .type { color: var(--accent-6); }
+  .highlight-line { background: rgba(255,107,74,0.06); display: block; margin: 0 -1.5rem; padding: 0 1.5rem; border-left: 2px solid var(--accent-1); }
+
+  /* ─── SCHEMA BOXES ─── */
+  .schema-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  .schema-title {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-muted); margin-bottom: 1.5rem;
+    text-align: center;
+  }
+
+  /* ─── METHOD INTRO ─── */
+  .method-intro {
+    display: flex; align-items: center; gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .method-badge {
+    font-family: 'Space Mono', monospace; font-size: 1rem;
+    font-weight: 700; padding: 0.4rem 1.2rem;
+    border-radius: 8px; flex-shrink: 0;
+  }
+  .method-intro p {
+    font-size: 0.92rem; color: var(--text-dim); line-height: 1.7;
+  }
+  .method-intro p strong { color: var(--text); }
+
+  /* ─── INFO GRID ─── */
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 0.8rem; margin-bottom: 1.5rem;
+  }
+  .info-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.8rem 1rem;
+  }
+  .info-label {
+    font-family: 'Space Mono', monospace; font-size: 0.55rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-muted); margin-bottom: 0.3rem;
+  }
+  .info-value {
+    font-size: 0.82rem; font-weight: 500;
+  }
+
+  /* ─── REQUEST ANATOMY ─── */
+  .req-anatomy { font-family: 'Space Mono', monospace; font-size: 0.78rem; line-height: 2.2; }
+  .req-line { display: block; padding: 0.1rem 0.8rem; border-radius: 4px; margin-bottom: 1px; position: relative; }
+  .req-line .req-annotation {
+    position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+    font-size: 0.6rem; opacity: 0.6; font-style: italic;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .crlf {
+    font-family: 'Space Mono', monospace; font-size: 0.65rem;
+    color: rgba(255,107,74,0.55); font-weight: 400;
+    margin-left: 0.25rem; letter-spacing: 0;
+    user-select: none;
+  }
+  .crlf-empty {
+    font-size: 0.78rem; color: rgba(255,107,74,0.85); font-weight: 700;
+    margin-left: 0;
+  }
+
+  /* ─── WARNING / INFO / ERROR ─── */
+  .warning {
+    display: flex; gap: 0.75rem; padding: 1rem 1.2rem;
+    background: rgba(255,107,74,0.04);
+    border: 1px solid rgba(255,107,74,0.15);
+    border-radius: 8px; font-size: 0.82rem; color: var(--text-dim);
+    line-height: 1.7; margin: 1.5rem 0;
+  }
+  .warning strong { color: var(--accent-1); }
+  .warning code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-1);
+  }
+
+  .info-box {
+    display: flex; gap: 0.75rem; padding: 1rem 1.2rem;
+    background: rgba(74,222,128,0.04);
+    border: 1px solid rgba(74,222,128,0.15);
+    border-radius: 8px; font-size: 0.82rem; color: var(--text-dim);
+    line-height: 1.7; margin: 1.5rem 0;
+  }
+  .info-box strong { color: var(--accent-4); }
+  .info-box code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-4);
+  }
+
+  .error-box {
+    display: flex; gap: 0.75rem; padding: 1rem 1.2rem;
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 8px; font-size: 0.82rem; color: var(--text-dim);
+    line-height: 1.7; margin: 1.5rem 0;
+  }
+  .error-box strong { color: var(--accent-1); }
+  .error-box code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-1);
+  }
+
+  /* ─── RFC QUOTES ─── */
+  .rfc-quote {
+    border-left: 2px solid var(--accent-3);
+    padding: 0.8rem 1.2rem;
+    margin: 1.2rem 0;
+    background: rgba(192,132,252,0.03);
+    border-radius: 0 8px 8px 0;
+  }
+  .rfc-quote p {
+    font-size: 0.82rem; color: var(--text-dim); line-height: 1.8;
+    font-style: italic;
+  }
+  .rfc-quote p strong { color: var(--text); font-style: normal; }
+  .rfc-quote cite {
+    display: block; margin-top: 0.4rem;
+    font-style: normal; font-size: 0.65rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--text-muted); letter-spacing: 0.05em;
+  }
+  .rfc-quote code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-3); background: rgba(192,132,252,0.06);
+    padding: 0.1rem 0.35rem; border-radius: 3px;
+    font-style: normal;
+  }
+
+  /* ─── RESPONSE BLOCK ─── */
+  .resp-block {
+    font-family: 'Space Mono', monospace; font-size: 0.78rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1.2rem;
+    line-height: 2; margin: 1rem 0;
+  }
+  .resp-ok { color: var(--accent-4); font-weight: 600; }
+  .resp-err { color: var(--accent-1); font-weight: 600; }
+
+  /* ─── COMPARE TABLE ─── */
+  .compare-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.8rem; margin: 1rem 0;
+  }
+  .compare-table th {
+    text-align: center; padding: 0.7rem 0.8rem;
+    font-family: 'Space Mono', monospace; font-size: 0.65rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--border);
+  }
+  .compare-table th:first-child { text-align: left; color: var(--text-muted); }
+  .compare-table td {
+    padding: 0.6rem 0.8rem; border-bottom: 1px solid rgba(42,42,66,0.4);
+    color: var(--text-dim); text-align: center; vertical-align: middle;
+  }
+  .compare-table td:first-child {
+    text-align: left; color: var(--text-muted); font-size: 0.75rem;
+  }
+  .compare-table tr:hover td { background: rgba(255,107,74,0.03); }
+  .compare-table .col-get { color: var(--accent-2); font-weight: 500; }
+  .compare-table .col-post { color: var(--accent-4); font-weight: 500; }
+  .compare-table .col-del { color: var(--accent-1); font-weight: 500; }
+
+  /* ─── FOOTER ─── */
+  .footer {
+    text-align: center; padding: 3rem 2rem;
+    border-top: 1px solid var(--border); margin-top: 4rem;
+    position: relative; z-index: 1;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-1); text-decoration: none; }
+  .footer a:hover { color: var(--accent-2); }
+
+  /* responsive */
+  @media (max-width: 700px) {
+    .info-grid { grid-template-columns: 1fr; }
+    .method-intro { flex-direction: column; align-items: flex-start; }
+    .req-line .req-annotation { display: none; }
+  }
+</style>
+</head>
+<body id="top">
+
+<!-- ─── BACKGROUND GLOWS ─── -->
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<!-- ─── STICKY NAV ─── -->
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#intro" class="step-pill active" id="nav-intro"><span class="step-dot"></span>Introduction</a>
+    <div class="step-connector"></div>
+    <a href="#get" class="step-pill" id="nav-get"><span class="step-dot"></span>GET</a>
+    <div class="step-connector"></div>
+    <a href="#post" class="step-pill" id="nav-post"><span class="step-dot"></span>POST</a>
+    <div class="step-connector"></div>
+    <a href="#delete" class="step-pill" id="nav-delete"><span class="step-dot"></span>DELETE</a>
+    <div class="step-connector"></div>
+    <a href="#compare" class="step-pill" id="nav-compare"><span class="step-dot"></span>Comparaison</a>
+  </div>
+</div>
+
+<!-- ─── HEADER ─── -->
+<div class="header">
+  <div class="header-tag">03 — Le protocole HTTP</div>
+  <h1>GET, POST, DELETE<br><em>Les méthodes HTTP</em></h1>
+  <p class="header-desc">
+    Une méthode HTTP, c'est le verbe de la requête. Elle dit au serveur quelle action effectuer
+    sur la ressource désignée par l'URI. C'est le premier mot de la <code>Request Line</code>.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  01 — INTRODUCTION                      -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="intro" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">01</div>
+      <div>
+        <div class="ch-fn">parseMethod()</div>
+        <div class="ch-subtitle">C'est quoi une méthode HTTP ?</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5);">
+      <div class="panel-label">Le concept</div>
+      <p>
+        Le client ne fait pas que "demander des trucs" — il spécifie son <strong>intention</strong> :
+        lire, écrire, supprimer. Le serveur doit respecter cette sémantique et répondre correctement.
+      </p>
+      <p>
+        La méthode est le <strong>premier mot</strong> de la Request Line, avant l'URI et la version HTTP :
+      </p>
+    </div>
+
+    <div class="schema-box">
+      <div class="schema-title">Request Line — la méthode est toujours en premier</div>
+      <div class="req-anatomy">
+<span class="req-line" style="background: rgba(255,107,74,0.08); border-left: 3px solid var(--accent-1);"><span style="color:var(--accent-2); font-weight:700;">GET</span> <span style="color:var(--accent-3);">/index.html</span> <span style="color:var(--accent-5);">HTTP/1.1</span><span class="crlf">\r\n</span><span class="req-annotation">METHODE  URI  VERSION</span></span>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5);">
+      <div class="panel-label">Les 3 méthodes du sujet webserv</div>
+      <p>
+        Le sujet ne demande que <strong>trois méthodes</strong> :
+        <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">GET</code> (lire),
+        <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">POST</code> (envoyer),
+        <code style="color:var(--accent-1); background:rgba(255,107,74,0.06);">DELETE</code> (supprimer).
+        Toute autre méthode (<code>PUT</code>, <code>PATCH</code>, <code>HEAD</code>...) doit renvoyer
+        <strong>501 Not Implemented</strong>.
+      </p>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Idempotent</strong> signifie qu'appeler la même requête 1 fois ou 10 fois produit le même
+        résultat final. GET et DELETE sont idempotents. POST ne l'est pas — chaque appel peut créer
+        une nouvelle ressource ou déclencher un nouvel effet.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  02 — GET                               -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="get" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">02</div>
+      <div>
+        <div class="ch-fn">handleGet()</div>
+        <div class="ch-subtitle">Lire une ressource</div>
+      </div>
+    </div>
+
+    <div class="method-intro">
+      <span class="method-badge" style="background: rgba(74,224,255,0.1); color: var(--accent-2); border: 1px solid rgba(74,224,255,0.25);">GET</span>
+      <p>
+        <strong>C'est la méthode la plus utilisée sur le web.</strong>
+        Quand tu tapes une URL dans ton navigateur → GET. Quand tu cliques sur un lien → GET.
+        Quand une page charge une image → GET. Le client demande une ressource, le serveur la renvoie.
+      </p>
+    </div>
+
+    <div class="rfc-quote">
+      <p>
+        « The GET method requests transfer of a <strong>current selected representation</strong>
+        for the target resource. GET is the <strong>primary mechanism of information retrieval</strong>
+        and the focus of almost all performance optimizations. »
+      </p>
+      <cite>— RFC 7231, §4.3.1</cite>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="info-label">Body dans la requête</div>
+        <div class="info-value" style="color: var(--accent-1);">Aucun (pas de sémantique définie)</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Body dans la réponse</div>
+        <div class="info-value" style="color: var(--accent-4);">Oui (le contenu demandé)</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Idempotent ?</div>
+        <div class="info-value" style="color: var(--accent-4);">Oui — appeler 10x = même résultat</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Cacheable ?</div>
+        <div class="info-value" style="color: var(--accent-4);">Oui — par défaut</div>
+      </div>
+    </div>
+
+    <div class="schema-box">
+      <div class="schema-title">Requête GET brute — demande un fichier image</div>
+      <div class="req-anatomy">
+<span class="req-line" style="background: rgba(74,224,255,0.06); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-2); font-weight:700;">GET</span> <span style="color:var(--accent-3);">/images/logo.png</span> <span style="color:var(--accent-5);">HTTP/1.1</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.03); border-left: 3px solid rgba(74,224,255,0.3);"><span style="color:var(--accent-1);">Host</span>: <span style="color:var(--text-dim);">www.example.com</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.03); border-left: 3px solid rgba(74,224,255,0.3);"><span style="color:var(--accent-1);">User-Agent</span>: <span style="color:var(--text-dim);">Mozilla/5.0</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.03); border-left: 3px solid rgba(74,224,255,0.3);"><span style="color:var(--accent-1);">Accept</span>: <span style="color:var(--text-dim);">image/png,image/*</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(255,107,74,0.08); border-left: 3px solid var(--accent-1);"><span class="crlf crlf-empty">\r\n</span><span class="req-annotation">Pas de body</span></span>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2);">
+      <div class="panel-label">Ce que ton serveur doit faire avec un GET</div>
+      <ul>
+        <li><strong>Parser l'URI</strong> → trouver le fichier sur le disque correspondant à la config.</li>
+        <li><strong>Vérifier</strong> que le fichier existe et est lisible (<code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">stat()</code>, <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">access()</code>).</li>
+        <li><strong>Lire le fichier</strong>, construire une réponse 200 avec le bon <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">Content-Type</code> et <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">Content-Length</code>.</li>
+        <li>Si c'est un <strong>dossier</strong> → soit <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">index.html</code>, soit directory listing si activé dans la config.</li>
+      </ul>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2);">
+      <div class="panel-label">Ce que dit la RFC — subtilités importantes</div>
+      <ul>
+        <li>
+          La RFC dit qu'un <strong>identifiant de ressource n'est pas forcément un chemin de fichier</strong>.
+          L'URI peut pointer vers un arbre d'objets, une vue de base de données, ou une gateway vers un autre système.
+          Mais dans webserv, on implémente principalement le mapping fichier → c'est la version simple.
+        </li>
+        <li>
+          <strong>Body dans un GET :</strong> la RFC dit « a payload within a GET request message has
+          <strong>no defined semantics</strong> ». Certaines implémentations rejettent un GET avec body.
+          → Dans ton parser, si un GET arrive avec un body, <strong>ignore-le</strong> — ne crash pas, ne refuse pas la requête.
+        </li>
+        <li>
+          <strong>La réponse à un GET est cacheable par défaut</strong> — un cache peut la réutiliser pour
+          des requêtes GET ultérieures, sauf indication contraire via <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">Cache-Control</code>.
+        </li>
+      </ul>
+    </div>
+
+    <div class="rfc-quote">
+      <p>
+        « A payload within a GET request message has <strong>no defined semantics</strong>;
+        sending a payload body on a GET request might cause some existing implementations to
+        <strong>reject the request</strong>. »
+      </p>
+      <cite>— RFC 7231, §4.3.1</cite>
+    </div>
+
+    <div class="resp-block">
+<span class="resp-ok">HTTP/1.1 200 OK</span>                    — fichier trouvé<br>
+<span class="resp-err">HTTP/1.1 404 Not Found</span>              — fichier inexistant<br>
+<span class="resp-err">HTTP/1.1 403 Forbidden</span>              — pas les droits de lecture<br>
+<span class="resp-err">HTTP/1.1 301 Moved Permanently</span>      — redirection config<br>
+<span class="resp-err">HTTP/1.1 405 Method Not Allowed</span>     — GET interdit sur cette route
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Piège webserv :</strong> GET sur un répertoire (URL se terminant par <code>/</code>) doit
+        chercher le fichier index configuré. Si aucun index n'existe et que le directory listing est
+        désactivé → <strong>403</strong>. Si le listing est activé → générer une page HTML avec la liste des fichiers.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>URI ≠ chemin fichier.</strong> La RFC insiste : l'interface HTTP d'une ressource peut être
+        implémentée comme un fichier, mais aussi comme un programme qui s'exécute avec la requête en entrée
+        et envoie la sortie comme représentation. C'est exactement ce que fait le <strong>CGI</strong> dans webserv :
+        un GET sur <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">/cgi-bin/script.py</code> exécute le script au lieu de servir le fichier.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  03 — POST                              -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="post" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">03</div>
+      <div>
+        <div class="ch-fn">handlePost()</div>
+        <div class="ch-subtitle">Envoyer des données au serveur</div>
+      </div>
+    </div>
+
+    <div class="method-intro">
+      <span class="method-badge" style="background: rgba(74,222,128,0.1); color: var(--accent-4); border: 1px solid rgba(74,222,128,0.25);">POST</span>
+      <p>
+        <strong>C'est ce qui se passe quand tu soumets un formulaire, uploades un fichier, envoies du JSON.</strong>
+        POST <em>envoie</em> un body — le serveur le traite et crée ou modifie quelque chose.
+      </p>
+    </div>
+
+    <div class="rfc-quote">
+      <p>
+        « The POST method requests that the target resource <strong>process the representation
+        enclosed in the request</strong> according to the resource's own specific semantics. »
+      </p>
+      <cite>— RFC 7231, §4.3.3</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <div class="panel-label">Les 4 usages de POST selon la RFC</div>
+      <ul>
+        <li><strong>Fournir des données</strong> à un processus de traitement (formulaire HTML → script CGI).</li>
+        <li><strong>Publier un message</strong> vers un groupe d'articles, un forum, un blog.</li>
+        <li><strong>Créer une nouvelle ressource</strong> qui n'a pas encore été identifiée par le serveur.</li>
+        <li><strong>Ajouter (append)</strong> des données à la représentation existante d'une ressource.</li>
+      </ul>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="info-label">Body dans la requête</div>
+        <div class="info-value" style="color: var(--accent-4);">Oui — obligatoire</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Body dans la réponse</div>
+        <div class="info-value" style="color: var(--accent-4);">Oui (confirmation)</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Idempotent ?</div>
+        <div class="info-value" style="color: var(--accent-1);">Non — 2 appels = 2 effets</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Cacheable ?</div>
+        <div class="info-value" style="color: var(--accent-1);">Non — sauf freshness explicite</div>
+      </div>
+    </div>
+
+    <div class="ch-divider"></div>
+
+    <!-- POST form simple -->
+    <div class="schema-box">
+      <div class="schema-title">Requête POST — formulaire simple</div>
+      <div class="req-anatomy">
+<span class="req-line" style="background: rgba(74,222,128,0.06); border-left: 3px solid var(--accent-4);"><span style="color:var(--accent-4); font-weight:700;">POST</span> <span style="color:var(--accent-3);">/login</span> <span style="color:var(--accent-5);">HTTP/1.1</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.03); border-left: 3px solid rgba(74,222,128,0.3);"><span style="color:var(--accent-1);">Host</span>: <span style="color:var(--text-dim);">www.example.com</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.03); border-left: 3px solid rgba(74,222,128,0.3);"><span style="color:var(--accent-1);">Content-Type</span>: <span style="color:var(--text-dim);">application/x-www-form-urlencoded</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.03); border-left: 3px solid rgba(74,222,128,0.3);"><span style="color:var(--accent-1);">Content-Length</span>: <span style="color:var(--text-dim);">27</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(255,107,74,0.05); border-left: 3px solid rgba(255,107,74,0.4);"><span class="crlf crlf-empty">\r\n</span><span class="req-annotation">Fin des headers</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.08); border-left: 3px solid var(--accent-4);"><span style="color:var(--accent-4);">username=alice&amp;password=1234</span><span class="req-annotation">← Body</span></span>
+      </div>
+    </div>
+
+    <!-- POST multipart -->
+    <div class="schema-box">
+      <div class="schema-title">Requête POST — upload de fichier (multipart)</div>
+      <div class="req-anatomy">
+<span class="req-line" style="background: rgba(74,222,128,0.06); border-left: 3px solid var(--accent-4);"><span style="color:var(--accent-4); font-weight:700;">POST</span> <span style="color:var(--accent-3);">/upload</span> <span style="color:var(--accent-5);">HTTP/1.1</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.03); border-left: 3px solid rgba(74,222,128,0.3);"><span style="color:var(--accent-1);">Host</span>: <span style="color:var(--text-dim);">www.example.com</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.03); border-left: 3px solid rgba(74,222,128,0.3);"><span style="color:var(--accent-1);">Content-Type</span>: <span style="color:var(--text-dim);">multipart/form-data; boundary=----abc123</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.03); border-left: 3px solid rgba(74,222,128,0.3);"><span style="color:var(--accent-1);">Content-Length</span>: <span style="color:var(--text-dim);">198</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(255,107,74,0.05); border-left: 3px solid rgba(255,107,74,0.4);"><span class="crlf crlf-empty">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.08); border-left: 3px solid var(--accent-4);"><span style="color:var(--accent-4);">------abc123</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.05); border-left: 3px solid rgba(74,222,128,0.5);"><span style="color:var(--text-dim);">Content-Disposition: form-data; name="file"; filename="photo.jpg"</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.05); border-left: 3px solid rgba(74,222,128,0.5);"><span style="color:var(--text-dim);">Content-Type: image/jpeg</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.03); border-left: 3px solid rgba(74,222,128,0.3);"><span style="color:var(--text-muted); font-style:italic;">(ligne vide)</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.05); border-left: 3px solid rgba(74,222,128,0.5);"><span style="color:var(--text-muted);">[données binaires du fichier...]</span></span>
+<span class="req-line" style="background: rgba(74,222,128,0.08); border-left: 3px solid var(--accent-4);"><span style="color:var(--accent-4);">------abc123--</span><span class="req-annotation">← Fin du multipart</span></span>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <div class="panel-label">Ce que ton serveur doit faire avec un POST</div>
+      <ul>
+        <li>Lire le header <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">Content-Length</code> → lire <strong>exactement</strong> ce nombre d'octets de body.</li>
+        <li>Regarder le <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">Content-Type</code> pour savoir comment interpréter le body.</li>
+        <li>Si c'est un <strong>upload</strong> → parser le multipart, extraire le fichier, le sauvegarder dans le dossier upload configuré.</li>
+        <li>Si c'est du <strong>CGI</strong> → passer le body sur stdin du script via un pipe.</li>
+        <li>Répondre <strong>201 Created</strong> (ou 200 OK selon le cas).</li>
+      </ul>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <div class="panel-label">Ce que dit la RFC — règles critiques pour POST</div>
+      <ul>
+        <li>
+          <strong>Création → 201 + Location :</strong> la RFC dit explicitement :
+          si une ou plusieurs ressources ont été <strong>créées</strong> suite au POST, le serveur
+          <strong>SHOULD</strong> envoyer un <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">201 Created</code>
+          contenant un header <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">Location</code>
+          qui identifie la ressource principale créée. Pas juste un 200.
+        </li>
+        <li>
+          <strong>Presque tous les status codes sont possibles</strong> en réponse à POST
+          (exceptions : 206 Partial Content, 304 Not Modified, 416 Range Not Satisfiable).
+        </li>
+        <li>
+          <strong>Redirection 303 See Other :</strong> si le résultat du POST est équivalent à une ressource
+          existante, le serveur <strong>peut</strong> rediriger le client vers cette ressource avec un 303.
+          C'est le pattern <strong>POST-Redirect-GET</strong> — ça empêche la re-soumission du formulaire si
+          l'utilisateur recharge la page.
+        </li>
+        <li>
+          <strong>POST n'est pas cacheable</strong> par défaut. Les réponses POST ne sont cacheables
+          que si elles incluent des informations de fraîcheur explicites — en pratique,
+          presque personne ne le fait.
+        </li>
+      </ul>
+    </div>
+
+    <div class="rfc-quote">
+      <p>
+        « If one or more resources has been created on the origin server as a result of successfully
+        processing a POST request, the origin server <strong>SHOULD send a 201 (Created) response
+        containing a Location header field</strong> that provides an identifier for the primary resource created. »
+      </p>
+      <cite>— RFC 7231, §4.3.3</cite>
+    </div>
+
+    <div class="resp-block">
+<span class="resp-ok">HTTP/1.1 201 Created</span>               — ressource créée (+ header Location)<br>
+<span class="resp-ok">HTTP/1.1 200 OK</span>                    — traitement OK (CGI, pas de création)<br>
+<span class="resp-ok">HTTP/1.1 303 See Other</span>              — POST-Redirect-GET (résultat existe déjà)<br>
+<span class="resp-err">HTTP/1.1 400 Bad Request</span>           — body malformé<br>
+<span class="resp-err">HTTP/1.1 413 Content Too Large</span>     — body dépasse max configuré<br>
+<span class="resp-err">HTTP/1.1 405 Method Not Allowed</span>    — POST interdit sur cette route
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Piège webserv — chunked :</strong> Si le client envoie <code>Transfer-Encoding: chunked</code>
+        au lieu de <code>Content-Length</code>, tu dois décoder le format chunked toi-même avant de traiter le body.
+        Il n'y a pas de taille donnée à l'avance — les données arrivent en morceaux dont chacun est précédé
+        de sa taille en hexadécimal.
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Piège webserv — body size :</strong> Ton serveur doit avoir une taille maximale de body
+        configurable (<code>client_max_body_size</code> dans la config). Si le body dépasse →
+        répondre <strong>413</strong> immédiatement sans tout lire.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>POST-Redirect-GET en pratique :</strong> après un upload réussi, au lieu de répondre
+        200 avec une page de confirmation, tu peux répondre <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">303 See Other</code>
+        avec <code style="color:var(--accent-4); background:rgba(74,222,128,0.06);">Location: /uploads/photo.jpg</code>.
+        Le navigateur fait alors un GET sur cette URL — si l'utilisateur recharge, il recharge le GET,
+        pas le POST. Ça évite le double-submit.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  04 — DELETE                            -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="delete" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">04</div>
+      <div>
+        <div class="ch-fn">handleDelete()</div>
+        <div class="ch-subtitle">Supprimer une ressource</div>
+      </div>
+    </div>
+
+    <div class="method-intro">
+      <span class="method-badge" style="background: rgba(255,107,74,0.1); color: var(--accent-1); border: 1px solid rgba(255,107,74,0.25);">DELETE</span>
+      <p>
+        <strong>Le client demande au serveur d'effacer la ressource à l'URI donnée.</strong>
+        C'est la méthode la plus simple des trois — pas de body à parser en entrée,
+        juste une action à effectuer.
+      </p>
+    </div>
+
+    <div class="rfc-quote">
+      <p>
+        « The DELETE method requests that the origin server <strong>remove the association</strong>
+        between the target resource and its current functionality. In effect, this method is similar
+        to the <code>rm</code> command in UNIX: it expresses a <strong>deletion operation on the URI mapping</strong>
+        of the origin server rather than an expectation that the previously associated information be deleted. »
+      </p>
+      <cite>— RFC 7231, §4.3.5</cite>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="info-label">Body dans la requête</div>
+        <div class="info-value" style="color: var(--accent-5);">Aucun (pas de sémantique définie)</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Body dans la réponse</div>
+        <div class="info-value" style="color: var(--text-muted);">Optionnel</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Idempotent ?</div>
+        <div class="info-value" style="color: var(--accent-4);">Oui — supprimer 2x = même état final</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Cacheable ?</div>
+        <div class="info-value" style="color: var(--accent-1);">Non — jamais</div>
+      </div>
+    </div>
+
+    <div class="schema-box">
+      <div class="schema-title">Requête DELETE brute</div>
+      <div class="req-anatomy">
+<span class="req-line" style="background: rgba(255,107,74,0.06); border-left: 3px solid var(--accent-1);"><span style="color:var(--accent-1); font-weight:700;">DELETE</span> <span style="color:var(--accent-3);">/uploads/photo.jpg</span> <span style="color:var(--accent-5);">HTTP/1.1</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(255,107,74,0.03); border-left: 3px solid rgba(255,107,74,0.3);"><span style="color:var(--accent-1);">Host</span>: <span style="color:var(--text-dim);">www.example.com</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(255,107,74,0.08); border-left: 3px solid var(--accent-1);"><span class="crlf crlf-empty">\r\n</span><span class="req-annotation">Pas de body</span></span>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1);">
+      <div class="panel-label">Ce que ton serveur doit faire avec un DELETE</div>
+      <ul>
+        <li><strong>Résoudre l'URI</strong> → trouver le chemin absolu du fichier sur le disque.</li>
+        <li><strong>Vérifier</strong> que le fichier existe (<code>stat()</code>).</li>
+        <li><strong>Vérifier les permissions</strong> — est-ce que DELETE est autorisé sur cette route dans la config ?</li>
+        <li><strong>Supprimer</strong> avec <code>unlink()</code>.</li>
+        <li>Répondre selon le résultat (voir les 3 codes de succès ci-dessous).</li>
+      </ul>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1);">
+      <div class="panel-label">Ce que dit la RFC — les 3 réponses de succès possibles</div>
+      <ul>
+        <li>
+          <strong>202 Accepted</strong> — si l'action « will likely succeed but <strong>has not yet been enacted</strong> ».
+          Utile si la suppression est asynchrone (ex: mise en file d'attente). En pratique dans webserv,
+          tu fais <code>unlink()</code> de façon synchrone → tu n'en auras probablement pas besoin.
+        </li>
+        <li>
+          <strong>204 No Content</strong> — si l'action a été effectuée et qu'il n'y a
+          <strong>aucune information supplémentaire à fournir</strong>. C'est le choix le plus courant.
+        </li>
+        <li>
+          <strong>200 OK</strong> — si l'action a été effectuée et que la réponse inclut
+          une <strong>représentation décrivant le statut</strong> (ex: un message JSON de confirmation).
+        </li>
+      </ul>
+    </div>
+
+    <div class="rfc-quote">
+      <p>
+        « A payload within a DELETE request message has <strong>no defined semantics</strong>;
+        sending a payload body on a DELETE request might cause some existing implementations to
+        <strong>reject the request</strong>. »
+      </p>
+      <cite>— RFC 7231, §4.3.5</cite>
+    </div>
+
+    <div class="resp-block">
+<span class="resp-ok">HTTP/1.1 204 No Content</span>           — supprimé, pas de body (le plus courant)<br>
+<span class="resp-ok">HTTP/1.1 200 OK</span>                   — supprimé avec message de confirmation<br>
+<span class="resp-ok">HTTP/1.1 202 Accepted</span>              — suppression acceptée mais pas encore effectuée<br>
+<span class="resp-err">HTTP/1.1 404 Not Found</span>            — fichier inexistant<br>
+<span class="resp-err">HTTP/1.1 403 Forbidden</span>            — pas les droits<br>
+<span class="resp-err">HTTP/1.1 405 Method Not Allowed</span>   — DELETE interdit sur cette route
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Piège webserv :</strong> Un DELETE sur un répertoire doit-il supprimer récursivement ?
+        <strong>Non</strong> — sauf si tu l'implémentes explicitement. En général, supprimer un dossier non vide
+        retourne 403 ou 409 Conflict. Reste simple : DELETE ne fonctionne que sur des fichiers.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Body ignoré, pas rejeté.</strong> Comme pour GET, la RFC dit qu'un body dans un DELETE n'a
+        pas de sémantique. Si un client envoie un DELETE avec un body, ton parser doit l'<strong>ignorer
+        silencieusement</strong> — pas crasher, pas renvoyer 400. Le body n'existe pas à tes yeux.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Réponses non cacheables.</strong> La RFC dit explicitement que les réponses à DELETE ne sont
+        <strong>jamais cacheables</strong>. Si un cache a des réponses stockées pour l'URI ciblée,
+        elles sont invalidées automatiquement après un DELETE.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  05 — COMPARAISON                       -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="compare" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">05</div>
+      <div>
+        <div class="ch-fn">dispatchMethod()</div>
+        <div class="ch-subtitle">Vue d'ensemble et règles de routing</div>
+      </div>
+    </div>
+
+    <div class="schema-box">
+      <div class="schema-title">Les 3 méthodes côte à côte</div>
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Critère</th>
+            <th class="col-get">GET</th>
+            <th class="col-post">POST</th>
+            <th class="col-del">DELETE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Body en entrée</td>
+            <td>Non</td>
+            <td style="color:var(--accent-4); font-weight:500;">Oui (obligatoire)</td>
+            <td>Non</td>
+          </tr>
+          <tr>
+            <td>Body en réponse</td>
+            <td style="color:var(--accent-4);">Oui</td>
+            <td style="color:var(--accent-4);">Oui</td>
+            <td style="color:var(--text-muted);">Optionnel</td>
+          </tr>
+          <tr>
+            <td>Action principale</td>
+            <td>Lire</td>
+            <td>Créer / Envoyer</td>
+            <td>Supprimer</td>
+          </tr>
+          <tr>
+            <td>Syscall principal</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.72rem;">open / read</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.72rem;">open / write</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.72rem;">unlink()</td>
+          </tr>
+          <tr>
+            <td>Réponse succès typique</td>
+            <td>200 OK</td>
+            <td>201 Created</td>
+            <td>204 No Content</td>
+          </tr>
+          <tr>
+            <td>Idempotent</td>
+            <td style="color:var(--accent-4);">Oui</td>
+            <td style="color:var(--accent-1);">Non</td>
+            <td style="color:var(--accent-4);">Oui</td>
+          </tr>
+          <tr>
+            <td>Cacheable</td>
+            <td style="color:var(--accent-4);">Oui (par défaut)</td>
+            <td style="color:var(--accent-1);">Non (sauf freshness)</td>
+            <td style="color:var(--accent-1);">Non (jamais)</td>
+          </tr>
+          <tr>
+            <td>Body dans requête</td>
+            <td style="color:var(--text-muted);">Ignoré (no semantics)</td>
+            <td style="color:var(--accent-4);">Obligatoire</td>
+            <td style="color:var(--text-muted);">Ignoré (no semantics)</td>
+          </tr>
+          <tr>
+            <td>Méthode non autorisée</td>
+            <td colspan="3" style="color:var(--accent-1); font-family:'Space Mono',monospace; font-size:0.72rem;">405 Method Not Allowed</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3);">
+      <div class="panel-label">La règle des méthodes autorisées par route</div>
+      <p>
+        Dans ta config, chaque bloc <code style="color:var(--accent-3); background:rgba(192,132,252,0.06);">location</code> peut restreindre quelles méthodes sont acceptées.
+        Si le client envoie une méthode non listée → ton serveur répond <strong>405 Method Not Allowed</strong>.
+      </p>
+      <p>
+        Exemple : une route <code style="color:var(--accent-3); background:rgba(192,132,252,0.06);">/uploads</code> peut autoriser POST mais pas GET ni DELETE.
+      </p>
+    </div>
+
+    <div class="error-box">
+      <span>🚫</span>
+      <div>
+        <strong>Méthode inconnue ?</strong> Si ton serveur reçoit une méthode qu'il ne reconnaît pas du tout
+        (ex: <code>PATCH</code>, <code>PUT</code>, <code>TOTO</code>...) → <strong>501 Not Implemented</strong>.
+        Le sujet ne demande que GET, POST, DELETE — tout le reste est soit 501, soit 405 selon ta configuration.
+      </div>
+    </div>
+
+    <div class="ch-divider"></div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">dispatch logic</span>
+        </div>
+        <span class="code-tag" style="background: rgba(192,132,252,0.1); color: var(--accent-3);">C++</span>
+      </div>
+      <pre>
+<span class="cmt">// Après avoir parsé la request line :</span>
+
+<span class="kw">if</span> (method == <span class="str">"GET"</span>)
+    <span class="fn-name">handleGet</span>(request, response);
+<span class="kw">else if</span> (method == <span class="str">"POST"</span>)
+    <span class="fn-name">handlePost</span>(request, response);
+<span class="kw">else if</span> (method == <span class="str">"DELETE"</span>)
+    <span class="fn-name">handleDelete</span>(request, response);
+<span class="kw">else</span>
+    <span class="fn-name">sendError</span>(<span class="num">501</span>, response);  <span class="cmt">// Not Implemented</span>
+
+<span class="cmt">// Puis dans chaque handler, vérifier si la méthode</span>
+<span class="cmt">// est autorisée sur la route matchée dans la config.</span>
+<span class="cmt">// Si non → sendError(405, response);</span>
+      </pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Ordre de vérification :</strong> d'abord vérifier si la méthode est reconnue (sinon 501),
+        puis vérifier si elle est autorisée sur la route (sinon 405), puis exécuter le handler.
+        Cette distinction est importante — 501 = "je ne connais pas cette méthode",
+        405 = "je la connais mais elle n'est pas permise ici".
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ─── FOOTER ─── -->
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — 03 Les méthodes HTTP</p>
+</footer>
+
+<script>
+  // Fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on back links
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
+  });
+
+  // Smooth scroll with progress-bar offset
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (href.length < 2) return;
+      e.preventDefault();
+      var id = href.slice(1);
+      if (id === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+      var target = document.getElementById(id);
+      if (!target) return;
+      var navH = document.querySelector('.progress-bar').offsetHeight;
+      var top = target.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+      window.scrollTo({ top: top, behavior: 'smooth' });
+    });
+  });
+
+  // IntersectionObserver for active pill
+  var sections = document.querySelectorAll('.chapter');
+  var pills = {
+    'intro': document.getElementById('nav-intro'),
+    'get': document.getElementById('nav-get'),
+    'post': document.getElementById('nav-post'),
+    'delete': document.getElementById('nav-delete'),
+    'compare': document.getElementById('nav-compare')
+  };
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        Object.values(pills).forEach(function(p) { if(p) p.classList.remove('active'); });
+        var pill = pills[entry.target.id];
+        if (pill) pill.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(function(s) { observer.observe(s); });
+
+  // Reveal on scroll
+  var revealObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.1 });
+  sections.forEach(function(s) { revealObserver.observe(s); });
+</script>
+</body>
+</html>

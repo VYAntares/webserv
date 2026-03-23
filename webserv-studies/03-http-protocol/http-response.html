@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Status Codes & Réponse HTTP — Webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  body::after { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; }
+
+  /* ─── BACKGROUND GLOWS ─── */
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -200px; left: -150px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 600px; height: 600px; top: 40vh; right: -200px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 500px; height: 500px; bottom: 10vh; left: 20%; background: radial-gradient(ellipse, rgba(250,204,21,0.04) 0%, transparent 70%); }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,10,15,0.9); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px; margin: 0 auto;
+    display: flex; align-items: center; gap: 0;
+    justify-content: center;
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-muted); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.5rem; border-radius: 6px;
+    white-space: nowrap; flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-2); background: rgba(74,224,255,0.07); }
+  .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
+  .step-pill {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.8rem; border-radius: 100px;
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-muted); cursor: pointer;
+    transition: all 0.3s; text-decoration: none; white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(74,224,255,0.1); color: var(--accent-2); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 10px; }
+
+  /* ─── HEADER ─── */
+  .header {
+    padding: 3rem 2rem 2rem; max-width: 900px;
+    margin: 0 auto; border-bottom: 1px solid var(--border);
+    position: relative; z-index: 1;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.3em;
+    color: var(--accent-2); background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.2); padding: 0.3rem 0.8rem;
+    border-radius: 100px; display: inline-block; margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400; line-height: 1.1; margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-2); }
+  .header-desc {
+    font-size: 1rem; color: var(--text-dim); font-weight: 300;
+    max-width: 600px; line-height: 1.7;
+  }
+  .header-desc code { font-family: 'Space Mono', monospace; color: var(--accent-2); }
+  .header-quote {
+    margin-top: 1.2rem; padding: 0.8rem 1.2rem;
+    border-left: 2px solid var(--accent-2);
+    font-size: 0.82rem; color: var(--text-dim);
+    font-style: italic; line-height: 1.7;
+  }
+  .header-quote cite {
+    display: block; margin-top: 0.3rem;
+    font-style: normal; font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+
+  /* ─── MAIN ─── */
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; position: relative; z-index: 1; }
+
+  /* ─── SECTIONS ─── */
+  .chapter {
+    padding: 4rem 0 2rem;
+    opacity: 0; transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    position: relative; z-index: 1;
+  }
+  .chapter.visible { opacity: 1; transform: translateY(0); }
+  .ch-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .ch-number {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem; line-height: 1;
+    opacity: 0.15; flex-shrink: 0;
+    color: var(--step-color, var(--accent-2));
+  }
+  .ch-fn {
+    font-family: 'Space Mono', monospace; font-size: 1.4rem;
+    font-weight: 700; color: var(--step-color, var(--accent-2));
+    margin-bottom: 0.3rem;
+  }
+  .ch-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem; font-weight: 400; color: var(--text);
+  }
+
+  .ch-divider {
+    height: 1px; background: linear-gradient(90deg, var(--border), transparent);
+    margin: 2rem 0;
+  }
+
+  /* ─── PANELS ─── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--step-color, var(--accent-2));
+    border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-2)); margin-bottom: 0.8rem;
+  }
+  .panel p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; margin-bottom: 0.6rem; }
+  .panel p:last-child { margin-bottom: 0; }
+  .panel ul { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; padding-left: 1.2rem; margin-top: 0.5rem; }
+  .panel li { margin-bottom: 0.4rem; }
+  .panel code {
+    font-family: 'Space Mono', monospace; font-size: 0.78rem;
+    color: var(--accent-2); background: rgba(74,224,255,0.06);
+    padding: 0.15rem 0.4rem; border-radius: 4px;
+  }
+  .panel strong { color: var(--text); }
+
+  /* ─── CODE BLOCKS ─── */
+  .code-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem;
+  }
+  .code-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 5px; }
+  .code-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-3); }
+  .code-dots .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dots .code-dot:nth-child(2) { background: #ffbd2e; }
+  .code-dots .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.55rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 0.2rem 0.5rem; border-radius: 4px;
+  }
+  .code-panel pre {
+    padding: 1.2rem 1.5rem; overflow-x: auto;
+    font-family: 'Space Mono', monospace; font-size: 0.78rem;
+    line-height: 1.8; color: var(--text-dim); tab-size: 4;
+  }
+
+  /* syntax */
+  .kw { color: var(--accent-3); }
+  .fn-name { color: var(--accent-2); }
+  .str { color: var(--accent-4); }
+  .num { color: var(--accent-1); }
+  .cmt { color: var(--text-muted); font-style: italic; }
+  .macro { color: var(--accent-5); }
+  .var { color: var(--text); }
+  .type { color: var(--accent-6); }
+  .highlight-line { background: rgba(74,224,255,0.06); display: block; margin: 0 -1.5rem; padding: 0 1.5rem; border-left: 2px solid var(--accent-2); }
+
+  /* ─── SCHEMA BOXES ─── */
+  .schema-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  .schema-title {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-muted); margin-bottom: 1.5rem;
+    text-align: center;
+  }
+
+  /* ─── REQUEST / RESPONSE ANATOMY ─── */
+  .req-anatomy { font-family: 'Space Mono', monospace; font-size: 0.78rem; line-height: 2.2; }
+  .req-line { display: block; padding: 0.1rem 0.8rem; border-radius: 4px; margin-bottom: 1px; position: relative; }
+  .req-line .req-annotation {
+    position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+    font-size: 0.6rem; opacity: 0.6; font-style: italic;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .crlf {
+    font-family: 'Space Mono', monospace; font-size: 0.65rem;
+    color: rgba(74,224,255,0.55); font-weight: 400;
+    margin-left: 0.25rem; letter-spacing: 0;
+    user-select: none;
+  }
+  .crlf-empty {
+    font-size: 0.78rem; color: rgba(74,224,255,0.85); font-weight: 700;
+    margin-left: 0;
+  }
+
+  /* ─── STATUS ENTRY ─── */
+  .status-entry {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    border-left: 3px solid;
+    transition: border-color 0.2s;
+  }
+  .status-entry:hover { border-color: var(--entry-color) !important; }
+  .status-entry-header {
+    display: flex; align-items: center; gap: 0.8rem;
+    margin-bottom: 0.8rem; flex-wrap: wrap;
+  }
+  .status-badge {
+    font-family: 'Space Mono', monospace; font-size: 0.85rem;
+    font-weight: 700; padding: 0.25rem 0.7rem;
+    border-radius: 6px; flex-shrink: 0;
+  }
+  .status-entry-title {
+    font-size: 1rem; font-weight: 500; color: var(--text);
+  }
+  .status-entry-desc {
+    font-size: 0.85rem; color: var(--text-dim); line-height: 1.8;
+    margin-bottom: 0.8rem;
+  }
+  .status-entry-desc strong { color: var(--text); }
+  .status-entry-desc code {
+    font-family: 'Space Mono', monospace; font-size: 0.75rem;
+    padding: 0.1rem 0.35rem; border-radius: 3px;
+  }
+
+  /* scenario */
+  .scenario {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.7rem 1rem;
+    font-size: 0.8rem; color: var(--text-dim);
+    line-height: 1.7; margin: 0.5rem 0;
+  }
+  .scenario strong { color: var(--text); }
+  .scenario code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    padding: 0.05rem 0.3rem; border-radius: 3px;
+  }
+
+  /* response example */
+  .resp-example {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    line-height: 2; margin: 0.6rem 0;
+    color: var(--text-dim);
+  }
+
+  /* method tags */
+  .methods-row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.6rem; }
+  .method-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.55rem;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0.15rem 0.5rem; border-radius: 100px; font-weight: 600;
+  }
+  .mt-get { background: rgba(74,224,255,0.1); color: var(--accent-2); }
+  .mt-post { background: rgba(74,222,128,0.1); color: var(--accent-4); }
+  .mt-del { background: rgba(255,107,74,0.1); color: var(--accent-1); }
+  .mt-all { background: rgba(192,132,252,0.08); color: var(--accent-3); border: 1px solid rgba(192,132,252,0.15); }
+
+  /* webserv critical */
+  .ws-critical {
+    font-family: 'Space Mono', monospace; font-size: 0.55rem;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0.15rem 0.5rem; border-radius: 100px;
+    background: rgba(255,107,74,0.12); color: var(--accent-1);
+    font-weight: 600;
+  }
+
+  /* ─── WARNING / INFO ─── */
+  .warning {
+    display: flex; gap: 0.75rem; padding: 1rem 1.2rem;
+    background: rgba(255,107,74,0.04);
+    border: 1px solid rgba(255,107,74,0.15);
+    border-radius: 8px; font-size: 0.82rem; color: var(--text-dim);
+    line-height: 1.7; margin: 1.5rem 0;
+  }
+  .warning strong { color: var(--accent-1); }
+  .warning code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-1);
+  }
+
+  .info-box {
+    display: flex; gap: 0.75rem; padding: 1rem 1.2rem;
+    background: rgba(74,222,128,0.04);
+    border: 1px solid rgba(74,222,128,0.15);
+    border-radius: 8px; font-size: 0.82rem; color: var(--text-dim);
+    line-height: 1.7; margin: 1.5rem 0;
+  }
+  .info-box strong { color: var(--accent-4); }
+  .info-box code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-4);
+  }
+
+  /* ─── COMPARE TABLE ─── */
+  .matrix-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.78rem; margin: 1rem 0;
+  }
+  .matrix-table th {
+    text-align: center; padding: 0.7rem 0.8rem;
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--border);
+  }
+  .matrix-table th:first-child { text-align: left; color: var(--text-muted); }
+  .matrix-table td {
+    padding: 0.55rem 0.8rem; border-bottom: 1px solid rgba(42,42,66,0.4);
+    color: var(--text-dim); text-align: center; vertical-align: middle;
+  }
+  .matrix-table td:first-child {
+    text-align: left; font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--text); white-space: nowrap;
+  }
+  .matrix-table tr:hover td { background: rgba(74,224,255,0.03); }
+  .m-yes { color: var(--accent-4); font-weight: 600; }
+  .m-no { color: var(--text-muted); }
+  .m-maybe { color: var(--accent-5); font-size: 0.72rem; }
+
+  /* ─── HEADER TABLE ─── */
+  .header-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.8rem; margin: 1rem 0;
+  }
+  .header-table th {
+    text-align: left; padding: 0.6rem 0.8rem;
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+  }
+  .header-table td {
+    padding: 0.6rem 0.8rem; border-bottom: 1px solid rgba(42,42,66,0.4);
+    color: var(--text-dim); vertical-align: top;
+  }
+  .header-table td:first-child {
+    font-family: 'Space Mono', monospace; font-size: 0.75rem;
+    color: var(--accent-2); white-space: nowrap;
+  }
+  .header-table tr:hover td { background: rgba(74,224,255,0.03); }
+
+  /* ─── FOOTER ─── */
+  .footer {
+    text-align: center; padding: 3rem 2rem;
+    border-top: 1px solid var(--border); margin-top: 4rem;
+    position: relative; z-index: 1;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-2); text-decoration: none; }
+  .footer a:hover { color: var(--accent-5); }
+
+  /* ─── RFC QUOTES ─── */
+  .rfc-quote {
+    border-left: 2px solid var(--accent-3);
+    padding: 0.8rem 1.2rem;
+    margin: 1.2rem 0;
+    background: rgba(192,132,252,0.03);
+    border-radius: 0 8px 8px 0;
+  }
+  .rfc-quote p {
+    font-size: 0.82rem; color: var(--text-dim); line-height: 1.8;
+    font-style: italic;
+  }
+  .rfc-quote p strong { color: var(--text); font-style: normal; }
+  .rfc-quote cite {
+    display: block; margin-top: 0.4rem;
+    font-style: normal; font-size: 0.65rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--text-muted); letter-spacing: 0.05em;
+  }
+  .rfc-quote code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-3); background: rgba(192,132,252,0.06);
+    padding: 0.1rem 0.35rem; border-radius: 3px;
+    font-style: normal;
+  }
+
+  /* responsive */
+  @media (max-width: 700px) {
+    .status-entry-header { flex-direction: column; align-items: flex-start; }
+    .req-line .req-annotation { display: none; }
+  }
+</style>
+</head>
+<body id="top">
+
+<!-- ─── BACKGROUND GLOWS ─── -->
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<!-- ─── STICKY NAV ─── -->
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#anatomie" class="step-pill active" id="nav-anatomie"><span class="step-dot"></span>Anatomie</a>
+    <div class="step-connector"></div>
+    <a href="#headers" class="step-pill" id="nav-headers"><span class="step-dot"></span>Headers</a>
+    <div class="step-connector"></div>
+    <a href="#2xx" class="step-pill" id="nav-2xx"><span class="step-dot"></span>2xx</a>
+    <div class="step-connector"></div>
+    <a href="#3xx" class="step-pill" id="nav-3xx"><span class="step-dot"></span>3xx</a>
+    <div class="step-connector"></div>
+    <a href="#4xx" class="step-pill" id="nav-4xx"><span class="step-dot"></span>4xx</a>
+    <div class="step-connector"></div>
+    <a href="#5xx" class="step-pill" id="nav-5xx"><span class="step-dot"></span>5xx</a>
+    <div class="step-connector"></div>
+    <a href="#matrice" class="step-pill" id="nav-matrice"><span class="step-dot"></span>Matrice</a>
+  </div>
+</div>
+
+<!-- ─── HEADER ─── -->
+<div class="header">
+  <div class="header-tag">03 — Le protocole HTTP</div>
+  <h1>Status Codes &amp; Headers<br><em>La réponse HTTP</em></h1>
+  <p class="header-desc">
+    Le serveur reçoit une requête, la traite, et renvoie une <code>réponse</code>.
+    Cette réponse a une structure précise : une status line, des headers, et un body.
+    Chaque status code a une sémantique — ton serveur ne peut pas répondre n'importe quoi.
+  </p>
+  <div class="header-quote">
+    « Your HTTP response status codes must be accurate. »
+    <cite>— webserv.pdf, IV.1 Requirements</cite>
+  </div>
+  <div class="header-quote" style="border-left-color: var(--accent-3); margin-top: 0.6rem;">
+    « The status-code element is a three-digit integer code giving the result of the attempt to understand and satisfy the request. »
+    <cite>— RFC 7231, §6</cite>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  01 — ANATOMIE D'UNE RÉPONSE           -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="anatomie" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">01</div>
+      <div>
+        <div class="ch-fn">buildResponse()</div>
+        <div class="ch-subtitle">Anatomie d'une réponse HTTP</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2);">
+      <div class="panel-label">Structure — 3 parties, comme la requête</div>
+      <p>
+        Une réponse HTTP suit exactement le même format que la requête :
+        une <strong>status line</strong> (au lieu d'une request line), des <strong>headers</strong>,
+        puis optionnellement un <strong>body</strong>. Chaque ligne se termine par <code>\r\n</code>.
+      </p>
+    </div>
+
+    <div class="schema-box">
+      <div class="schema-title">Réponse HTTP complète annotée — 200 OK</div>
+      <div class="req-anatomy">
+<span class="req-line" style="background: rgba(74,222,128,0.08); border-left: 3px solid var(--accent-4);"><span style="color:var(--accent-4); font-weight:700;">HTTP/1.1</span> <span style="color:var(--accent-4); font-weight:700;">200</span> <span style="color:var(--accent-4);">OK</span><span class="crlf">\r\n</span><span class="req-annotation">← Status Line</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid rgba(74,224,255,0.4);"><span style="color:var(--accent-2);">Content-Type</span>: <span style="color:var(--text-dim);">text/html; charset=UTF-8</span><span class="crlf">\r\n</span><span class="req-annotation">← MIME type</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid rgba(74,224,255,0.4);"><span style="color:var(--accent-2);">Content-Length</span>: <span style="color:var(--text-dim);">1024</span><span class="crlf">\r\n</span><span class="req-annotation">← Taille du body en octets</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid rgba(74,224,255,0.4);"><span style="color:var(--accent-2);">Connection</span>: <span style="color:var(--text-dim);">keep-alive</span><span class="crlf">\r\n</span><span class="req-annotation">← Connexion persistante</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid rgba(74,224,255,0.4);"><span style="color:var(--accent-2);">Server</span>: <span style="color:var(--text-dim);">webserv/1.0</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(255,107,74,0.08); border-left: 3px solid var(--accent-1);"><span class="crlf crlf-empty">\r\n</span><span class="req-annotation">← Fin des headers</span></span>
+<span class="req-line" style="background: rgba(250,204,21,0.05); border-left: 3px solid var(--accent-5);"><span style="color:var(--accent-5);">&lt;!DOCTYPE html&gt;&lt;html&gt;...&lt;/html&gt;</span><span class="req-annotation">← Body (1024 octets)</span></span>
+      </div>
+    </div>
+
+    <div class="schema-box">
+      <div class="schema-title">La status line — décomposition</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; padding: 1rem 0;">
+        <div style="text-align: center;">
+          <div style="padding: 0.6rem 1.2rem; border-radius: 8px; background: rgba(192,132,252,0.1); border: 1px solid rgba(192,132,252,0.25); font-family: 'Space Mono', monospace; font-size: 0.9rem; font-weight: 700; color: var(--accent-3);">HTTP/1.1</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.4rem;">Version</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="padding: 0.6rem 1.2rem; border-radius: 8px; background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.25); font-family: 'Space Mono', monospace; font-size: 0.9rem; font-weight: 700; color: var(--accent-4);">200</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.4rem;">Status Code</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="padding: 0.6rem 1.2rem; border-radius: 8px; background: rgba(74,224,255,0.1); border: 1px solid rgba(74,224,255,0.25); font-family: 'Space Mono', monospace; font-size: 0.9rem; font-weight: 700; color: var(--accent-2);">OK</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.4rem;">Reason Phrase</div>
+        </div>
+      </div>
+      <div style="text-align: center; font-size: 0.78rem; color: var(--text-dim); margin-top: 0.5rem;">
+        Le code est un nombre, la reason phrase est un texte lisible pour les humains. Ton serveur doit envoyer les deux.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Dans ton code C++</strong>, construire une réponse c'est concaténer des strings :
+        <code>"HTTP/1.1 200 OK\r\n"</code> + headers + <code>"\r\n"</code> + body.
+        Le <code>\r\n</code> final vide sépare les headers du body — c'est obligatoire, même si le body est vide.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  02 — HEADERS DE RÉPONSE               -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="headers" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">02</div>
+      <div>
+        <div class="ch-fn">setHeaders()</div>
+        <div class="ch-subtitle">Les headers de réponse essentiels</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3);">
+      <div class="panel-label">Les headers que ton serveur doit envoyer</div>
+      <p>
+        Tu n'as pas besoin d'envoyer 50 headers. Concentre-toi sur ceux qui sont <strong>nécessaires</strong>
+        pour que le navigateur comprenne ta réponse. Le reste est optionnel.
+      </p>
+    </div>
+
+    <div class="schema-box">
+      <table class="header-table">
+        <thead>
+          <tr>
+            <th>Header</th>
+            <th>Rôle</th>
+            <th>Exemple</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="color: var(--accent-1);">Content-Type</td>
+            <td>Le type MIME du body. Sans ça, le navigateur ne sait pas comment afficher le contenu.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">text/html; charset=UTF-8</td>
+          </tr>
+          <tr>
+            <td style="color: var(--accent-1);">Content-Length</td>
+            <td>La taille exacte du body en octets. Permet au client de savoir quand il a tout reçu.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">1024</td>
+          </tr>
+          <tr>
+            <td style="color: var(--accent-4);">Connection</td>
+            <td><code style="color:var(--accent-3); background:rgba(192,132,252,0.06);">keep-alive</code> pour réutiliser la connexion TCP, <code style="color:var(--accent-3); background:rgba(192,132,252,0.06);">close</code> pour la fermer après.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">keep-alive</td>
+          </tr>
+          <tr>
+            <td style="color: var(--accent-4);">Server</td>
+            <td>Identification du serveur. Optionnel mais classique.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">webserv/1.0</td>
+          </tr>
+          <tr>
+            <td style="color: var(--accent-5);">Location</td>
+            <td>URL de destination pour les redirections (301, 302). Obligatoire avec 3xx.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">/new-page</td>
+          </tr>
+          <tr>
+            <td style="color: var(--accent-5);">Allow</td>
+            <td>Liste des méthodes autorisées. Obligatoire avec une réponse 405.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">GET, POST</td>
+          </tr>
+          <tr>
+            <td style="color: var(--accent-5);">Retry-After</td>
+            <td>Indique au client combien de temps attendre avant de re-tenter. Utilisé avec 413 et 503.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">120</td>
+          </tr>
+          <tr>
+            <td style="color: var(--accent-6);">Transfer-Encoding</td>
+            <td>Si tu envoies en <code style="color:var(--accent-3); background:rgba(192,132,252,0.06);">chunked</code>, pas besoin de Content-Length.</td>
+            <td style="font-family:'Space Mono',monospace; font-size:0.7rem;">chunked</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Content-Type est critique.</strong> Si tu envoies du HTML sans <code>Content-Type: text/html</code>,
+        le navigateur l'affichera comme du texte brut. Les types courants :
+        <code>text/html</code>, <code>text/css</code>, <code>application/javascript</code>,
+        <code>image/png</code>, <code>image/jpeg</code>, <code>application/octet-stream</code> (binaire par défaut).
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Content-Length doit être exact.</strong> Si la taille ne correspond pas au body réel :
+        trop court → le navigateur coupe le contenu ; trop long → il attend indéfiniment des octets qui n'arrivent pas.
+        Toujours utiliser <code>body.size()</code> ou <code>strlen()</code> pour calculer.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  03 — 2xx SUCCÈS                        -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="2xx" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">03</div>
+      <div>
+        <div class="ch-fn">2xx</div>
+        <div class="ch-subtitle">Succès — la requête a été traitée</div>
+      </div>
+    </div>
+
+    <div class="rfc-quote">
+      <p>« The 2xx (Successful) class of status code indicates that the client's request was <strong>successfully received, understood, and accepted</strong>. »</p>
+      <cite>— RFC 7231, §6.3</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <div class="panel-label">Classe 2xx — Succès</div>
+      <p>
+        Les codes 2xx signifient que la requête a été <strong>reçue, comprise et acceptée</strong> par le serveur.
+        Le contenu exact du payload varie selon la méthode utilisée et le code spécifique.
+      </p>
+    </div>
+
+    <!-- 200 OK -->
+    <div class="status-entry" style="--entry-color: var(--accent-4); border-left-color: var(--accent-4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(74,222,128,0.12); color: var(--accent-4);">200 OK</span>
+        <span class="status-entry-title">Le classique universel</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 200 (OK) status code indicates that the request has succeeded. The payload sent in a 200 response depends on the request method. »</p>
+        <cite>— RFC 7231, §6.3.1</cite>
+      </div>
+      <div class="status-entry-desc">
+        La requête a été reçue, comprise, et traitée avec succès.
+        Le body de la réponse contient le résultat demandé.
+        C'est le code <strong>par défaut</strong> pour tout ce qui fonctionne.
+        Selon le RFC, le contenu du payload dépend de la méthode :
+        <strong>GET</strong> → la ressource demandée ;
+        <strong>POST</strong> → le résultat de l'action ;
+        <strong>DELETE</strong> → une description du statut.
+        Ce code est <strong>cacheable par défaut</strong>.
+      </div>
+      <div class="scenario">
+        <strong>Scénario GET :</strong> le navigateur demande <code>GET /index.html</code> →
+        le fichier existe et est lisible. Tu le lis, tu l'envoies → 200 + body HTML.
+      </div>
+      <div class="scenario">
+        <strong>Scénario POST :</strong> un script CGI traite un formulaire et retourne une page de confirmation
+        → 200 + body de la réponse CGI.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-4); font-weight:600;">HTTP/1.1 200 OK</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> 1024<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[body HTML ici]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-get">GET</span>
+        <span class="method-tag mt-post">POST</span>
+        <span class="method-tag mt-del">DELETE</span>
+      </div>
+    </div>
+
+    <!-- 201 Created -->
+    <div class="status-entry" style="--entry-color: var(--accent-4); border-left-color: rgba(74,222,128,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(74,222,128,0.12); color: var(--accent-4);">201 Created</span>
+        <span class="status-entry-title">Ressource créée</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 201 (Created) status code indicates that the request has been fulfilled and has resulted in <strong>one or more new resources being created</strong>. The primary resource created by the request is identified by either a Location header field in the response, or, if no Location field is received, by the effective request URI. »</p>
+        <cite>— RFC 7231, §6.3.2</cite>
+      </div>
+      <div class="status-entry-desc">
+        La requête a abouti à la <strong>création d'une nouvelle ressource</strong>.
+        Utilisé principalement avec POST pour les uploads. Le header
+        <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">Location</code> <strong>doit</strong> indiquer l'URL de la ressource créée.
+        Le payload du 201 décrit et référence la ou les ressources créées.
+      </div>
+      <div class="scenario">
+        <strong>Scénario :</strong> le client envoie <code>POST /uploads</code> avec un fichier.
+        Tu sauvegardes le fichier → tu réponds 201 avec <code>Location: /uploads/photo.jpg</code>.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-4); font-weight:600;">HTTP/1.1 201 Created</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Location:</span> /uploads/photo.jpg<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> 0<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-post">POST</span>
+      </div>
+    </div>
+
+    <!-- 204 No Content -->
+    <div class="status-entry" style="--entry-color: var(--accent-4); border-left-color: rgba(74,222,128,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(74,222,128,0.12); color: var(--accent-4);">204 No Content</span>
+        <span class="status-entry-title">Succès sans body</span>
+        <span class="ws-critical">Attention</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 204 (No Content) status code indicates that the server has successfully fulfilled the request and that <strong>there is no additional content to send</strong> in the response payload body. Metadata in the response header fields refer to the target resource and its selected representation after the requested action was applied. »</p>
+        <cite>— RFC 7231, §6.3.5</cite>
+      </div>
+      <div class="status-entry-desc">
+        La requête a réussi mais il n'y a <strong>rien à renvoyer</strong> dans le body.
+        Utilisé pour DELETE principalement. <strong>Ne jamais envoyer de body avec un 204.</strong>
+        Les headers de métadonnées (ETag, Last-Modified, etc.) se réfèrent à la ressource cible
+        <em>après</em> l'application de l'action demandée.
+      </div>
+      <div class="scenario">
+        <strong>Scénario :</strong> le client envoie <code>DELETE /uploads/photo.jpg</code>.
+        Tu fais <code>unlink()</code> avec succès → 204, aucun body. Le navigateur comprend : "c'est fait, rien à afficher".
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-4); font-weight:600;">HTTP/1.1 204 No Content</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Connection:</span> close<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted); font-style:italic;">[aucun body — ni une seule lettre]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-del">DELETE</span>
+        <span class="method-tag mt-post">POST</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  04 — 3xx REDIRECTIONS                  -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="3xx" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">04</div>
+      <div>
+        <div class="ch-fn">3xx</div>
+        <div class="ch-subtitle">Redirections — la ressource est ailleurs</div>
+      </div>
+    </div>
+
+    <div class="rfc-quote">
+      <p>« The 3xx (Redirection) class of status code indicates that <strong>further action needs to be taken</strong> by the user agent in order to fulfill the request. »</p>
+      <cite>— RFC 7231, §6.4</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2);">
+      <div class="panel-label">Classe 3xx — Redirection</div>
+      <p>
+        Les codes 3xx indiquent que le client doit effectuer une <strong>action supplémentaire</strong> pour compléter la requête.
+        Si un header <code>Location</code> est fourni, le user-agent <strong>peut</strong> suivre automatiquement la redirection.
+        Dans webserv, tu gères les redirections via la directive <code>return</code> de ta config.
+      </p>
+    </div>
+
+    <!-- 301 -->
+    <div class="status-entry" style="--entry-color: var(--accent-2); border-left-color: var(--accent-2);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(74,224,255,0.12); color: var(--accent-2);">301 Moved Permanently</span>
+        <span class="status-entry-title">Redirection permanente</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 301 (Moved Permanently) status code indicates that the target resource has been assigned a <strong>new permanent URI</strong> and any future references to this resource ought to use one of the enclosed URIs. »</p>
+        <cite>— RFC 7231, §6.4.2</cite>
+      </div>
+      <div class="status-entry-desc">
+        La ressource a <strong>définitivement changé d'URL</strong>. Le header
+        <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">Location</code> indique la nouvelle URL.
+        Le navigateur mémorise ce changement et <strong>suit automatiquement</strong>.
+        Ce code est <strong>cacheable par défaut</strong> — le navigateur n'a pas besoin de redemander cette URL.
+      </div>
+      <div class="scenario">
+        <strong>Config :</strong> tu as une directive <code>return 301 /new-page</code> sur une route.
+        Quand le client frappe l'ancienne URL → tu réponds 301 avec le nouveau chemin dans <code>Location</code>.
+      </div>
+      <div class="scenario">
+        <strong>Dossier sans slash :</strong> si le client demande <code>GET /folder</code> (sans slash final) mais que <code>folder</code>
+        est un répertoire → tu réponds 301 vers <code>/folder/</code>. NGINX fait ça automatiquement.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-2); font-weight:600;">HTTP/1.1 301 Moved Permanently</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Location:</span> /new-page<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> 0<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-get">GET</span>
+      </div>
+    </div>
+
+    <!-- 302 -->
+    <div class="status-entry" style="--entry-color: var(--accent-2); border-left-color: rgba(74,224,255,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(74,224,255,0.12); color: var(--accent-2);">302 Found</span>
+        <span class="status-entry-title">Redirection temporaire</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 302 (Found) status code indicates that the target resource resides <strong>temporarily</strong> under a different URI. Since the redirection might be altered on occasion, the client ought to continue to use the effective request URI for future requests. »</p>
+        <cite>— RFC 7231, §6.4.3</cite>
+      </div>
+      <div class="status-entry-desc">
+        Similaire au 301 mais <strong>temporaire</strong>. Le navigateur ne mémorise pas.
+        Utile pour le pattern <strong>POST-Redirect-GET</strong> : après un POST réussi, tu rediriges vers
+        une page de confirmation avec un 302 pour éviter la re-soumission si l'utilisateur recharge la page.
+        <strong>Note historique :</strong> en pratique, la plupart des user-agents changent la méthode en GET
+        lors du suivi d'un 302, même si ce n'est pas ce que le RFC prescrit.
+      </div>
+      <div class="scenario">
+        <strong>Cas :</strong> le client envoie <code>POST /login</code> avec les identifiants.
+        L'authentification réussit → tu réponds 302 vers <code>/dashboard</code>. Le navigateur fait un GET
+        sur /dashboard. Si l'utilisateur recharge, il recharge le GET, pas le POST.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-2); font-weight:600;">HTTP/1.1 302 Found</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Location:</span> /dashboard<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> 0<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-get">GET</span>
+        <span class="method-tag mt-post">POST</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  05 — 4xx ERREURS CLIENT                -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="4xx" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">05</div>
+      <div>
+        <div class="ch-fn">4xx</div>
+        <div class="ch-subtitle">Erreurs client — c'est lui qui s'est trompé</div>
+      </div>
+    </div>
+
+    <div class="rfc-quote">
+      <p>« The 4xx (Client Error) class of status code indicates that the client <strong>seems to have erred</strong>. Except when responding to a HEAD request, the server SHOULD send a representation containing an explanation of the error situation, and whether it is a temporary or permanent condition. »</p>
+      <cite>— RFC 7231, §6.5</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5);">
+      <div class="panel-label">Classe 4xx — Erreur client</div>
+      <p>
+        Les codes 4xx signifient que le client <strong>semble avoir fait une erreur</strong>.
+        Sauf pour une requête HEAD, le serveur <strong>devrait</strong> envoyer un body expliquant la situation
+        d'erreur, et si c'est une condition temporaire ou permanente.
+        Ces codes s'appliquent à <strong>toute méthode</strong>.
+      </p>
+    </div>
+
+    <!-- 400 -->
+    <div class="status-entry" style="--entry-color: var(--accent-5); border-left-color: var(--accent-5);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(250,204,21,0.12); color: var(--accent-5);">400 Bad Request</span>
+        <span class="status-entry-title">Requête malformée</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 400 (Bad Request) status code indicates that the server <strong>cannot or will not process the request</strong> due to something that is perceived to be a client error (e.g., malformed request syntax, invalid request message framing, or deceptive request routing). »</p>
+        <cite>— RFC 7231, §6.5.1</cite>
+      </div>
+      <div class="status-entry-desc">
+        La requête envoyée par le client est <strong>syntaxiquement incorrecte</strong> ou ne respecte
+        pas le protocole HTTP. Le serveur ne peut pas l'interpréter. C'est une erreur de <strong>parsing</strong>.
+      </div>
+      <div class="scenario">
+        <strong>Cas 1 :</strong> la Request Line est invalide — ex: <code>GETGET /index HTTP/1.1</code>
+        sans espace correct, ou une version HTTP inconnue.
+      </div>
+      <div class="scenario">
+        <strong>Cas 2 :</strong> en HTTP/1.1, le header <code>Host</code> est obligatoire. S'il est absent → 400 immédiatement.
+      </div>
+      <div class="scenario">
+        <strong>Cas 3 :</strong> un header malformé — ex: <code>Content-Length: abc</code> (valeur non numérique).
+      </div>
+      <div class="scenario">
+        <strong>Cas 4 :</strong> l'URI contient des caractères illégaux non encodés.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-5); font-weight:600;">HTTP/1.1 400 Bad Request</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille page erreur]</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Connection:</span> close<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[ta page d'erreur 400 par défaut]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-all">Toute méthode</span>
+      </div>
+    </div>
+
+    <!-- 403 -->
+    <div class="status-entry" style="--entry-color: var(--accent-5); border-left-color: rgba(250,204,21,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(250,204,21,0.12); color: var(--accent-5);">403 Forbidden</span>
+        <span class="status-entry-title">Accès refusé</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 403 (Forbidden) status code indicates that the server <strong>understood the request but refuses to authorize it</strong>. A server that wishes to make public why the request has been forbidden can describe that reason in the response payload. If authentication credentials were provided in the request, the server considers them insufficient to grant access. »</p>
+        <cite>— RFC 7231, §6.5.3</cite>
+      </div>
+      <div class="status-entry-desc">
+        Le serveur a compris la requête mais <strong>refuse de l'exécuter</strong>.
+        Ce n'est pas un problème d'authentification — c'est une règle de configuration ou de droits fichier.
+      </div>
+      <div class="scenario">
+        <strong>Droits Unix :</strong> <code>GET /secret.txt</code> → le fichier existe mais les permissions
+        ne permettent pas la lecture (<code>access()</code> retourne -1).
+      </div>
+      <div class="scenario">
+        <strong>Directory listing off :</strong> <code>GET /uploads/</code> → c'est un répertoire, pas de fichier index,
+        et le directory listing est désactivé dans la config → 403.
+      </div>
+      <div class="info-box">
+        <span>🔒</span>
+        <div>
+          <strong>Astuce sécurité RFC :</strong> si le serveur ne veut pas révéler qu'une ressource existe,
+          il peut répondre <code>404</code> au lieu de <code>403</code>. Cela évite de confirmer l'existence
+          de fichiers sensibles à un attaquant. Le RFC dit explicitement :
+          « <em>If the server does not wish to make this reason public, the status code 404 (Not Found) can be used instead.</em> »
+        </div>
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-5); font-weight:600;">HTTP/1.1 403 Forbidden</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[ta page d'erreur 403 — ou error_page custom si configurée]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-get">GET</span>
+        <span class="method-tag mt-post">POST</span>
+        <span class="method-tag mt-del">DELETE</span>
+      </div>
+    </div>
+
+    <!-- 404 -->
+    <div class="status-entry" style="--entry-color: var(--accent-5); border-left-color: rgba(250,204,21,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(250,204,21,0.12); color: var(--accent-5);">404 Not Found</span>
+        <span class="status-entry-title">Introuvable</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 404 (Not Found) status code indicates that the origin server <strong>did not find a current representation for the target resource</strong> or is not willing to disclose that one exists. A 404 status code does not indicate whether this lack of representation is temporary or permanent. »</p>
+        <cite>— RFC 7231, §6.5.4</cite>
+      </div>
+      <div class="status-entry-desc">
+        La ressource demandée <strong>n'existe pas</strong> à l'URL indiquée.
+        C'est le code d'erreur le plus connu sur le web.
+        <strong>Cacheable par défaut</strong> selon le RFC — le navigateur peut mémoriser qu'une URL retourne 404
+        sans redemander à chaque fois.
+      </div>
+      <div class="scenario">
+        <strong>Fichier absent :</strong> <code>GET /page-qui-nexiste-pas.html</code> →
+        <code>stat()</code> retourne -1 avec errno ENOENT.
+      </div>
+      <div class="scenario">
+        <strong>Déjà supprimé :</strong> <code>DELETE /uploads/fichier-deja-supprime.jpg</code> → le fichier n'existe plus.
+      </div>
+      <div class="scenario">
+        <strong>Aucun match :</strong> aucun bloc <code>location</code> de la config ne matche l'URI demandée.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-5); font-weight:600;">HTTP/1.1 404 Not Found</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[ta page d'erreur 404 — obligatoire dans webserv]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-all">Toute méthode</span>
+      </div>
+    </div>
+
+    <!-- 405 -->
+    <div class="status-entry" style="--entry-color: var(--accent-5); border-left-color: rgba(250,204,21,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(250,204,21,0.12); color: var(--accent-5);">405 Method Not Allowed</span>
+        <span class="status-entry-title">Méthode interdite sur cette route</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 405 (Method Not Allowed) status code indicates that the method received in the request-line <strong>is known by the origin server but not supported</strong> by the target resource. The origin server <strong>MUST</strong> generate an <code>Allow</code> header field in a 405 response containing a list of the target resource's currently supported methods. »</p>
+        <cite>— RFC 7231, §6.5.5</cite>
+      </div>
+      <div class="status-entry-desc">
+        La ressource existe, mais la méthode HTTP utilisée <strong>n'est pas autorisée</strong> sur elle.
+        La réponse <strong>DOIT</strong> inclure un header
+        <code style="color:var(--accent-2); background:rgba(74,224,255,0.06);">Allow</code> listant les méthodes acceptées.
+        Ce code est <strong>cacheable par défaut</strong>.
+      </div>
+      <div class="scenario">
+        <strong>Config :</strong> la config autorise uniquement GET sur <code>/static</code>.
+        Le client envoie <code>POST /static/page.html</code> → 405.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-5); font-weight:600;">HTTP/1.1 405 Method Not Allowed</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Allow:</span> GET, POST<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-all">Toute méthode non listée</span>
+      </div>
+    </div>
+
+    <!-- 413 -->
+    <div class="status-entry" style="--entry-color: var(--accent-1); border-left-color: var(--accent-1);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(255,107,74,0.12); color: var(--accent-1);">413 Content Too Large</span>
+        <span class="status-entry-title">Body trop grand</span>
+        <span class="ws-critical">Webserv critique</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 413 (Payload Too Large) status code indicates that the server is refusing to process a request because the <strong>request payload is larger than the server is willing or able to process</strong>. The server MAY close the connection to prevent the client from continuing the request. If the condition is temporary, the server SHOULD generate a <code>Retry-After</code> header field to indicate that it is temporary. »</p>
+        <cite>— RFC 7231, §6.5.11</cite>
+      </div>
+      <div class="status-entry-desc">
+        Le body de la requête dépasse la taille maximale configurée
+        (<code style="color:var(--accent-1); background:rgba(255,107,74,0.06);">client_max_body_size</code> dans ta config).
+        Le sujet demande <strong>explicitement</strong> de l'implémenter. Tu dois stopper la lecture et répondre immédiatement.
+      </div>
+      <div class="scenario">
+        <strong>Content-Length :</strong> ta config dit <code>client_max_body_size 1m</code>.
+        Le client envoie un POST avec <code>Content-Length: 50000000</code> (50 Mo).
+        Dès que tu lis le header et que tu vois que la taille dépasse → 413 sans attendre de lire le body.
+      </div>
+      <div class="scenario">
+        <strong>Chunked :</strong> si le client envoie les données en chunked, tu dois surveiller la taille au fur
+        et à mesure que tu déchunkes. Si ça dépasse pendant le décodage → 413 et fermer la connexion.
+      </div>
+      <div class="warning">
+        <span>⚠️</span>
+        <div>
+          <strong>RFC : le serveur PEUT fermer la connexion</strong> pour empêcher le client de continuer à envoyer des données.
+          En pratique dans webserv, tu envoies le 413 avec <code>Connection: close</code> puis tu fermes le socket.
+          Si la condition est temporaire, le RFC recommande d'ajouter un header <code>Retry-After</code>.
+        </div>
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-1); font-weight:600;">HTTP/1.1 413 Content Too Large</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Connection:</span> close<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-post">POST</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  06 — 5xx ERREURS SERVEUR               -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="5xx" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">06</div>
+      <div>
+        <div class="ch-fn">5xx</div>
+        <div class="ch-subtitle">Erreurs serveur — c'est ton code qui a un problème</div>
+      </div>
+    </div>
+
+    <div class="rfc-quote">
+      <p>« The 5xx (Server Error) class of status code indicates that the server is <strong>aware that it has erred or is incapable of performing the requested method</strong>. Except when responding to a HEAD request, the server SHOULD send a representation containing an explanation of the error situation. »</p>
+      <cite>— RFC 7231, §6.6</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1);">
+      <div class="panel-label">Classe 5xx — Erreur serveur</div>
+      <p>
+        Les codes 5xx signifient que le serveur <strong>sait qu'il a commis une erreur</strong> ou qu'il est
+        <strong>incapable</strong> d'effectuer la méthode demandée. Le serveur devrait envoyer un body
+        expliquant la situation d'erreur. Ces erreurs s'appliquent à <strong>toute méthode</strong>.
+      </p>
+    </div>
+
+    <!-- 500 -->
+    <div class="status-entry" style="--entry-color: var(--accent-1); border-left-color: var(--accent-1);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(255,107,74,0.12); color: var(--accent-1);">500 Internal Server Error</span>
+        <span class="status-entry-title">Erreur interne</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 500 (Internal Server Error) status code indicates that the server encountered an <strong>unexpected condition that prevented it from fulfilling the request</strong>. »</p>
+        <cite>— RFC 7231, §6.6.1</cite>
+      </div>
+      <div class="status-entry-desc">
+        Quelque chose a mal tourné côté serveur — une erreur inattendue que le serveur ne sait pas
+        gérer autrement. C'est le <strong>"catch-all"</strong> des erreurs serveur.
+        Dans webserv, ça arrive souvent avec le CGI.
+      </div>
+      <div class="scenario">
+        <strong>fork()/execve() :</strong> le lancement du script CGI échoue → 500.
+      </div>
+      <div class="scenario">
+        <strong>CGI crash :</strong> le script plante (segfault, exception) et retourne un exit code non nul → 500.
+      </div>
+      <div class="scenario">
+        <strong>I/O error :</strong> <code>open()</code> sur le fichier à servir échoue pour une raison inattendue (disque plein, etc.) → 500.
+      </div>
+      <div class="scenario">
+        <strong>Mémoire :</strong> erreur d'allocation mémoire dans ton serveur C++. Le sujet dit que ton serveur ne doit
+        <strong>JAMAIS crash</strong> — tu dois gérer ça proprement et retourner 500 plutôt que de planter.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-1); font-weight:600;">HTTP/1.1 500 Internal Server Error</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[ta page d'erreur 500 par défaut]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-all">Toute méthode</span>
+      </div>
+    </div>
+
+    <!-- 501 -->
+    <div class="status-entry" style="--entry-color: var(--accent-1); border-left-color: rgba(255,107,74,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(255,107,74,0.12); color: var(--accent-1);">501 Not Implemented</span>
+        <span class="status-entry-title">Méthode non implémentée</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 501 (Not Implemented) status code indicates that the server <strong>does not support the functionality required to fulfill the request</strong>. This is the appropriate response when the server does not recognize the request method and is not capable of supporting it for any resource. »</p>
+        <cite>— RFC 7231, §6.6.2</cite>
+      </div>
+      <div class="status-entry-desc">
+        Le serveur ne supporte pas la méthode HTTP demandée. <strong>Différent du 405</strong> :
+        ici la méthode est <strong>inconnue du serveur</strong>, pas juste interdite sur une route.
+        Ce code est <strong>cacheable par défaut</strong>.
+      </div>
+      <div class="scenario">
+        <strong>Cas :</strong> le client envoie <code>PATCH /file HTTP/1.1</code> ou <code>PUT /file HTTP/1.1</code>.
+        Ton serveur n'implémente que GET, POST, DELETE → 501.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-1); font-weight:600;">HTTP/1.1 501 Not Implemented</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Connection:</span> close<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[ta page d'erreur 501 — "méthode PATCH non supportée"]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-all">Toute méthode inconnue</span>
+      </div>
+    </div>
+
+    <!-- 502 -->
+    <div class="status-entry" style="--entry-color: var(--accent-1); border-left-color: rgba(255,107,74,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(255,107,74,0.12); color: var(--accent-1);">502 Bad Gateway</span>
+        <span class="status-entry-title">Réponse invalide du CGI</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 502 (Bad Gateway) status code indicates that the server, while acting as a gateway or proxy, received an <strong>invalid response from an inbound server</strong> it accessed while attempting to fulfill the request. »</p>
+        <cite>— RFC 7231, §6.6.3</cite>
+      </div>
+      <div class="status-entry-desc">
+        Le serveur agissait comme passerelle et a reçu une <strong>réponse invalide</strong> du service en amont.
+        Dans webserv, ça s'applique quand le CGI retourne une réponse malformée.
+      </div>
+      <div class="scenario">
+        <strong>Cas :</strong> le script Python/PHP que tu as lancé via <code>execve()</code> retourne une sortie qui n'est pas
+        du HTTP valide — il a oublié ses headers CGI, ou a écrit des données corrompues sur stdout → 502.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-1); font-weight:600;">HTTP/1.1 502 Bad Gateway</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Connection:</span> close<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[ta page d'erreur 502 — "le script CGI a retourné une réponse invalide"]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-get">GET</span>
+        <span class="method-tag mt-post">POST</span>
+      </div>
+    </div>
+
+    <!-- 504 -->
+    <div class="status-entry" style="--entry-color: var(--accent-1); border-left-color: rgba(255,107,74,0.4);">
+      <div class="status-entry-header">
+        <span class="status-badge" style="background: rgba(255,107,74,0.12); color: var(--accent-1);">504 Gateway Timeout</span>
+        <span class="status-entry-title">CGI trop lent</span>
+        <span class="ws-critical">Webserv critique</span>
+      </div>
+      <div class="rfc-quote">
+        <p>« The 504 (Gateway Timeout) status code indicates that the server, while acting as a gateway or proxy, <strong>did not receive a timely response</strong> from an upstream server it needed to access in order to complete the request. »</p>
+        <cite>— RFC 7231, §6.6.5</cite>
+      </div>
+      <div class="status-entry-desc">
+        Le serveur a attendu une réponse du CGI mais le <strong>délai imparti a expiré</strong>.
+        Le sujet dit qu'une requête ne doit jamais bloquer indéfiniment.
+      </div>
+      <div class="scenario">
+        <strong>Cas :</strong> tu lances un script Python via <code>fork()</code> + <code>execve()</code>.
+        Le script entre dans une boucle infinie. Après X secondes de timeout, tu <code>kill()</code>
+        le processus fils et tu réponds 504 au client.
+      </div>
+      <div class="scenario">
+        <strong>Implémentation :</strong> dans ta boucle epoll, tu vérifies le timestamp de lancement de chaque CGI.
+        Si <code>now - start > timeout</code> → kill + 504.
+      </div>
+      <div class="resp-example">
+<span style="color:var(--accent-1); font-weight:600;">HTTP/1.1 504 Gateway Timeout</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Type:</span> text/html<span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Content-Length:</span> <span style="color:var(--text-muted);">[taille]</span><span class="crlf">\r\n</span><br>
+<span style="color:var(--accent-2);">Connection:</span> close<span class="crlf">\r\n</span><br>
+<span class="crlf crlf-empty">\r\n</span><br>
+<span style="color:var(--text-muted);">[ta page d'erreur 504 — "le script CGI n'a pas répondu à temps"]</span>
+      </div>
+      <div class="methods-row">
+        <span class="method-tag mt-get">GET</span>
+        <span class="method-tag mt-post">POST</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!--  07 — MATRICE                           -->
+  <!-- ═══════════════════════════════════════ -->
+  <section class="chapter" id="matrice" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">07</div>
+      <div>
+        <div class="ch-fn">statusMatrix()</div>
+        <div class="ch-subtitle">Quelle méthode peut générer quel code ?</div>
+      </div>
+    </div>
+
+    <div class="schema-box">
+      <div class="schema-title">Matrice méthode → status code</div>
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th style="text-align:left; color:var(--text-muted);">Status code</th>
+            <th style="color:var(--accent-2);">GET</th>
+            <th style="color:var(--accent-4);">POST</th>
+            <th style="color:var(--accent-1);">DELETE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>200 OK</td><td class="m-yes">✓</td><td class="m-yes">✓</td><td class="m-maybe">rarement</td></tr>
+          <tr><td>201 Created</td><td class="m-no">—</td><td class="m-yes">✓</td><td class="m-no">—</td></tr>
+          <tr><td>204 No Content</td><td class="m-no">—</td><td class="m-maybe">parfois</td><td class="m-yes">✓</td></tr>
+          <tr><td>301 Redirect</td><td class="m-yes">✓</td><td class="m-maybe">parfois</td><td class="m-no">—</td></tr>
+          <tr><td>400 Bad Request</td><td class="m-yes">✓</td><td class="m-yes">✓</td><td class="m-yes">✓</td></tr>
+          <tr><td>403 Forbidden</td><td class="m-yes">✓</td><td class="m-yes">✓</td><td class="m-yes">✓</td></tr>
+          <tr><td>404 Not Found</td><td class="m-yes">✓</td><td class="m-yes">✓</td><td class="m-yes">✓</td></tr>
+          <tr><td>405 Not Allowed</td><td class="m-yes">✓</td><td class="m-yes">✓</td><td class="m-yes">✓</td></tr>
+          <tr><td>413 Too Large</td><td class="m-no">—</td><td class="m-yes">✓</td><td class="m-no">—</td></tr>
+          <tr><td>500 Internal Error</td><td class="m-yes">✓</td><td class="m-yes">✓</td><td class="m-yes">✓</td></tr>
+          <tr><td>501 Not Implemented</td><td colspan="3" style="color:var(--text-muted); font-size:0.72rem;">méthode inconnue uniquement</td></tr>
+          <tr><td>502 Bad Gateway</td><td class="m-maybe">si CGI</td><td class="m-maybe">si CGI</td><td class="m-no">—</td></tr>
+          <tr><td>504 Gateway Timeout</td><td class="m-maybe">si CGI</td><td class="m-maybe">si CGI</td><td class="m-no">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box">
+      <span>📦</span>
+      <div>
+        <strong>Codes cacheable par défaut (RFC 7231, §6.1) :</strong>
+        les réponses avec ces codes <strong>peuvent être mises en cache</strong> par le navigateur
+        sans directive explicite de cache :
+        <code>200</code>, <code>203</code>, <code>204</code>, <code>206</code>,
+        <code>300</code>, <code>301</code>,
+        <code>404</code>, <code>405</code>, <code>410</code>, <code>414</code>, <code>501</code>.
+        Tous les autres codes ne sont cacheable que si des headers de cache explicites sont présents.
+      </div>
+    </div>
+
+    <div class="ch-divider"></div>
+
+    <div class="panel" style="--step-color: var(--accent-3);">
+      <div class="panel-label">L'ordre de vérification dans ton code — très important</div>
+      <p>
+        L'ordre dans lequel tu vérifies les erreurs <strong>détermine quel code tu renvoies</strong>.
+        Une requête peut déclencher plusieurs erreurs — tu dois renvoyer la première qui matche.
+      </p>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">ordre de vérification</span>
+        </div>
+        <span class="code-tag" style="background: rgba(192,132,252,0.1); color: var(--accent-3);">Logic</span>
+      </div>
+      <pre>
+<span class="cmt">// Ordre que ton handler doit respecter :</span>
+
+<span class="num"> 1.</span> Requête malformée ?            → <span style="color:var(--accent-5); font-weight:600;">400</span>
+<span class="num"> 2.</span> Méthode inconnue ?              → <span style="color:var(--accent-5); font-weight:600;">501</span>
+<span class="num"> 3.</span> Aucune route ne matche ?        → <span style="color:var(--accent-5); font-weight:600;">404</span>
+<span class="num"> 4.</span> Body trop grand (POST) ?        → <span style="color:var(--accent-5); font-weight:600;">413</span>
+<span class="num"> 5.</span> Méthode non autorisée / route ? → <span style="color:var(--accent-5); font-weight:600;">405</span>
+<span class="num"> 6.</span> Redirection configurée ?        → <span style="color:var(--accent-2); font-weight:600;">301</span>
+<span class="num"> 7.</span> Fichier introuvable ?           → <span style="color:var(--accent-5); font-weight:600;">404</span>
+<span class="num"> 8.</span> Pas les droits ?                → <span style="color:var(--accent-5); font-weight:600;">403</span>
+<span class="num"> 9.</span> Erreur interne / CGI crash ?    → <span style="color:var(--accent-1); font-weight:600;">500</span>
+<span class="num">10.</span> CGI timeout ?                   → <span style="color:var(--accent-1); font-weight:600;">504</span>
+<span class="num">11.</span> Tout OK                         → <span style="color:var(--accent-4); font-weight:600;">200 / 201 / 204</span>
+      </pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Règle d'or webserv :</strong> chaque réponse d'erreur doit avoir un body — ta page d'erreur HTML
+        par défaut. Le sujet dit explicitement <em>"your server must have default error pages"</em>.
+        Si une page d'erreur personnalisée est configurée pour ce code
+        (<code>error_page 404 /custom_404.html</code>) → tu la sers.
+        Sinon → tu génères une page minimale de ton cru.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Distinction 405 vs 501 :</strong>
+        <strong>501</strong> = "je ne connais pas cette méthode du tout" (PATCH, PUT, TOTO).
+        <strong>405</strong> = "je la connais mais elle n'est pas permise sur cette route".
+        La vérification 501 doit venir <strong>avant</strong> 405 dans l'ordre.
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ─── FOOTER ─── -->
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — 03 La réponse HTTP</p>
+</footer>
+
+<script>
+  // Fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on back links
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
+  });
+
+  // Smooth scroll with progress-bar offset
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (href.length < 2) return;
+      e.preventDefault();
+      var id = href.slice(1);
+      if (id === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+      var target = document.getElementById(id);
+      if (!target) return;
+      var navH = document.querySelector('.progress-bar').offsetHeight;
+      var top = target.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+      window.scrollTo({ top: top, behavior: 'smooth' });
+    });
+  });
+
+  // IntersectionObserver for active pill
+  var sections = document.querySelectorAll('.chapter');
+  var pills = {
+    'anatomie': document.getElementById('nav-anatomie'),
+    'headers': document.getElementById('nav-headers'),
+    '2xx': document.getElementById('nav-2xx'),
+    '3xx': document.getElementById('nav-3xx'),
+    '4xx': document.getElementById('nav-4xx'),
+    '5xx': document.getElementById('nav-5xx'),
+    'matrice': document.getElementById('nav-matrice')
+  };
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        Object.values(pills).forEach(function(p) { if(p) p.classList.remove('active'); });
+        var pill = pills[entry.target.id];
+        if (pill) pill.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(function(s) { observer.observe(s); });
+
+  // Reveal on scroll
+  var revealObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.1 });
+  sections.forEach(function(s) { revealObserver.observe(s); });
+</script>
+</body>
+</html>

@@ -27,6 +27,12 @@
   body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
   body::after { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; }
 
+  /* ─── BACKGROUND GLOWS ─── */
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -200px; left: -150px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 600px; height: 600px; top: 40vh; right: -200px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 500px; height: 500px; bottom: 10vh; left: 20%; background: radial-gradient(ellipse, rgba(255,107,74,0.04) 0%, transparent 70%); }
+
   .header { padding: 3rem 2rem 2rem; max-width: 900px; margin: 0 auto; border-bottom: 1px solid var(--border); }
   .back-link { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.5rem; border-radius: 6px; white-space: nowrap; transition: color 0.2s, background 0.2s; }
   .back-link:hover { color: var(--accent-4); background: rgba(74,222,128,0.07); }
@@ -123,6 +129,9 @@
 </style>
 </head>
 <body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
 
 <div class="progress-bar">
   <div class="progress-inner">
@@ -461,8 +470,8 @@
     <div class="step-header">
       <div class="step-number-badge">04</div>
       <div>
-        <div class="step-fn">handle_client()</div>
-        <div class="step-subtitle">Séparer lecture et écriture</div>
+        <div class="step-fn">handle_recv() / handle_send()</div>
+        <div class="step-subtitle">Séparer lecture et écriture — en mode Edge Triggered</div>
       </div>
     </div>
 
@@ -477,9 +486,47 @@
         On doit <strong>séparer en deux fonctions</strong> :
       </p>
       <ul>
-        <li><strong><code>handle_read(fd, epfd)</code></strong> — appelée quand <code>EPOLLIN</code> arrive. Lit les données, prépare la réponse, puis passe le fd en <code>EPOLLOUT</code></li>
-        <li><strong><code>handle_write(fd, epfd)</code></strong> — appelée quand <code>EPOLLOUT</code> arrive. Envoie la réponse, puis ferme le fd</li>
+        <li><strong><code>handle_recv(fd, epfd)</code></strong> — appelée quand <code>EPOLLIN</code> arrive. Draine toutes les données disponibles, puis passe le fd en <code>EPOLLOUT | EPOLLET</code></li>
+        <li><strong><code>handle_send(fd, epfd)</code></strong> — appelée quand <code>EPOLLOUT</code> arrive. Envoie la réponse entière en boucle, puis ferme le fd</li>
       </ul>
+    </div>
+
+    <!-- LT vs ET -->
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Choix : Level Triggered (LT) ou Edge Triggered (ET) ?</div>
+      <p>
+        epoll supporte deux modes de déclenchement. Ce choix change radicalement comment on écrit le code.
+      </p>
+      <div class="two-col" style="margin-top: 1rem;">
+        <div class="analogy-panel" style="border-color: rgba(139,137,160,0.2);">
+          <div class="analogy-icon">🔔</div>
+          <div class="analogy-text">
+            <div class="analogy-label" style="color: var(--text-dim);">LT — Level Triggered (défaut)</div>
+            <p>
+              epoll te réveille <strong>tant que</strong> des données sont disponibles dans le buffer.
+              Un seul <code>recv()</code> suffit : si tu n'as pas tout lu, epoll te renotifiera au prochain tour.
+              Plus simple à écrire, mais moins efficace.
+            </p>
+          </div>
+        </div>
+        <div class="analogy-panel" style="border-color: rgba(192,132,252,0.3);">
+          <div class="analogy-icon">⚡</div>
+          <div class="analogy-text">
+            <div class="analogy-label" style="color: var(--accent-3);">ET — Edge Triggered (EPOLLET)</div>
+            <p>
+              epoll te réveille <strong>une seule fois</strong> lors du changement d'état (nouvelles données arrivées).
+              Si tu ne lis pas <em>tout</em> le buffer en une fois, tu ne seras plus notifié.
+              Oblige à boucler jusqu'à <code>EAGAIN</code> — mais une seule interruption noyau par événement.
+            </p>
+          </div>
+        </div>
+      </div>
+      <p style="margin-top: 1rem;">
+        <strong>Choix retenu : ET pour EPOLLOUT, drain complet pour EPOLLIN.</strong>
+        Pour <code>handle_recv</code>, on boucle jusqu'à <code>EAGAIN</code> pour vider tout le buffer d'un coup.
+        Pour <code>handle_send</code>, on enregistre <code>EPOLLOUT | EPOLLET</code> et on boucle jusqu'à envoyer tout
+        — si <code>EAGAIN</code> survient, on se ré-enregistre et on reprend au prochain tour.
+      </p>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-1)">
@@ -507,68 +554,43 @@
 }</pre>
     </div>
 
-    <div class="two-col">
-      <div class="analogy-panel">
-        <div class="analogy-icon">📥</div>
-        <div class="analogy-text">
-          <div class="analogy-label">handle_read — EPOLLIN</div>
-          <p>
-            Le client a envoyé des données. On les lit avec recv(). Quand la requête est complète,
-            on prépare la réponse et on passe en EPOLLOUT pour attendre que le buffer d'envoi soit prêt.
-          </p>
-        </div>
-      </div>
-      <div class="analogy-panel">
-        <div class="analogy-icon">📤</div>
-        <div class="analogy-text">
-          <div class="analogy-label">handle_write — EPOLLOUT</div>
-          <p>
-            Le kernel dit que le buffer d'envoi est prêt. On envoie la réponse avec send().
-            Si tout est envoyé, on ferme. Sinon, on attend le prochain EPOLLOUT pour le reste.
-          </p>
-        </div>
-      </div>
-    </div>
-
     <div class="code-panel" style="--step-color: var(--accent-4)">
       <div class="code-header">
         <div class="code-header-left">
           <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — handle_read()</span>
+          <span class="code-filename">main.cpp — handle_recv()</span>
         </div>
-        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — lecture séparée</span>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — lecture ET (drain jusqu'à EAGAIN)</span>
       </div>
-      <pre><span class="cmt">// La réponse HTTP — pour l'instant en dur, plus tard dynamique</span>
-<span class="kw">static const char</span>* <span class="macro">RESPONSE</span> =
-    <span class="str">"HTTP/1.1 200 OK\r\n"</span>
-    <span class="str">"Content-Type: text/html\r\n"</span>
-    <span class="str">"Content-Length: 22\r\n"</span>
-    <span class="str">"Connection: close\r\n"</span>
-    <span class="str">"\r\n"</span>
-    <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span>;
+      <pre><span class="type">void</span> <span class="fn-name">handle_recv</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    std::string <span class="var">request</span>;
 
-<span class="type">void</span> <span class="fn-name">handle_read</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
-    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+    <span class="cmt">// Boucle ET : on vide TOUT le buffer d'un coup.</span>
+    <span class="cmt">// En LT un seul recv() suffirait — ici on doit aller jusqu'à EAGAIN.</span>
+<span class="highlight-new">    <span class="kw">while</span> (<span class="kw">true</span>) {</span>
+<span class="highlight-new">        <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];</span>
+<span class="highlight-new">        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
 
-    <span class="cmt">// epoll a confirmé EPOLLIN → recv() ne fera pas EAGAIN</span>
-<span class="highlight-new">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
+<span class="highlight-new">        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {</span>
+<span class="highlight-new">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>)</span>
+<span class="highlight-new">                <span class="kw">break</span>;  <span class="cmt">// buffer kernel vide → on a tout lu, on sort</span></span>
+<span class="highlight-new">            <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);</span>
+<span class="highlight-new">            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;</span>
+<span class="highlight-new">        }</span>
+<span class="highlight-new">        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">0</span>) {  <span class="cmt">// client déconnecté</span></span>
+<span class="highlight-new">            <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);</span>
+<span class="highlight-new">            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;</span>
+<span class="highlight-new">        }</span>
+<span class="highlight-new">        <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;</span>
+<span class="highlight-new">        <span class="var">request</span> += <span class="var">buf</span>;</span>
+<span class="highlight-new">    }</span>
+    std::cout &lt;&lt; <span class="var">request</span>;  <span class="cmt">// afficher la requête (debug)</span>
 
-    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
-        <span class="cmt">// 0 = client déconnecté, -1 = erreur</span>
-        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
-        <span class="fn-name">close</span>(<span class="var">fd</span>);
-        <span class="kw">return</span>;
-    }
-
-    <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
-    std::cout &lt;&lt; <span class="var">buf</span>;  <span class="cmt">// afficher la requête (debug)</span>
-
-    <span class="cmt">// Requête lue — maintenant on veut ENVOYER la réponse</span>
-    <span class="cmt">// On passe le fd de EPOLLIN → EPOLLOUT</span>
+    <span class="cmt">// Requête lue — passer en EPOLLOUT | EPOLLET pour l'envoi</span>
 <span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
-<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span>;  <span class="cmt">// maintenant on surveille l'écriture</span></span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span> | <span class="macro">EPOLLET</span>;  <span class="cmt">// ET : une seule notif quand le buffer se libère</span></span>
 <span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;</span>
-<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);  <span class="cmt">// MOD, pas ADD (fd déjà enregistré)</span></span>
+<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);  <span class="cmt">// MOD : fd déjà enregistré</span></span>
 }</pre>
     </div>
 
@@ -576,21 +598,43 @@
       <div class="code-header">
         <div class="code-header-left">
           <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — handle_write()</span>
+          <span class="code-filename">main.cpp — handle_send()</span>
         </div>
-        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Après — écriture séparée</span>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Après — écriture ET (boucle jusqu'à complet)</span>
       </div>
-      <pre><span class="type">void</span> <span class="fn-name">handle_write</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
-    <span class="cmt">// epoll a confirmé EPOLLOUT → le buffer d'envoi a de la place</span>
-<span class="highlight-new">    <span class="type">ssize_t</span> <span class="var">sent</span> = <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="macro">RESPONSE</span>, <span class="fn-name">strlen</span>(<span class="macro">RESPONSE</span>), <span class="num">0</span>);</span>
+      <pre><span class="kw">static const char</span>* <span class="var">response</span> =
+    <span class="str">"HTTP/1.1 200 OK\r\n"</span>
+    <span class="str">"Content-Type: text/html\r\n"</span>
+    <span class="str">"Content-Length: 22\r\n"</span>
+    <span class="str">"Connection: close\r\n"</span>
+    <span class="str">"\r\n"</span>
+    <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span>;
 
-    <span class="cmt">// Pour une réponse si petite (~ 100 octets), send() enverra tout d'un coup.</span>
-    <span class="cmt">// Pour des grosses réponses, il faudra gérer les envois partiels :</span>
-    <span class="cmt">// → sauvegarder l'offset, rester en EPOLLOUT, et reprendre au prochain tour.</span>
+<span class="type">void</span> <span class="fn-name">handle_send</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="type">size_t</span> <span class="var">total</span> = <span class="fn-name">strlen</span>(<span class="var">response</span>);
+    <span class="type">size_t</span> <span class="var">sent</span>  = <span class="num">0</span>;
 
-    <span class="cmt">// Réponse envoyée — nettoyer</span>
-<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);  <span class="cmt">// retirer d'epoll</span></span>
-<span class="highlight-new">    <span class="fn-name">close</span>(<span class="var">fd</span>);                                  <span class="cmt">// fermer la connexion</span></span>
+    <span class="cmt">// Boucle ET : envoyer TOUT d'un coup.</span>
+    <span class="cmt">// Si send() retourne EAGAIN, le buffer noyau est plein →</span>
+    <span class="cmt">// on reste en EPOLLOUT | EPOLLET et on reprendra au prochain tour.</span>
+<span class="highlight-new">    <span class="kw">while</span> (<span class="var">sent</span> &lt; <span class="var">total</span>) {</span>
+<span class="highlight-new">        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">response</span> + <span class="var">sent</span>, <span class="var">total</span> - <span class="var">sent</span>, <span class="num">0</span>);</span>
+<span class="highlight-new">        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {</span>
+<span class="highlight-new">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>) {</span>
+<span class="highlight-new">                <span class="cmt">// buffer plein : se ré-enregistrer, attendre le prochain EPOLLOUT</span></span>
+<span class="highlight-new">                <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-new">                <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span> | <span class="macro">EPOLLET</span>;</span>
+<span class="highlight-new">                <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;</span>
+<span class="highlight-new">                <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);</span>
+<span class="highlight-new">                <span class="kw">return</span>;  <span class="cmt">// reprendre au prochain EPOLLOUT</span></span>
+<span class="highlight-new">            }</span>
+<span class="highlight-new">            <span class="kw">break</span>;  <span class="cmt">// erreur réelle</span></span>
+<span class="highlight-new">        }</span>
+<span class="highlight-new">        <span class="var">sent</span> += <span class="var">n</span>;</span>
+<span class="highlight-new">    }</span>
+    <span class="cmt">// Tout envoyé — nettoyer</span>
+<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);</span>
+<span class="highlight-new">    <span class="fn-name">close</span>(<span class="var">fd</span>);</span>
 }</pre>
     </div>
 
@@ -599,7 +643,7 @@
       <div>
         <strong>EPOLL_CTL_MOD, pas ADD !</strong> Le client_fd est <strong>déjà</strong> dans epoll (ajouté lors de l'accept).
         On utilise <code>EPOLL_CTL_MOD</code> pour <strong>changer</strong> les événements surveillés
-        (de EPOLLIN à EPOLLOUT). <code>EPOLL_CTL_ADD</code> sur un fd déjà enregistré retournerait
+        (de EPOLLIN à EPOLLOUT | EPOLLET). <code>EPOLL_CTL_ADD</code> sur un fd déjà enregistré retournerait
         <code>EEXIST</code>.
       </div>
     </div>

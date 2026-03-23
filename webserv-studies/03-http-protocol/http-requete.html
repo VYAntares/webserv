@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Structure d'une requête HTTP — Anatomie complète</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  body::after { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; }
+
+  /* ─── BACKGROUND GLOWS ─── */
+  .bg-glow {
+    position: fixed; border-radius: 50%;
+    pointer-events: none; z-index: 0;
+    filter: blur(80px);
+  }
+  .bg-glow-1 {
+    width: 700px; height: 700px;
+    top: -200px; left: -150px;
+    background: radial-gradient(ellipse, rgba(250,204,21,0.05) 0%, transparent 70%);
+  }
+  .bg-glow-2 {
+    width: 600px; height: 600px;
+    top: 40vh; right: -200px;
+    background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%);
+  }
+  .bg-glow-3 {
+    width: 500px; height: 500px;
+    bottom: 10vh; left: 20%;
+    background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%);
+  }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,10,15,0.9); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0.75rem 2rem;
+  }
+  .progress-inner {
+    max-width: 900px; margin: 0 auto;
+    display: flex; align-items: center; gap: 0;
+    justify-content: center;
+  }
+  .back-link {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-muted); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.5rem; border-radius: 6px;
+    white-space: nowrap; flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+  .back-link:hover { color: var(--accent-5); background: rgba(250,204,21,0.07); }
+  .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
+  .step-pill {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.8rem; border-radius: 100px;
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-muted); cursor: pointer;
+    transition: all 0.3s; text-decoration: none; white-space: nowrap;
+  }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(250,204,21,0.1); color: var(--accent-5); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 10px; }
+
+  /* ─── HEADER ─── */
+  .header {
+    padding: 3rem 2rem 2rem; max-width: 900px;
+    margin: 0 auto; border-bottom: 1px solid var(--border);
+    position: relative; z-index: 1;
+  }
+  .header-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.3em;
+    color: var(--accent-5); background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2); padding: 0.3rem 0.8rem;
+    border-radius: 100px; display: inline-block; margin-bottom: 1.2rem;
+  }
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400; line-height: 1.1; margin-bottom: 1rem;
+  }
+  .header h1 em { font-style: italic; color: var(--accent-5); }
+  .header-desc {
+    font-size: 1rem; color: var(--text-dim); font-weight: 300;
+    max-width: 600px; line-height: 1.7;
+  }
+  .header-desc code { font-family: 'Space Mono', monospace; color: var(--accent-5); }
+
+  /* ─── MAIN ─── */
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; position: relative; z-index: 1; }
+
+  /* ─── SECTIONS ─── */
+  .chapter {
+    padding: 4rem 0 2rem;
+    opacity: 0; transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    position: relative; z-index: 1;
+  }
+  .chapter.visible { opacity: 1; transform: translateY(0); }
+  .ch-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .ch-number {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem; line-height: 1;
+    opacity: 0.15; flex-shrink: 0;
+    color: var(--step-color, var(--accent-5));
+  }
+  .ch-fn {
+    font-family: 'Space Mono', monospace; font-size: 1.4rem;
+    font-weight: 700; color: var(--step-color, var(--accent-5));
+    margin-bottom: 0.3rem;
+  }
+  .ch-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem; font-weight: 400; color: var(--text);
+  }
+
+  .ch-divider {
+    height: 1px; background: linear-gradient(90deg, var(--border), transparent);
+    margin: 2rem 0;
+  }
+
+  /* ─── PANELS ─── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--step-color, var(--accent-5));
+    border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .panel-label {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-5)); margin-bottom: 0.8rem;
+  }
+  .panel p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; margin-bottom: 0.6rem; }
+  .panel p:last-child { margin-bottom: 0; }
+  .panel ul { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; padding-left: 1.2rem; margin-top: 0.5rem; }
+  .panel li { margin-bottom: 0.4rem; }
+  .panel code {
+    font-family: 'Space Mono', monospace; font-size: 0.78rem;
+    color: var(--accent-5); background: rgba(250,204,21,0.06);
+    padding: 0.15rem 0.4rem; border-radius: 4px;
+  }
+  .panel strong { color: var(--text); }
+
+  /* ─── CODE BLOCKS ─── */
+  .code-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem;
+  }
+  .code-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 5px; }
+  .code-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-3); }
+  .code-dots .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dots .code-dot:nth-child(2) { background: #ffbd2e; }
+  .code-dots .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .code-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.55rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 0.2rem 0.5rem; border-radius: 4px;
+  }
+  .code-panel pre {
+    padding: 1.2rem 1.5rem; overflow-x: auto;
+    font-family: 'Space Mono', monospace; font-size: 0.78rem;
+    line-height: 1.8; color: var(--text-dim); tab-size: 4;
+  }
+
+  /* syntax */
+  .kw { color: var(--accent-3); }
+  .fn-name { color: var(--accent-2); }
+  .str { color: var(--accent-4); }
+  .num { color: var(--accent-1); }
+  .cmt { color: var(--text-muted); font-style: italic; }
+  .macro { color: var(--accent-5); }
+  .var { color: var(--text); }
+  .type { color: var(--accent-6); }
+  .highlight-line { background: rgba(250,204,21,0.06); display: block; margin: 0 -1.5rem; padding: 0 1.5rem; border-left: 2px solid var(--accent-5); }
+  .highlight-new { background: rgba(74,222,128,0.06); display: block; margin: 0 -1.5rem; padding: 0 1.5rem; border-left: 2px solid var(--accent-4); }
+
+  /* ─── SCHEMA BOXES ─── */
+  .schema-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  .schema-title {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-muted); margin-bottom: 1.5rem;
+    text-align: center;
+  }
+
+  /* protocol stack */
+  .stack-container {
+    display: flex; gap: 3rem; justify-content: center;
+    flex-wrap: wrap; align-items: flex-start;
+  }
+  .stack-column { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .stack-column-label {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.15em;
+    color: var(--text-muted); margin-bottom: 1rem;
+    text-align: center;
+  }
+  .stack-layer {
+    width: 320px; padding: 0.9rem 1.2rem;
+    border-radius: 8px; text-align: center;
+    border: 1px solid; margin-bottom: 0;
+    position: relative;
+  }
+  .stack-layer .layer-name {
+    font-family: 'Space Mono', monospace; font-size: 0.85rem;
+    font-weight: 700; margin-bottom: 0.15rem;
+  }
+  .stack-layer .layer-desc {
+    font-size: 0.72rem; opacity: 0.7;
+  }
+  .stack-arrow {
+    text-align: center; color: var(--text-muted);
+    font-size: 0.8rem; padding: 0.3rem 0; line-height: 1;
+  }
+
+  /* other protocols sidebar */
+  .proto-side {
+    display: flex; flex-direction: column; gap: 0.6rem;
+    padding-top: 0.5rem;
+  }
+  .proto-pill {
+    padding: 0.7rem 1.5rem; border-radius: 8px;
+    text-align: center; border: 1px solid;
+    min-width: 220px;
+  }
+  .proto-pill .layer-name {
+    font-family: 'Space Mono', monospace; font-size: 0.8rem; font-weight: 700;
+    margin-bottom: 0.1rem;
+  }
+  .proto-pill .layer-desc { font-size: 0.68rem; opacity: 0.7; }
+
+  /* key insight box */
+  .insight-box {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.5rem; margin-top: 1.5rem;
+    text-align: center;
+  }
+  .insight-box h4 {
+    font-family: 'Instrument Serif', serif; font-size: 1.2rem;
+    margin-bottom: 0.8rem;
+  }
+  .insight-box p {
+    font-size: 0.82rem; color: var(--text-dim); line-height: 1.8;
+    max-width: 600px; margin: 0 auto;
+  }
+
+  /* wireshark trace */
+  .trace-table {
+    width: 100%; border-collapse: collapse;
+    font-family: 'Space Mono', monospace; font-size: 0.68rem;
+  }
+  .trace-table th {
+    text-align: left; padding: 0.5rem 0.8rem;
+    color: var(--text-muted); font-weight: 400;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--border); font-size: 0.55rem;
+  }
+  .trace-table td {
+    padding: 0.45rem 0.8rem; border-bottom: 1px solid rgba(42,42,66,0.5);
+    color: var(--text-dim);
+  }
+  .trace-table tr:hover td { background: rgba(250,204,21,0.03); }
+  .trace-table .tcp-flag { font-weight: 600; }
+  .trace-table .syn { color: var(--accent-4); }
+  .trace-table .ack { color: var(--text-muted); }
+  .trace-table .http { color: var(--accent-5); }
+  .trace-table .fin { color: var(--accent-1); }
+  .trace-table .trace-comment {
+    color: var(--text-muted); font-style: italic; font-size: 0.6rem;
+  }
+  .trace-phase {
+    font-family: 'Space Mono', monospace; font-size: 0.55rem;
+    text-transform: uppercase; letter-spacing: 0.15em;
+    padding: 0.6rem 0.8rem; font-weight: 700;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* request anatomy */
+  .req-anatomy { font-family: 'Space Mono', monospace; font-size: 0.78rem; line-height: 2.2; }
+  .req-line { display: block; padding: 0.1rem 0.8rem; border-radius: 4px; margin-bottom: 1px; position: relative; }
+  .req-line .req-annotation {
+    position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+    font-size: 0.6rem; opacity: 0.6; font-style: italic;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .crlf {
+    font-family: 'Space Mono', monospace; font-size: 0.65rem;
+    color: rgba(255,107,74,0.55); font-weight: 400;
+    margin-left: 0.25rem; letter-spacing: 0;
+    user-select: none;
+  }
+  .crlf-empty {
+    font-size: 0.78rem; color: rgba(255,107,74,0.85); font-weight: 700;
+    margin-left: 0;
+  }
+
+  /* method badges */
+  .method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+  .method-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.2rem; border-left: 3px solid;
+  }
+  .method-name {
+    font-family: 'Space Mono', monospace; font-size: 0.9rem;
+    font-weight: 700; margin-bottom: 0.3rem;
+  }
+  .method-desc { font-size: 0.8rem; color: var(--text-dim); line-height: 1.7; }
+  .method-card code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    background: rgba(250,204,21,0.06); color: var(--accent-5);
+    padding: 0.1rem 0.3rem; border-radius: 3px;
+  }
+  .method-has-body {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-top: 0.5rem; opacity: 0.5;
+  }
+
+  /* status code table */
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.8rem; }
+  .status-group {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem; border-top: 2px solid;
+  }
+  .status-group-title {
+    font-family: 'Space Mono', monospace; font-size: 0.7rem;
+    font-weight: 700; margin-bottom: 0.6rem;
+  }
+  .status-item {
+    font-size: 0.75rem; color: var(--text-dim); line-height: 1.8;
+    display: flex; gap: 0.5rem;
+  }
+  .status-code {
+    font-family: 'Space Mono', monospace; font-weight: 700;
+    flex-shrink: 0; width: 2.5rem;
+  }
+
+  /* two col */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.5rem 0; }
+
+  /* warning */
+  .warning {
+    display: flex; gap: 0.75rem; padding: 1rem 1.2rem;
+    background: rgba(255,107,74,0.04);
+    border: 1px solid rgba(255,107,74,0.15);
+    border-radius: 8px; font-size: 0.82rem; color: var(--text-dim);
+    line-height: 1.7; margin: 1.5rem 0;
+  }
+  .warning strong { color: var(--accent-1); }
+  .warning code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-1);
+  }
+
+  .info-box {
+    display: flex; gap: 0.75rem; padding: 1rem 1.2rem;
+    background: rgba(74,222,128,0.04);
+    border: 1px solid rgba(74,222,128,0.15);
+    border-radius: 8px; font-size: 0.82rem; color: var(--text-dim);
+    line-height: 1.7; margin: 1.5rem 0;
+  }
+  .info-box strong { color: var(--accent-4); }
+  .info-box code {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem;
+    color: var(--accent-4);
+  }
+
+  /* header table */
+  .header-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.8rem; margin: 1rem 0;
+  }
+  .header-table th {
+    text-align: left; padding: 0.6rem 0.8rem;
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+  }
+  .header-table td {
+    padding: 0.6rem 0.8rem; border-bottom: 1px solid rgba(42,42,66,0.4);
+    color: var(--text-dim); vertical-align: top;
+  }
+  .header-table td:first-child {
+    font-family: 'Space Mono', monospace; font-size: 0.75rem;
+    color: var(--accent-2); white-space: nowrap;
+  }
+
+  /* response anatomy */
+  .resp-anatomy { font-family: 'Space Mono', monospace; font-size: 0.78rem; line-height: 2.2; }
+
+  /* footer */
+  .footer {
+    text-align: center; padding: 3rem 2rem;
+    border-top: 1px solid var(--border); margin-top: 4rem;
+    position: relative; z-index: 1;
+  }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-5); text-decoration: none; }
+  .footer a:hover { color: var(--accent-2); }
+
+  /* responsive */
+  @media (max-width: 700px) {
+    .stack-container { flex-direction: column; align-items: center; }
+    .stack-layer, .proto-pill { width: 100%; max-width: 320px; }
+    .two-col { grid-template-columns: 1fr; }
+    .method-grid { grid-template-columns: 1fr; }
+    .status-grid { grid-template-columns: 1fr; }
+    .req-line .req-annotation { display: none; }
+  }
+</style>
+</head>
+<body id="top">
+
+<!-- ─── BACKGROUND GLOWS ─── -->
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<!-- ─── STICKY NAV ─── -->
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#protocoles" class="step-pill active" id="nav-protocoles"><span class="step-dot"></span>Protocoles</a>
+    <div class="step-connector"></div>
+    <a href="#wireshark" class="step-pill" id="nav-wireshark"><span class="step-dot"></span>Wireshark</a>
+    <div class="step-connector"></div>
+    <a href="#anatomie" class="step-pill" id="nav-anatomie"><span class="step-dot"></span>Anatomie</a>
+    <div class="step-connector"></div>
+    <a href="#methodes" class="step-pill" id="nav-methodes"><span class="step-dot"></span>Méthodes</a>
+    <div class="step-connector"></div>
+    <a href="#headers" class="step-pill" id="nav-headers"><span class="step-dot"></span>Headers</a>
+    <div class="step-connector"></div>
+    <a href="#reponse" class="step-pill" id="nav-reponse"><span class="step-dot"></span>Réponse</a>
+    <div class="step-connector"></div>
+    <a href="#status" class="step-pill" id="nav-status"><span class="step-dot"></span>Status</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">03 — Le protocole HTTP</div>
+  <h1>Structure d'une requête<br><em>HTTP</em></h1>
+  <p class="header-desc">
+    Qu'est-ce qu'un protocole ? Comment les couches réseau s'empilent ?
+    Que contient exactement le texte que <code>recv()</code> te donne ?
+    On décortique tout, du paquet TCP jusqu'au dernier header.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- 01 — C'est quoi un protocole ?          -->
+  <!-- ════════════════════════════════════════ -->
+  <section class="chapter" id="protocoles" style="--step-color: var(--accent-3); scroll-margin-top: 60px;">
+    <div class="ch-header">
+      <div class="ch-number">01</div>
+      <div>
+        <div class="ch-fn">C'est quoi un protocole ?</div>
+        <div class="ch-subtitle">Les couches reseau et ou HTTP se situe</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3)">
+      <div class="panel-label">Le concept</div>
+      <p>
+        Un <strong>protocole</strong>, c'est un <strong>contrat</strong> entre deux machines.
+        Il definit exactement : quel format de message envoyer, dans quel ordre, et ce que chaque octet signifie.
+        Sans protocole, les deux machines ne se comprennent pas — comme deux personnes qui ne parlent pas la meme langue.
+      </p>
+      <p>
+        Le reseau fonctionne en <strong>couches empilees</strong>. Chaque couche fait un seul travail et s'appuie
+        sur la couche d'en dessous. HTTP est tout en haut — il profite du travail de toutes les couches inferieures.
+      </p>
+    </div>
+
+    <!-- Stack diagram -->
+    <div class="schema-box">
+      <div class="schema-title">La pile reseau — chaque couche a son role</div>
+      <div class="stack-container">
+
+        <div class="stack-column">
+          <div class="stack-column-label">Ta stack reseau</div>
+
+          <div class="stack-layer" style="background: rgba(192,132,252,0.1); border-color: rgba(192,132,252,0.3); color: var(--accent-3);">
+            <div class="layer-name">HTTP / HTTPS</div>
+            <div class="layer-desc">Le langage de ton navigateur et serveur web</div>
+          </div>
+          <div class="stack-arrow">&#8595;</div>
+          <div class="stack-layer" style="background: rgba(74,222,128,0.1); border-color: rgba(74,222,128,0.3); color: var(--accent-4);">
+            <div class="layer-name">TCP</div>
+            <div class="layer-desc">Transport fiable, ordonne, avec accuses de reception</div>
+          </div>
+          <div class="stack-arrow">&#8595;</div>
+          <div class="stack-layer" style="background: rgba(74,224,255,0.1); border-color: rgba(74,224,255,0.3); color: var(--accent-2);">
+            <div class="layer-name">IP</div>
+            <div class="layer-desc">Adressage et routage de paquets sur le reseau</div>
+          </div>
+          <div class="stack-arrow">&#8595;</div>
+          <div class="stack-layer" style="background: rgba(139,137,160,0.08); border-color: rgba(139,137,160,0.2); color: var(--text-dim);">
+            <div class="layer-name">Ethernet / Wi-Fi</div>
+            <div class="layer-desc">Transmission physique des bits (cables, ondes)</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="stack-column-label">Autres protocoles au niveau application</div>
+          <div class="proto-side">
+            <div class="proto-pill" style="background: rgba(250,204,21,0.08); border-color: rgba(250,204,21,0.25); color: var(--accent-5);">
+              <div class="layer-name">FTP</div>
+              <div class="layer-desc">Transfert de fichiers</div>
+            </div>
+            <div class="proto-pill" style="background: rgba(255,107,74,0.08); border-color: rgba(255,107,74,0.25); color: var(--accent-1);">
+              <div class="layer-name">SMTP</div>
+              <div class="layer-desc">Envoi d'emails</div>
+            </div>
+            <div class="proto-pill" style="background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.25); color: var(--accent-4);">
+              <div class="layer-name">SSH</div>
+              <div class="layer-desc">Terminal distant securise</div>
+            </div>
+            <div class="proto-pill" style="background: rgba(74,224,255,0.08); border-color: rgba(74,224,255,0.25); color: var(--accent-2);">
+              <div class="layer-name">DNS</div>
+              <div class="layer-desc">Resolution de noms de domaine</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="insight-box">
+        <h4>La difference cle entre ces protocoles</h4>
+        <p>
+          Tous tournent sur TCP/IP — mais chacun definit son propre format de message.<br>
+          HTTP : texte lisible, requete/reponse, stateless (sans memoire entre requetes)<br>
+          FTP : deux connexions (controle + donnees), binaire ou texte<br>
+          SMTP : dialogue par commandes (HELO, MAIL FROM, DATA...), pour emails uniquement
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4)">
+      <div class="panel-label">Ce que chaque couche fait pour toi</div>
+      <ul>
+        <li><strong>Ethernet/Wi-Fi</strong> — transmet les bits physiquement. Tu ne t'en occupes jamais.</li>
+        <li><strong>IP</strong> — route les paquets de machine en machine. <code>127.0.0.1</code> = boucle locale (toi-meme).</li>
+        <li><strong>TCP</strong> — garantit que les octets arrivent <strong>dans l'ordre</strong>, <strong>sans perte</strong>, <strong>sans doublon</strong>. C'est TCP qui fait le <strong>3-way handshake</strong> (SYN, SYN-ACK, ACK) et les retransmissions. C'est grace a TCP que <code>recv()</code> te donne un flux d'octets propre.</li>
+        <li><strong>HTTP</strong> — c'est le protocole que <strong>toi tu parses</strong>. Ce qui sort de <code>recv()</code>, c'est du texte HTTP brut. A toi de le decoder.</li>
+      </ul>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Ton serveur web ne fait PAS de TCP.</strong> Le kernel gere TCP pour toi (SYN/ACK, retransmissions, sequencement).
+        Toi, tu appelles <code>socket()</code>, <code>bind()</code>, <code>listen()</code>, <code>accept()</code>,
+        <code>recv()</code>, <code>send()</code> — et le kernel fait tout le TCP en dessous.
+        Ce que tu recois dans <code>recv()</code>, c'est directement le <strong>contenu HTTP</strong>.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- 02 — Ce que Wireshark montre             -->
+  <!-- ════════════════════════════════════════ -->
+  <section class="chapter" id="wireshark" style="--step-color: var(--accent-2); scroll-margin-top: 60px;">
+    <div class="ch-header">
+      <div class="ch-number">02</div>
+      <div>
+        <div class="ch-fn">Ce que Wireshark montre</div>
+        <div class="ch-subtitle">Les 10 paquets d'une requete HTTP complete</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2)">
+      <div class="panel-label">Le film d'une requete, image par image</div>
+      <p>
+        Quand tu tapes <code>curl http://localhost:8080</code>, il se passe exactement <strong>10 echanges</strong>
+        sur le reseau. Wireshark les capture tous. Voici ce qui se passe — chaque ligne est un paquet TCP reel.
+      </p>
+    </div>
+
+    <div class="schema-box" style="padding: 0; overflow: hidden;">
+      <table class="trace-table">
+        <thead>
+          <tr>
+            <th style="width:2rem">#</th>
+            <th>temps</th>
+            <th>direction</th>
+            <th>protocole</th>
+            <th>contenu</th>
+            <th>role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 3-way handshake -->
+          <tr><td colspan="6" class="trace-phase syn">&#9312; 3-way handshake TCP — etablir la connexion</td></tr>
+          <tr>
+            <td>1</td><td>0.000</td>
+            <td>client &#8594; serveur</td>
+            <td class="tcp-flag syn">SYN</td>
+            <td>Seq=0, Win=65495</td>
+            <td class="trace-comment">Le client demande a se connecter</td>
+          </tr>
+          <tr>
+            <td>2</td><td>0.000</td>
+            <td>serveur &#8594; client</td>
+            <td class="tcp-flag syn">SYN, ACK</td>
+            <td>Seq=0, Ack=1</td>
+            <td class="trace-comment">Le serveur accepte et repond</td>
+          </tr>
+          <tr>
+            <td>3</td><td>0.000</td>
+            <td>client &#8594; serveur</td>
+            <td class="tcp-flag ack">ACK</td>
+            <td>Seq=1, Ack=1</td>
+            <td class="trace-comment">Le client confirme — connexion etablie</td>
+          </tr>
+
+          <!-- HTTP exchange -->
+          <tr><td colspan="6" class="trace-phase http">&#9313; Echange HTTP — la vraie requete</td></tr>
+          <tr>
+            <td>4</td><td>0.000</td>
+            <td>client &#8594; serveur</td>
+            <td class="tcp-flag http">HTTP</td>
+            <td><strong>GET / HTTP/1.1</strong></td>
+            <td class="trace-comment">Le client envoie la requete — c'est ca que ton recv() recoit</td>
+          </tr>
+          <tr>
+            <td>5</td><td>0.000</td>
+            <td>serveur &#8594; client</td>
+            <td class="tcp-flag ack">ACK</td>
+            <td>Seq=1, Ack=79</td>
+            <td class="trace-comment">Le serveur accuse reception (TCP, pas toi)</td>
+          </tr>
+          <tr>
+            <td>6</td><td>0.000</td>
+            <td>serveur &#8594; client</td>
+            <td class="tcp-flag http">HTTP</td>
+            <td><strong>HTTP/1.1 200 OK</strong> (text/html)</td>
+            <td class="trace-comment">Ta reponse envoyee par send()</td>
+          </tr>
+          <tr>
+            <td>7</td><td>0.001</td>
+            <td>client &#8594; serveur</td>
+            <td class="tcp-flag ack">ACK</td>
+            <td>Seq=79, Ack=106</td>
+            <td class="trace-comment">Le client accuse reception de la reponse</td>
+          </tr>
+
+          <!-- Connection teardown -->
+          <tr><td colspan="6" class="trace-phase fin">&#9314; Fermeture TCP — couper proprement</td></tr>
+          <tr>
+            <td>8</td><td>0.001</td>
+            <td>serveur &#8594; client</td>
+            <td class="tcp-flag fin">FIN, ACK</td>
+            <td>Seq=106</td>
+            <td class="trace-comment">close(fd) — le serveur lance la fermeture</td>
+          </tr>
+          <tr>
+            <td>9</td><td>0.001</td>
+            <td>client &#8594; serveur</td>
+            <td class="tcp-flag fin">FIN, ACK</td>
+            <td>Seq=79, Ack=107</td>
+            <td class="trace-comment">Le client ferme aussi de son cote</td>
+          </tr>
+          <tr>
+            <td>10</td><td>0.001</td>
+            <td>serveur &#8594; client</td>
+            <td class="tcp-flag ack">ACK</td>
+            <td>Seq=107, Ack=80</td>
+            <td class="trace-comment">Dernier ACK — connexion fermee proprement</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Ce que le kernel fait (TCP)</div>
+        <p>
+          Paquets <strong>1-3</strong> (handshake) et <strong>5, 7</strong> (ACKs) et <strong>8-10</strong> (fermeture).
+          Tout ca est gere par <code>accept()</code> et <code>close()</code> — tu n'envoies jamais de SYN ou ACK toi-meme.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Ce que TOI tu geres (HTTP)</div>
+        <p>
+          Paquet <strong>4</strong> : c'est le texte que <code>recv()</code> te donne. Tu le parses.<br>
+          Paquet <strong>6</strong> : c'est le texte que tu construis et donnes a <code>send()</code>.
+        </p>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Tout ca se passe en 1 milliseconde.</strong> Les 10 paquets s'echangent en ~0.001 secondes
+        en localhost. Sur un vrai reseau, le handshake prend ~1 RTT (aller-retour reseau). C'est pourquoi
+        <code>Connection: keep-alive</code> est important : eviter de refaire le handshake a chaque requete.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- 03 — Anatomie d'une requete             -->
+  <!-- ════════════════════════════════════════ -->
+  <section class="chapter" id="anatomie" style="--step-color: var(--accent-5); scroll-margin-top: 60px;">
+    <div class="ch-header">
+      <div class="ch-number">03</div>
+      <div>
+        <div class="ch-fn">Anatomie d'une requete</div>
+        <div class="ch-subtitle">Decortiquer ce que recv() te donne</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5)">
+      <div class="panel-label">Voici exactement ce que ton serveur recoit</div>
+      <p>
+        Quand un navigateur se connecte a <code>localhost:8080</code>, voici le texte brut
+        que <code>recv()</code> te donne. Chaque ligne se termine par <code>\r\n</code> (retour chariot + saut de ligne).
+        La fin des headers est marquee par une <strong>ligne vide</strong> (<code>\r\n\r\n</code>).
+      </p>
+    </div>
+
+    <!-- Full request annotated -->
+    <div class="schema-box">
+      <div class="schema-title">Requete reelle capturee depuis Firefox</div>
+      <div class="req-anatomy">
+<span class="req-line" style="background: rgba(250,204,21,0.1); border-left: 3px solid var(--accent-5);"><span style="color:var(--accent-4)">GET</span> <span style="color:var(--accent-2);">/</span> <span style="color:var(--accent-3);">HTTP/1.1</span><span class="crlf">\r\n</span><span class="req-annotation">&#8592; Request Line</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Host</span>: <span style="color:var(--text-dim);">localhost:8080</span><span class="crlf">\r\n</span><span class="req-annotation">&#8592; Header obligatoire</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">User-Agent</span>: <span style="color:var(--text-dim);">Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:148.0) Gecko/20100101 Firefox/148.0</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Accept</span>: <span style="color:var(--text-dim);">text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Accept-Language</span>: <span style="color:var(--text-dim);">en-US,en;q=0.9</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Accept-Encoding</span>: <span style="color:var(--text-dim);">gzip, deflate, br, zstd</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Connection</span>: <span style="color:var(--text-dim);">keep-alive</span><span class="crlf">\r\n</span><span class="req-annotation">&#8592; Important pour webserv</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Upgrade-Insecure-Requests</span>: <span style="color:var(--text-dim);">1</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Sec-Fetch-Dest</span>: <span style="color:var(--text-dim);">document</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Sec-Fetch-Mode</span>: <span style="color:var(--text-dim);">navigate</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Sec-Fetch-Site</span>: <span style="color:var(--text-dim);">none</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Sec-Fetch-User</span>: <span style="color:var(--text-dim);">?1</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(74,224,255,0.04); border-left: 3px solid var(--accent-2);"><span style="color:var(--accent-1);">Priority</span>: <span style="color:var(--text-dim);">u=0, i</span><span class="crlf">\r\n</span></span>
+<span class="req-line" style="background: rgba(255,107,74,0.12); border-left: 3px solid var(--accent-1);"><span class="crlf crlf-empty">\r\n</span><span class="req-annotation">&#8592; Ligne vide = fin des headers</span></span>
+      </div>
+    </div>
+
+    <!-- The 3 parts -->
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 0;">
+      <div class="panel-label">Les 3 parties d'une requete HTTP</div>
+    </div>
+
+    <div class="schema-box" style="border-top: none; border-radius: 0 0 12px 12px; margin-top: -1px;">
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+
+        <!-- Part 1: Request Line -->
+        <div style="border-left: 3px solid var(--accent-5); padding-left: 1.2rem;">
+          <div style="font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent-5); margin-bottom: 0.5rem;">
+            Partie 1 — Request Line (toujours la premiere ligne)
+          </div>
+          <div class="req-anatomy" style="margin-bottom: 0.8rem;">
+            <span style="padding: 0.3rem 0.6rem; border-radius: 4px; background: rgba(74,222,128,0.1); color: var(--accent-4); font-weight: 700;">GET</span>
+            <span style="color: var(--text-muted);"> </span>
+            <span style="padding: 0.3rem 0.6rem; border-radius: 4px; background: rgba(74,224,255,0.1); color: var(--accent-2); font-weight: 700;">/index.html</span>
+            <span style="color: var(--text-muted);"> </span>
+            <span style="padding: 0.3rem 0.6rem; border-radius: 4px; background: rgba(192,132,252,0.1); color: var(--accent-3); font-weight: 700;">HTTP/1.1</span>
+          </div>
+          <div style="display: flex; gap: 2rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--text-dim);">
+            <div><strong style="color: var(--accent-4);">Methode</strong> — que faire (GET, POST, DELETE)</div>
+            <div><strong style="color: var(--accent-2);">URI</strong> — quelle ressource (<code>/</code>, <code>/img/photo.png</code>)</div>
+            <div><strong style="color: var(--accent-3);">Version</strong> — toujours <code>HTTP/1.1</code> pour webserv</div>
+          </div>
+        </div>
+
+        <!-- Part 2: Headers -->
+        <div style="border-left: 3px solid var(--accent-2); padding-left: 1.2rem;">
+          <div style="font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent-2); margin-bottom: 0.5rem;">
+            Partie 2 — Headers (paires cle: valeur, une par ligne)
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.8;">
+            Chaque header est sur une ligne : <code style="color:var(--accent-1); background:rgba(255,107,74,0.06); padding:0.1rem 0.4rem; border-radius:3px; font-family:'Space Mono',monospace; font-size:0.75rem;">Nom: valeur\r\n</code>.
+            Les headers donnent des <strong style="color:var(--text);">meta-informations</strong> sur la requete : qui envoie,
+            quels formats sont acceptes, quelle taille fait le body, etc.
+            <strong style="color:var(--text);">Seul <code style="color:var(--accent-1); font-family:'Space Mono',monospace; font-size:0.75rem;">Host</code> est obligatoire</strong> en HTTP/1.1.
+          </div>
+        </div>
+
+        <!-- Part 3: Body -->
+        <div style="border-left: 3px solid var(--accent-1); padding-left: 1.2rem;">
+          <div style="font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent-1); margin-bottom: 0.5rem;">
+            Partie 3 — Body (optionnel, apres la ligne vide)
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.8;">
+            Le body est <strong style="color:var(--text);">separe des headers par <code style="color:var(--accent-1); font-family:'Space Mono',monospace; font-size:0.75rem;">\r\n\r\n</code></strong> (une ligne vide).
+            Les requetes <strong style="color:var(--text);">GET</strong> n'ont generalement <strong style="color:var(--text);">pas de body</strong>.
+            Les requetes <strong style="color:var(--text);">POST</strong> en ont un — sa taille est donnee par
+            <code style="color:var(--accent-5); font-family:'Space Mono',monospace; font-size:0.75rem;">Content-Length</code>
+            ou il est en morceaux via <code style="color:var(--accent-5); font-family:'Space Mono',monospace; font-size:0.75rem;">Transfer-Encoding: chunked</code>.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Comment savoir quand la requete est finie ?</strong> Pas de marqueur de fin pour le body !
+        Pour GET : la requete est finie apres <code>\r\n\r\n</code> (pas de body).
+        Pour POST : tu lis <code>Content-Length</code> octets apres <code>\r\n\r\n</code>.
+        Pour chunked : tu lis chunk par chunk jusqu'au chunk de taille <code>0</code>.
+        C'est pour ca que <code>recv()</code> en boucle est necessaire — tu ne recois pas toujours tout d'un coup.
+      </div>
+    </div>
+
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- 04 — Les methodes HTTP                  -->
+  <!-- ════════════════════════════════════════ -->
+  <section class="chapter" id="methodes" style="--step-color: var(--accent-4); scroll-margin-top: 60px;">
+    <div class="ch-header">
+      <div class="ch-number">04</div>
+      <div>
+        <div class="ch-fn">Les methodes HTTP</div>
+        <div class="ch-subtitle">GET, POST, DELETE — ce que webserv doit gerer</div>
+      </div>
+    </div>
+
+    <div class="method-grid">
+      <div class="method-card" style="border-left-color: var(--accent-4);">
+        <div class="method-name" style="color: var(--accent-4);">GET</div>
+        <div class="method-desc">
+          <strong>Recuperer</strong> une ressource. C'est la methode la plus courante — chaque page web,
+          chaque image, chaque CSS est un GET. Pas de body dans la requete.
+          <br>Exemple : <code>GET /index.html HTTP/1.1</code>
+        </div>
+        <div class="method-has-body">Body requete : non &bull; Body reponse : oui</div>
+      </div>
+
+      <div class="method-card" style="border-left-color: var(--accent-5);">
+        <div class="method-name" style="color: var(--accent-5);">POST</div>
+        <div class="method-desc">
+          <strong>Envoyer</strong> des donnees au serveur. Formulaires, upload de fichiers, soumissions.
+          Le body contient les donnees. <code>Content-Length</code> ou <code>Transfer-Encoding: chunked</code>
+          indique la taille.
+          <br>Exemple : <code>POST /upload HTTP/1.1</code>
+        </div>
+        <div class="method-has-body">Body requete : oui &bull; Body reponse : oui</div>
+      </div>
+
+      <div class="method-card" style="border-left-color: var(--accent-1);">
+        <div class="method-name" style="color: var(--accent-1);">DELETE</div>
+        <div class="method-desc">
+          <strong>Supprimer</strong> une ressource. Le serveur doit verifier les permissions avant de supprimer.
+          Pas de body dans la requete.
+          <br>Exemple : <code>DELETE /uploads/photo.jpg HTTP/1.1</code>
+        </div>
+        <div class="method-has-body">Body requete : non &bull; Body reponse : optionnel</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Dans le fichier de config, chaque location peut restreindre les methodes autorisees.</strong>
+        Par exemple : <code>limit_except GET POST;</code> refusera toute requete DELETE sur cette route
+        avec un <strong>405 Method Not Allowed</strong>.
+      </div>
+    </div>
+
+    <!-- POST body example -->
+    <div class="panel" style="--step-color: var(--accent-5); margin-top: 1.5rem;">
+      <div class="panel-label">Exemple : une requete POST avec body</div>
+    </div>
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Requete POST — formulaire</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">Ce que recv() donne</span>
+      </div>
+      <pre><span class="highlight-line"><span style="color:var(--accent-4); font-weight:700;">POST</span> <span style="color:var(--accent-2);">/submit</span> <span style="color:var(--accent-3);">HTTP/1.1</span>                          <span class="cmt">&#8592; request line</span></span>
+<span style="color:var(--accent-1);">Host</span>: localhost:8080                                  <span class="cmt">&#8592; headers</span>
+<span style="color:var(--accent-1);">Content-Type</span>: application/x-www-form-urlencoded
+<span class="highlight-new"><span style="color:var(--accent-1);">Content-Length</span>: 27                                    <span class="cmt">&#8592; taille du body !</span></span>
+Connection: close
+                                                        <span class="cmt">&#8592; ligne vide (\r\n\r\n)</span>
+<span class="highlight-line">username=jean&amp;password=1234                           <span class="cmt">&#8592; body (27 octets)</span></span></pre>
+    </div>
+
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- 05 — Les headers en detail               -->
+  <!-- ════════════════════════════════════════ -->
+  <section class="chapter" id="headers" style="--step-color: var(--accent-2); scroll-margin-top: 60px;">
+    <div class="ch-header">
+      <div class="ch-number">05</div>
+      <div>
+        <div class="ch-fn">Les headers en detail</div>
+        <div class="ch-subtitle">Ce que chaque header signifie et lesquels tu dois gerer</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1)">
+      <div class="panel-label">Headers que tu recois (requete du client)</div>
+      <table class="header-table">
+        <thead><tr><th>Header</th><th>Role</th><th>Importance pour webserv</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Host</td>
+            <td>Le nom de domaine + port demande. Permet de faire du <strong>virtual hosting</strong> (plusieurs sites sur le meme serveur).</td>
+            <td style="color:var(--accent-1); font-weight:600;">Obligatoire</td>
+          </tr>
+          <tr>
+            <td>Content-Length</td>
+            <td>Taille du body en octets. Sans ca, impossible de savoir quand le body du POST est fini.</td>
+            <td style="color:var(--accent-1); font-weight:600;">Critique pour POST</td>
+          </tr>
+          <tr>
+            <td>Transfer-Encoding</td>
+            <td>Si la valeur est <code style="color:var(--accent-2)">chunked</code>, le body arrive en morceaux. Pas de Content-Length dans ce cas.</td>
+            <td style="color:var(--accent-5); font-weight:600;">A gerer</td>
+          </tr>
+          <tr>
+            <td>Connection</td>
+            <td><code style="color:var(--accent-2)">keep-alive</code> = garder la connexion ouverte pour d'autres requetes. <code style="color:var(--accent-2)">close</code> = fermer apres la reponse.</td>
+            <td style="color:var(--accent-5); font-weight:600;">A gerer</td>
+          </tr>
+          <tr>
+            <td>Content-Type</td>
+            <td>Le type MIME du body. Pour un formulaire : <code style="color:var(--accent-2)">application/x-www-form-urlencoded</code>. Pour un upload : <code style="color:var(--accent-2)">multipart/form-data</code>.</td>
+            <td style="color:var(--accent-5); font-weight:600;">Pour CGI</td>
+          </tr>
+          <tr>
+            <td>User-Agent</td>
+            <td>Le navigateur/client qui envoie. Firefox, Chrome, curl... Informatif, pas critique pour toi.</td>
+            <td style="color:var(--text-muted)">Optionnel</td>
+          </tr>
+          <tr>
+            <td>Accept</td>
+            <td>Les types MIME que le client accepte en reponse. Tu peux l'ignorer — envoie ce que tu as.</td>
+            <td style="color:var(--text-muted)">Optionnel</td>
+          </tr>
+          <tr>
+            <td>Accept-Encoding</td>
+            <td>Compression acceptee (gzip, deflate, br). webserv n'est <strong>pas oblige</strong> de compresser.</td>
+            <td style="color:var(--text-muted)">Ignorable</td>
+          </tr>
+          <tr>
+            <td>Sec-Fetch-*</td>
+            <td>Headers de securite modernes du navigateur. Informatifs. Tu peux les ignorer.</td>
+            <td style="color:var(--text-muted)">Ignorable</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>client_max_body_size</strong> — Dans ta config, cette directive limite la taille du body accepte.
+        Si <code>Content-Length</code> depasse cette limite, tu dois renvoyer <strong>413 Payload Too Large</strong>
+        immediatement, sans lire le body. C'est une protection contre les uploads geants.
+      </div>
+    </div>
+
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- 06 — La reponse HTTP                    -->
+  <!-- ════════════════════════════════════════ -->
+  <section class="chapter" id="reponse" style="--step-color: var(--accent-6); scroll-margin-top: 60px;">
+    <div class="ch-header">
+      <div class="ch-number">06</div>
+      <div>
+        <div class="ch-fn">La reponse HTTP</div>
+        <div class="ch-subtitle">Ce que ton send() doit envoyer</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-6)">
+      <div class="panel-label">Structure de la reponse</div>
+      <p>
+        La reponse a la <strong>meme structure</strong> que la requete : une premiere ligne (status line),
+        des headers, une ligne vide, puis le body. Sauf que la premiere ligne contient le <strong>status code</strong>
+        au lieu de la methode.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Reponse HTTP — ce que send() envoie</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-6); background:rgba(244,114,182,0.08)">Reponse complete</span>
+      </div>
+      <pre><span class="highlight-line"><span style="color:var(--accent-3); font-weight:700;">HTTP/1.1</span> <span style="color:var(--accent-4); font-weight:700;">200</span> <span style="color:var(--accent-4);">OK</span>                                   <span class="cmt">&#8592; status line</span></span>
+<span style="color:var(--accent-1);">Content-Type</span>: text/html                                <span class="cmt">&#8592; headers de reponse</span>
+<span class="highlight-new"><span style="color:var(--accent-1);">Content-Length</span>: 22                                     <span class="cmt">&#8592; OBLIGATOIRE</span></span>
+<span style="color:var(--accent-1);">Connection</span>: close
+                                                        <span class="cmt">&#8592; ligne vide</span>
+<span class="highlight-line">&lt;h1&gt;Hello World!&lt;/h1&gt;                                  <span class="cmt">&#8592; body (22 octets)</span></span></pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2)">
+      <div class="panel-label">Headers de reponse que tu dois envoyer</div>
+      <table class="header-table">
+        <thead><tr><th>Header</th><th>Role</th><th>Obligatoire ?</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Content-Type</td>
+            <td>Le type MIME du body : <code style="color:var(--accent-2)">text/html</code>, <code style="color:var(--accent-2)">image/png</code>, <code style="color:var(--accent-2)">application/json</code>... Determine par l'extension du fichier.</td>
+            <td style="color:var(--accent-1); font-weight:600;">Oui</td>
+          </tr>
+          <tr>
+            <td>Content-Length</td>
+            <td>La taille exacte du body en octets. Le navigateur en a besoin pour savoir quand il a tout recu.</td>
+            <td style="color:var(--accent-1); font-weight:600;">Oui</td>
+          </tr>
+          <tr>
+            <td>Connection</td>
+            <td><code style="color:var(--accent-2)">close</code> ou <code style="color:var(--accent-2)">keep-alive</code>. Si keep-alive, ne pas fermer le fd apres send().</td>
+            <td style="color:var(--accent-5); font-weight:600;">Recommande</td>
+          </tr>
+          <tr>
+            <td>Location</td>
+            <td>Pour les redirections (301, 302). Indique la nouvelle URL : <code style="color:var(--accent-2)">Location: /new-page</code>.</td>
+            <td style="color:var(--accent-5); font-weight:600;">Si redirection</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>La reponse est une seule chaine de caracteres.</strong> Tu la construis en concatenant
+        la status line + headers + <code>\r\n</code> + body, puis tu donnes tout a <code>send()</code>.
+        C'est du texte brut — pas de magie, pas de serialisation.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- 07 — Status codes                       -->
+  <!-- ════════════════════════════════════════ -->
+  <section class="chapter" id="status" style="--step-color: var(--accent-1); scroll-margin-top: 60px;">
+    <div class="ch-header">
+      <div class="ch-number">07</div>
+      <div>
+        <div class="ch-fn">Les status codes</div>
+        <div class="ch-subtitle">Les codes que ton serveur doit renvoyer</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1)">
+      <div class="panel-label">La regle</div>
+      <p>
+        Le sujet dit : <em>"Your HTTP response status codes must be accurate."</em>
+        Chaque situation a son code — ne renvoie pas 200 pour tout.
+        Le premier chiffre indique la <strong>categorie</strong> :
+      </p>
+      <ul>
+        <li><strong>2xx</strong> — Succes (tout va bien)</li>
+        <li><strong>3xx</strong> — Redirection (va voir ailleurs)</li>
+        <li><strong>4xx</strong> — Erreur client (la requete est mauvaise)</li>
+        <li><strong>5xx</strong> — Erreur serveur (c'est ta faute)</li>
+      </ul>
+    </div>
+
+    <div class="status-grid">
+      <div class="status-group" style="border-top-color: var(--accent-4);">
+        <div class="status-group-title" style="color: var(--accent-4);">2xx — Succes</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-4);">200</span> OK — la ressource est la</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-4);">201</span> Created — POST reussi, ressource creee</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-4);">204</span> No Content — DELETE reussi, pas de body</div>
+      </div>
+
+      <div class="status-group" style="border-top-color: var(--accent-5);">
+        <div class="status-group-title" style="color: var(--accent-5);">3xx — Redirection</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-5);">301</span> Moved Permanently — URL change definitivement</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-5);">302</span> Found — redirection temporaire</div>
+      </div>
+
+      <div class="status-group" style="border-top-color: var(--accent-1);">
+        <div class="status-group-title" style="color: var(--accent-1);">4xx — Erreur client</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-1);">400</span> Bad Request — requete malformee</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-1);">403</span> Forbidden — pas de permission</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-1);">404</span> Not Found — la ressource n'existe pas</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-1);">405</span> Method Not Allowed — methode interdite ici</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-1);">413</span> Payload Too Large — body trop gros</div>
+      </div>
+
+      <div class="status-group" style="border-top-color: var(--accent-6);">
+        <div class="status-group-title" style="color: var(--accent-6);">5xx — Erreur serveur</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-6);">500</span> Internal Server Error — bug dans ton code</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-6);">502</span> Bad Gateway — CGI a plante</div>
+        <div class="status-item"><span class="status-code" style="color:var(--accent-6);">504</span> Gateway Timeout — CGI trop lent</div>
+      </div>
+    </div>
+
+    <div class="warning" style="margin-top: 1.5rem;">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>error_page</strong> — Dans la config, tu peux definir des pages d'erreur custom :
+        <code>error_page 404 /custom_404.html;</code>. Si cette directive existe pour un code,
+        ton serveur doit renvoyer le contenu de ce fichier au lieu d'un HTML generique.
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — 03 Le protocole HTTP</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  // Fade-out on retour link
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
+  });
+
+  // Smooth scroll with progress-bar offset
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var navH = document.querySelector('.progress-bar').offsetHeight;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  // Animate sections on scroll
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.chapter').forEach(function(el) { observer.observe(el); });
+
+  // Active pill highlight on scroll
+  var pills = document.querySelectorAll('.step-pill[href^="#"]');
+  var sections = [];
+  pills.forEach(function(pill) {
+    var id = pill.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if (el) sections.push({ el: el, pill: pill });
+  });
+  var scrollObs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        pills.forEach(function(p) { p.classList.remove('active'); });
+        var match = sections.find(function(s) { return s.el === entry.target; });
+        if (match) match.pill.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(function(s) { scrollObs.observe(s.el); });
+</script>
+</body>
+</html>
