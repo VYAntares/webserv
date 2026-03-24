@@ -95,9 +95,32 @@
       </div>
     </div>
 
+    <div class="analogy-panel">
+      <div class="analogy-icon">🏨</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie — c'est quoi NGINX concrètement ?</div>
+        <p>
+          Imagine un <strong>hôtel avec un réceptionniste et un manuel de procédures</strong>.
+          Chaque client (requête HTTP) arrive à l'accueil.
+          <br><br>
+          Le réceptionniste ne décide jamais à l'instinct — il consulte le manuel (<code>nginx.conf</code>) :
+          « si le client demande <code>/images/</code>, envoie-le dans le couloir <code>/data/images/</code> ».
+          <br><br>
+          Tu n'as pas besoin de <em>recoder le réceptionniste</em> pour changer les règles — tu mets à jour le manuel.
+          C'est exactement le modèle que ton <code>webserv</code> doit reproduire.
+        </p>
+      </div>
+    </div>
+
     <div class="quote-box" style="--step-color: var(--accent-3);">
       <p>« The way nginx and its modules work is determined in the configuration file. »</p>
       <cite>— NGINX Beginner's Guide</cite>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📋</span><span>Le comportement d'NGINX est piloté par la config, <strong>pas par le code</strong>. Webserv doit fonctionner pareil : le binaire est stable, c'est le fichier de config qui définit tout.</span></div>
+      <div class="key-point"><span class="key-point-icon">🚫</span><span>Pas de comportement hardcodé. Si le port, la route, la page d'erreur sont écrits en dur dans le C++ → c'est faux. Tout doit venir du fichier de config au démarrage.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚙️</span><span>Conséquence directe : webserv démarre en lisant et validant le fichier. Si la config est invalide → erreur propre et exit. Jamais de démarrage partiel silencieux.</span></div>
     </div>
   </section>
 
@@ -136,9 +159,33 @@
       </div>
     </div>
 
+    <div class="analogy-panel">
+      <div class="analogy-icon">👨‍🍳</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie</div>
+        <p>
+          Master = <strong>chef de cuisine</strong> qui lit la recette (<code>nginx.conf</code>) et organise les brigades.
+          Workers = <strong>cuisiniers</strong> qui exécutent les commandes (requêtes).
+          <br><br>
+          Sur <code>nginx -s reload</code>, le chef forme une nouvelle brigade avec la nouvelle recette,
+          attend que les anciens terminent leurs plats en cours, puis les remplace.
+          <strong>Le service ne s'interrompt jamais.</strong>
+          <br><br>
+          Pour webserv, pas besoin de multi-process — mais la même logique en deux temps s'applique :
+          phase init, puis boucle de traitement.
+        </p>
+      </div>
+    </div>
+
     <div class="quote-box" style="--step-color: var(--accent-2);">
       <p>« nginx has one master process and several worker processes. »</p>
       <cite>— NGINX Beginner's Guide</cite>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📖</span><span>Phase 1 — <strong>init</strong> : lire et valider le fichier de config. Si erreur → exit propre. Pas de socket ouvert, pas de port écouté.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Phase 2 — <strong>boucle événementielle</strong> : appliquer les règles lues à chaque requête qui arrive. La config ne change plus pendant cette phase.</span></div>
+      <div class="key-point"><span class="key-point-icon">🛡️</span><span>Webserv ne doit <strong>jamais crasher</strong>. Cette séparation init/runtime rend ça possible : les erreurs de config sont attrapées avant que le service démarre.</span></div>
     </div>
   </section>
 
@@ -205,6 +252,13 @@
         <div class="glossary-def">Tout ce qui suit <code>#</code> sur une ligne est ignoré par le parser.</div>
       </div>
     </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📌</span><span>Toute directive simple finit par <code>;</code>. Si ton parser trouve un token sans <code>;</code> → erreur de syntaxe à rejeter proprement, pas à ignorer silencieusement.</span></div>
+      <div class="key-point"><span class="key-point-icon">🪆</span><span>Les blocs s'imbriquent : <code>server</code> dans <code>http</code>, <code>location</code> dans <code>server</code>. Ton parser doit gérer les accolades récursives et maintenir un contexte courant.</span></div>
+      <div class="key-point"><span class="key-point-icon">💬</span><span>Les commentaires (<code>#</code>) doivent être supprimés au niveau du lexer — ils ne font pas partie de la grammaire et ne doivent jamais atteindre le parser.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌳</span><span>La hiérarchie <code>main → server → location</code> définit les <strong>contextes de portée</strong>. Une directive dans <code>location</code> ne s'applique qu'à ce bloc, pas au serveur entier.</span></div>
+    </div>
   </section>
 
   <div class="step-divider"></div>
@@ -240,6 +294,23 @@
 <span class="cmt"># /some/example.html → /data/www/some/example.html</span></pre>
     </div>
 
+    <div class="analogy-panel">
+      <div class="analogy-icon">🗂️</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie — le tri postal</div>
+        <p>
+          Imagine un centre de tri postal. L'URI est l'adresse sur l'enveloppe.
+          Tu as deux règles : une pour <code>/</code> (toutes les lettres) et une pour <code>/images/</code> (lettres spéciales).
+          <br><br>
+          Une enveloppe adressée à <code>/images/logo.png</code> correspond aux deux —
+          mais le tri retient la règle <strong>la plus précise</strong> : <code>/images/</code> gagne.
+          <br><br>
+          Ensuite, l'adresse physique de livraison est calculée :<br>
+          <code>root /data</code> + <code>/images/logo.png</code> → fichier à <code>/data/images/logo.png</code>.
+        </p>
+      </div>
+    </div>
+
     <div class="two-col">
       <div class="panel">
         <div class="panel-label">Logique de matching</div>
@@ -262,6 +333,12 @@
     <div class="quote-box" style="--step-color: var(--accent-5);">
       <p>« If there are several matching location blocks nginx selects the one with the longest prefix. »</p>
       <cite>— NGINX Beginner's Guide, Serving Static Content</cite>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🏆</span><span><strong>Longest prefix wins</strong> — pas le premier match. Entre <code>/</code> et <code>/images/</code>, une URI <code>/images/logo.png</code> matche <code>/images/</code>. Webserv doit implémenter exactement cette logique.</span></div>
+      <div class="key-point"><span class="key-point-icon">📁</span><span>Résolution : <code>root</code> + URI complète. Exemple du sujet : route <code>/kapouet</code> + root <code>/tmp/www</code> → <code>/kapouet/pouic/toto/pouet</code> devient <code>/tmp/www/pouic/toto/pouet</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">❓</span><span>Si le fichier résolu n'existe pas → 404. Si c'est un répertoire sans index → 403 ou listing selon <code>autoindex on/off</code>. Ces trois cas doivent tous être gérés.</span></div>
     </div>
   </section>
 
@@ -314,6 +391,12 @@ nginx -s stop</pre>
         <span class="chip">graceful shutdown des anciens workers</span>
       </div>
     </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">✅</span><span><code>reload</code> valide d'abord la nouvelle config. Si invalide → rollback automatique, les anciens workers continuent. <strong>Aucun downtime, aucune perte de requête.</strong></span></div>
+      <div class="key-point"><span class="key-point-icon">🚦</span><span>Pour webserv, le reload dynamique n'est pas requis. Mais le principe s'applique au démarrage : <strong>valider la config avant d'ouvrir le moindre socket</strong>. Config invalide → exit propre.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔌</span><span><code>nginx -s quit</code> = graceful (finit les requêtes en cours). <code>nginx -s stop</code> = kill brutal. Webserv doit au minimum gérer CTRL+C proprement sans laisser des sockets ouverts.</span></div>
+    </div>
   </section>
 
   <div class="step-divider"></div>
@@ -351,6 +434,13 @@ nginx -s stop</pre>
     <div class="quote-box" style="--step-color: var(--accent-6);">
       <p>« You can take inspiration from the 'server' section of the NGINX configuration file. »</p>
       <cite>— webserv.pdf, IV.3 Configuration file</cite>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔌</span><span>Plusieurs paires <code>interface:port</code> = plusieurs <code>server</code> blocks. Le serveur écoute sur plusieurs ports simultanément — un seul <code>poll()</code> surveille tous les fds.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔀</span><span>CGI par extension : si l'URI finit en <code>.php</code> ou <code>.py</code>, webserv doit exécuter un CGI externe (via <code>fork</code> + <code>execve</code>). Le seul endroit où <code>fork</code> est autorisé.</span></div>
+      <div class="key-point"><span class="key-point-icon">📐</span><span>Le sujet dit explicitement : pas de regex pour les routes. Le matching est uniquement par préfixe — ce que tu viens d'apprendre dans la section 04.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚖️</span><span>En cas de doute sur un comportement, <strong>comparer avec NGINX</strong>. C'est la référence officielle du sujet pour tous les cas ambigus (headers, codes de statut, comportement 404/403).</span></div>
     </div>
   </section>
 

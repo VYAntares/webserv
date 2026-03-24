@@ -86,6 +86,22 @@
       </div>
     </div>
 
+    <div class="analogy-panel">
+      <div class="analogy-icon">📖</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie — le manuel d'exploitation</div>
+        <p>
+          Le fichier de config, c'est le <strong>manuel d'exploitation laissé dans la salle serveur</strong>.
+          Le serveur le lit une seule fois au démarrage, charge toutes les règles en mémoire,
+          puis les applique à chaque requête sans jamais re-lire le fichier.
+          <br><br>
+          Tu ne changes pas le comportement en modifiant le binaire — tu mets à jour le manuel.
+          Et si le manuel est mal écrit (config invalide), le serveur refuse de démarrer
+          plutôt que de fonctionner avec des règles incohérentes.
+        </p>
+      </div>
+    </div>
+
     <div class="quote-box">
       <p>« You can take inspiration from the 'server' section of the NGINX configuration file. »</p>
       <cite>— webserv.pdf, IV.3</cite>
@@ -160,10 +176,17 @@
     </div>
 
       <div class="info-box">
-        <strong>Point clé (souvent flou) :</strong> les deux blocs <code>server</code> sont chargés en mémoire au startup.
+        <span>📌</span>
+        <div><strong>Point clé (souvent flou) :</strong> les deux blocs <code>server</code> sont chargés en mémoire au startup.
         Ensuite, une requête entrante est d'abord routée par son port local (<code>8080</code> ou <code>8081</code>),
-        puis seulement par les <code>location</code> du serveur sélectionné.
+        puis seulement par les <code>location</code> du serveur sélectionné.</div>
       </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Le pipeline config est séquentiel : lire → tokeniser → parser → valider → appliquer. Chaque étape doit se terminer sans erreur avant la suivante.</span></div>
+      <div class="key-point"><span class="key-point-icon">💾</span><span>Toute la config est en mémoire dès le démarrage. Pas de relecture à chaque requête. Les structures <code>ServerConfig</code> / <code>LocationConfig</code> sont immutables après validation.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌐</span><span>Un seul binaire = plusieurs serveurs logiques. Chaque bloc <code>server</code> est un "site" distinct, distingué par son port (et optionnellement son <code>server_name</code>).</span></div>
+    </div>
   </section>
 
   <div class="step-divider"></div>
@@ -259,14 +282,39 @@
     </div>
 
     <div class="info-box">
-      <strong>Réponse à ta question :</strong> oui, tu peux avoir 4-5 blocs <code>server</code>, dont 2-3 sur le même port.
+      <span>💡</span>
+      <div><strong>Réponse à ta question :</strong> oui, tu peux avoir 4-5 blocs <code>server</code>, dont 2-3 sur le même port.
       Ça sert justement à héberger plusieurs sites sur une même machine (virtual hosting), en les distinguant
-      via le header <code>Host</code> + <code>server_name</code>.
+      via le header <code>Host</code> + <code>server_name</code>.</div>
     </div>
 
-    <div class="warning-box">
-      <strong>Important :</strong> si tu n'implémentes pas <code>server_name</code>, plusieurs serveurs sur le même port deviennent ambigus.
-      Dans ce cas, définis clairement une règle (ex: "premier server du port") et documente-la.
+    <div class="analogy-panel">
+      <div class="analogy-icon">🏢</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie — les guichets d'une poste</div>
+        <p>
+          Chaque bloc <code>server</code> est un <strong>guichet distinct</strong>.
+          Port 8080 = guichet A, port 8081 = guichet B.
+          <br><br>
+          Quand une requête arrive, le serveur regarde d'abord <strong>par quelle porte elle est entrée</strong> (le port),
+          puis dirige vers le bon guichet. Le guichet a ses propres règles (ses <code>location</code>).
+          <br><br>
+          Si deux guichets partagent la même porte (même port), on lit le header <code>Host</code>
+          pour choisir lequel — c'est le principe du <code>server_name</code>.
+        </p>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div><strong>Important :</strong> si tu n'implémentes pas <code>server_name</code>, plusieurs serveurs sur le même port deviennent ambigus.
+      Dans ce cas, définis clairement une règle (ex: "premier server du port") et documente-la.</div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔌</span><span>Chaque <code>listen</code> unique = un socket serveur distinct. Webserv doit ouvrir autant de sockets d'écoute qu'il y a de ports distincts dans la config.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔢</span><span>Port valide : 1–65535. Ports &lt; 1024 nécessitent des droits élevés sur Linux. À vérifier à la validation, pas à runtime.</span></div>
+      <div class="key-point"><span class="key-point-icon">🏷️</span><span><code>server_name</code> est optionnel selon le sujet. Si absent : sélection par port uniquement. Si présent : matching sur le header <code>Host</code> après filtrage par port.</span></div>
     </div>
   </section>
 
@@ -317,10 +365,17 @@
           Associe un code HTTP à un fichier de réponse custom. Quand le serveur produit l'erreur,
           il essaie d'abord de servir cette page personnalisée. Sinon fallback sur un body minimal.
         </p>
-        <div class="warning-box">
-          <strong>Piège fréquent :</strong> la page d'erreur doit exister dans un chemin résolvable avec tes règles de root/location.
+        <div class="warning">
+          <span>⚠️</span>
+          <div><strong>Piège fréquent :</strong> la page d'erreur doit exister dans un chemin résolvable avec tes règles de root/location.</div>
         </div>
       </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">⛔</span><span><code>client_max_body_size</code> : compare le <code>Content-Length</code> reçu <strong>tôt</strong> dans le parsing de la requête. Réponse <code>413</code> immédiate, ne pas continuer à lire le body.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗂️</span><span><code>error_page</code> : le chemin de la page custom doit être résolvable via tes propres règles <code>root/location</code>. Une erreur qui pointe vers une page inexistante génère une double erreur.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔁</span><span>Fallback obligatoire : si la page <code>error_page</code> n'est pas trouvée, le serveur doit quand même répondre avec un body minimal (HTML inline). Ne jamais renvoyer de réponse vide.</span></div>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-4);">
@@ -411,6 +466,12 @@
       </div>
     </div>
 
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🚦</span><span><code>allowed_methods</code> : si la méthode n'est pas dans la liste → <code>405 Method Not Allowed</code> + header <code>Allow: GET, POST, DELETE</code>. Ce header est obligatoire avec le 405.</span></div>
+      <div class="key-point"><span class="key-point-icon">↩️</span><span><code>return</code> court-circuite tout le reste. Si défini dans la location matchée, on répond immédiatement — pas de lookup fichier, pas de CGI, pas de root.</span></div>
+      <div class="key-point"><span class="key-point-icon">📐</span><span>Le sujet dit explicitement : <strong>pas de regex</strong>. Matching uniquement par préfixe d'URI. Plus long préfixe = winner. L'algo C++ de sélection est simple et déterministe.</span></div>
+    </div>
+
     <div class="code-panel" style="--step-color: var(--accent-5);">
       <div class="code-header">
         <div class="code-header-left">
@@ -451,9 +512,10 @@
     <div class="panel">
       <div class="panel-label">Point critique root</div>
       <p>
-        Beaucoup d'équipes se trompent ici. En NGINX, <code>root</code> concatène son chemin avec l'URI retenue.
-        Dans certains designs webserv, on choisit <code>root + (uri - prefix)</code>. L'important est la cohérence
-        avec tes tests et la règle explicitée dans ton sujet.
+        Beaucoup d'équipes se trompent ici. En NGINX, <code>root</code> concatène son chemin avec l'URI complète.
+        Mais l'exemple du sujet webserv montre une stratégie différente : <strong>Cas 2 — root + suffix</strong>
+        (on retire le préfixe de la location avant de concaténer avec root).
+        L'important est de choisir une stratégie, de la documenter, et de rester cohérent.
       </p>
     </div>
 
@@ -492,6 +554,12 @@ résultat = /tmp/www/pouic/toto/pouet</pre>
           Chaque entrée doit devenir un lien cliquable. C'est utile en debug/partage, à manier prudemment en prod.
         </p>
       </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📌</span><span><strong>Le sujet donne l'exemple Cas 2</strong> : <code>/kapouet/pouic/toto/pouet</code> avec root <code>/tmp/www</code> → <code>/tmp/www/pouic/toto/pouet</code>. Le préfixe <code>/kapouet</code> est retiré avant la concat.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗂️</span><span><code>index</code> : tester les fichiers dans l'ordre de la liste. Premier trouvé = servi. Si aucun et <code>autoindex off</code> → <code>403</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">📋</span><span><code>autoindex on</code> : générer une page HTML avec <code>opendir</code>/<code>readdir</code>. Chaque entrée = lien cliquable. Utilise les fonctions autorisées dans le sujet.</span></div>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-6);">
@@ -560,8 +628,9 @@ résultat = /tmp/www/pouic/toto/pouet</pre>
           Pour un <code>multipart/form-data</code>, tu découpes les parts avec le boundary, extrais le fichier,
           puis écris le contenu binaire dans le dossier cible. Le dossier doit exister et être writable.
         </p>
-        <div class="warning-box">
-          <strong>Point sécurité :</strong> nettoyer le nom de fichier (path traversal, caractères interdits, collisions).
+        <div class="warning">
+          <span>🔒</span>
+          <div><strong>Point sécurité :</strong> nettoyer le nom de fichier (path traversal, caractères interdits, collisions).</div>
         </div>
       </div>
 
@@ -604,8 +673,16 @@ waitpid(pid, NULL, <span class="num">0</span>);</pre>
     </div>
 
     <div class="info-box">
-      <strong>Chunked + CGI :</strong> pour les requêtes chunked, il faut reconstituer le body avant de le donner au CGI.
-      Le script CGI attend un flux body normal terminé par EOF.
+      <span>💡</span>
+      <div><strong>Chunked + CGI :</strong> pour les requêtes chunked, il faut reconstituer le body avant de le donner au CGI.
+      Le script CGI attend un flux body normal terminé par EOF.</div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔱</span><span><code>fork</code> est autorisé <strong>uniquement pour le CGI</strong>. C'est une règle dure du sujet — l'utiliser ailleurs annule la note.</span></div>
+      <div class="key-point"><span class="key-point-icon">📂</span><span>Le CGI doit être exécuté dans le <strong>bon répertoire de travail</strong> (<code>chdir</code> avant <code>execve</code>). Les scripts qui utilisent des chemins relatifs en dépendent.</span></div>
+      <div class="key-point"><span class="key-point-icon">📦</span><span>Upload : le dossier <code>upload_store</code> doit exister et être writable. Nettoyer le nom de fichier (path traversal, <code>..</code>, caractères interdits).</span></div>
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Si le CGI ne retourne pas de <code>Content-Length</code>, le serveur utilise <code>EOF</code> pour détecter la fin de la réponse — lire stdout jusqu'à fermeture du pipe.</span></div>
     </div>
   </section>
 
@@ -674,6 +751,12 @@ waitpid(pid, NULL, <span class="num">0</span>);</pre>
   std::map&lt;int, std::string&gt; errorPages;
   std::vector&lt;LocationConfig&gt; locations;
 };</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">✂️</span><span>Le <strong>lexer</strong> supprime commentaires et espaces. Il produit une suite plate de tokens : <code>WORD</code>, <code>{</code>, <code>}</code>, <code>;</code>. Le parser ne voit jamais de whitespace.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌲</span><span>Le <strong>parser</strong> lit les tokens et remplit les structs. Approche recommandée : récursif-descendant avec <code>expect(token)</code> — si le token attendu n'est pas là, lever une exception claire.</span></div>
+      <div class="key-point"><span class="key-point-icon">🛡️</span><span>La <strong>validation</strong> s'exécute après le parsing, avant d'ouvrir tout socket. Elle vérifie les ports valides, les locations non-vides, les chemins accessibles, les méthodes connues.</span></div>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-3);">
@@ -754,14 +837,22 @@ waitpid(pid, NULL, <span class="num">0</span>);</pre>
 }</pre>
     </div>
 
-    <div class="warning-box">
-      <strong>Robustesse attendue :</strong> toute erreur de route/fichier/CGI doit renvoyer une réponse HTTP propre,
-      jamais faire planter la boucle événementielle.
+    <div class="warning">
+      <span>⚠️</span>
+      <div><strong>Robustesse attendue :</strong> toute erreur de route/fichier/CGI doit renvoyer une réponse HTTP propre,
+      jamais faire planter la boucle événementielle.</div>
     </div>
 
     <div class="info-box">
-      <strong>Évaluation :</strong> prépare plusieurs fichiers de config + fichiers web par défaut
-      pour démontrer toutes les features (méthodes, redirection, erreurs, listing, upload, CGI).
+      <span>💡</span>
+      <div><strong>Évaluation :</strong> prépare plusieurs fichiers de config + fichiers web par défaut
+      pour démontrer toutes les features (méthodes, redirection, erreurs, listing, upload, CGI).</div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">1️⃣</span><span>L'ordre de priorité est fixe : <strong>server → location → methods → return → path → CGI → static</strong>. Une étape qui échoue renvoie une réponse HTTP, elle ne saute pas à l'étape suivante.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔒</span><span>Chaque branche de l'arbre de décision doit produire une réponse. Pas de chemin sans réponse, pas de réponse vide. Le serveur ne doit <strong>jamais crasher</strong> quelle que soit la requête.</span></div>
+      <div class="key-point"><span class="key-point-icon">🧪</span><span>Le sujet demande explicitement de fournir des fichiers de config de test. Prépare un fichier qui couvre tous les cas : statique, redirection, 404, upload, CGI, autoindex.</span></div>
     </div>
   </section>
 
@@ -992,8 +1083,9 @@ waitpid(pid, NULL, <span class="num">0</span>);</pre>
     </div>
 
     <div class="info-box">
-      <strong>Conseil oral soutenance :</strong> pour chaque terme, donne systématiquement
-      un exemple concret de requête + ce que le serveur fait. C'est ça qui rend l'explication limpide.
+      <span>💡</span>
+      <div><strong>Conseil oral soutenance :</strong> pour chaque terme, donne systématiquement
+      un exemple concret de requête + ce que le serveur fait. C'est ça qui rend l'explication limpide.</div>
     </div>
   </section>
 

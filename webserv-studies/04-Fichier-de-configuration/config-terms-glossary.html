@@ -22,7 +22,7 @@
     <div class="step-connector"></div>
     <a href="#routing" class="step-pill"><span class="step-dot"></span>Routage</a>
     <div class="step-connector"></div>
-    <a href="#behavior" class="step-pill"><span class="step-dot"></span>Comportement</a>
+    <a href="#behavior" class="step-pill"><span class="step-dot"></span>Effets</a>
     <div class="step-connector"></div>
     <a href="#custom" class="step-pill"><span class="step-dot"></span>Webserv</a>
     <div class="step-connector"></div>
@@ -34,21 +34,24 @@
   <div class="header-tag">04 — Fichier de configuration</div>
   <h1>Glossaire des <em>termes</em> à maîtriser</h1>
   <p class="header-desc">
-    Cette page explique précisément les directives utilisées dans ton exemple de configuration.
-    Les définitions <code>server</code>, <code>listen</code>, <code>server_name</code>, <code>location</code>,
-    <code>root</code>, <code>index</code>, <code>client_max_body_size</code> et <code>error_page</code>
-    sont alignées avec la documentation officielle du module HTTP core de NGINX.
+    Chaque directive expliquée avec ce qu'elle fait <em>réellement</em> à runtime — pas juste sa définition.
+    Les directives core NGINX (<code>server</code>, <code>listen</code>, <code>location</code>, <code>root</code>…)
+    sont alignées sur le module HTTP core officiel. Les directives custom webserv (<code>allowed_methods</code>,
+    <code>upload_store</code>, <code>cgi_pass</code>) sont expliquées avec leur effet attendu dans ton implémentation.
   </p>
 </div>
 
 <div class="main">
 
-  <section class="step-section" id="sample" style="--step-color: var(--accent-3);">
+  <!-- ══════════════════════════════ -->
+  <!-- 01 — SAMPLE CONFIG            -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="sample" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
     <div class="step-header">
       <div class="step-number-badge">01</div>
       <div>
         <div class="step-fn">config sample</div>
-        <div class="step-subtitle">Le fichier qu’on utilise comme référence</div>
+        <div class="step-subtitle">Le fichier de référence qu'on va décortiquer</div>
       </div>
     </div>
 
@@ -58,12 +61,12 @@
           <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
           <span class="code-filename">webserv.conf</span>
         </div>
-        <span class="code-tag">Extrait complet</span>
+        <span class="code-tag">Fichier de référence complet</span>
       </div>
-      <pre><span class="cmt"># Site principal sur le port 8080</span>
+      <pre><span class="cmt"># Serveur principal — port 8080</span>
 <span class="dir">server</span> {
-    <span class="dir">listen</span> <span class="num">8080</span>;
-    <span class="dir">server_name</span> localhost;
+    <span class="dir">listen</span>               <span class="num">8080</span>;
+    <span class="dir">server_name</span>          localhost;
     <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
 
     <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
@@ -72,139 +75,179 @@
     <span class="dir">location</span> / {
         <span class="dir">root</span>            /var/www/html;
         <span class="dir">index</span>           index.html;
-        allowed_methods GET;
+        <span class="dir">allowed_methods</span> GET;
         <span class="dir">autoindex</span>       off;
     }
 
     <span class="dir">location</span> /api {
         <span class="dir">root</span>            /var/www/api;
-        allowed_methods GET POST DELETE;
+        <span class="dir">allowed_methods</span> GET POST DELETE;
         <span class="dir">autoindex</span>       off;
     }
 
     <span class="dir">location</span> /upload {
         <span class="dir">root</span>            /var/www;
-        allowed_methods POST;
-        upload_store    /tmp/uploads;
+        <span class="dir">allowed_methods</span> POST;
+        <span class="dir">upload_store</span>    /tmp/uploads;
     }
 
     <span class="dir">location</span> /files {
         <span class="dir">root</span>            /var/www/shared;
-        allowed_methods GET;
+        <span class="dir">allowed_methods</span> GET;
         <span class="dir">autoindex</span>       on;
     }
 
     <span class="dir">location</span> /old-page {
-        <span class="dir">return</span> 301 /new-page;
+        <span class="dir">return</span> <span class="num">301</span> /new-page;
     }
 
     <span class="dir">location</span> /cgi-bin {
         <span class="dir">root</span>            /var/www/cgi-bin;
-        allowed_methods GET POST;
-        cgi_pass        .py /usr/bin/python3;
-        cgi_pass        .php /usr/bin/php-cgi;
+        <span class="dir">allowed_methods</span> GET POST;
+        <span class="dir">cgi_pass</span>        .py  /usr/bin/python3;
+        <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
     }
 }
 
-<span class="cmt"># Deuxième serveur sur port 8081</span>
+<span class="cmt"># Deuxième serveur — port 8081</span>
 <span class="dir">server</span> {
-    <span class="dir">listen</span> <span class="num">8081</span>;
+    <span class="dir">listen</span>               <span class="num">8081</span>;
     <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
 
     <span class="dir">location</span> / {
         <span class="dir">root</span>            /var/www/site2;
         <span class="dir">index</span>           index.html;
-        allowed_methods GET;
+        <span class="dir">allowed_methods</span> GET;
         <span class="dir">autoindex</span>       off;
     }
 }</pre>
     </div>
 
-    <div class="panel" style="--step-color: var(--accent-3);">
-      <div class="panel-label">Comment lire ce fichier</div>
-      <p>
-        Tu as 2 blocs <code>server</code> (deux serveurs virtuels), chacun écoute un port différent (<code>8080</code> et <code>8081</code>).
-        Dans chaque serveur, des blocs <code>location</code> définissent les règles par préfixe d’URI.
-      </p>
-      <p>
-        Les directives dites “core NGINX” viennent du module HTTP core. D’autres directives ici
-        (<code>allowed_methods</code>, <code>upload_store</code>, <code>cgi_pass</code>) sont des choix de conception côté webserv,
-        inspirés du sujet, pas des directives standard du module core officiel.
-      </p>
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3);">
+        <div class="panel-label">Structure globale</div>
+        <p>
+          Deux blocs <code>server</code> = deux serveurs virtuels distincts.
+          Chacun écoute un port différent (<code>8080</code> et <code>8081</code>).
+          Dans chaque serveur, les blocs <code>location</code> définissent les règles par préfixe d'URI.
+        </p>
+        <p>
+          Webserv lit ce fichier <strong>une seule fois au démarrage</strong>, construit ses structures en mémoire,
+          puis les applique à chaque requête sans jamais relire le fichier.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-3);">
+        <div class="panel-label">Core NGINX vs directives custom</div>
+        <p>
+          <code>server</code>, <code>listen</code>, <code>server_name</code>, <code>location</code>,
+          <code>root</code>, <code>index</code>, <code>autoindex</code>, <code>error_page</code>,
+          <code>client_max_body_size</code>, <code>return</code> → directives du module HTTP core NGINX.
+        </p>
+        <p>
+          <code>allowed_methods</code>, <code>upload_store</code>, <code>cgi_pass</code> → directives
+          <strong>custom webserv</strong>, inspirées du sujet mais non standard NGINX.
+        </p>
+      </div>
     </div>
   </section>
 
   <div class="step-divider"></div>
 
-  <section class="step-section" id="core" style="--step-color: var(--accent-2);">
+  <!-- ══════════════════════════════ -->
+  <!-- 02 — DIRECTIVES CORE          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="core" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
     <div class="step-header">
       <div class="step-number-badge">02</div>
       <div>
         <div class="step-fn">directives core</div>
-        <div class="step-subtitle">Définitions exactes (manuel NGINX)</div>
+        <div class="step-subtitle">Ce que chaque mot-clé fait exactement</div>
       </div>
     </div>
 
     <div class="terms-grid">
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">server { ... }</div>
-        <p>Définit un serveur virtuel HTTP. Le bloc rassemble les règles d’un “site” logique.</p>
-        <div class="term-extra">Contexte: http • Dans ton fichier: 2 serveurs (8080, 8081)</div>
+        <p>Définit un <strong>serveur virtuel</strong> HTTP. Le bloc rassemble toutes les règles d'un "site" logique : ports d'écoute, pages d'erreur, limite de body, routes.</p>
+        <div class="term-extra">Contexte: http • Ce fichier: 2 serveurs (8080, 8081) dans un même processus</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">listen address:port;</div>
-        <p>Définit l’adresse/port sur lequel ce serveur accepte les connexions.</p>
-        <div class="term-extra">Contexte: server • Exemple: listen 8080; puis listen 8081;</div>
+        <p>Définit le port (et optionnellement l'adresse IP) sur lequel ce serveur accepte les connexions. Chaque <code>listen</code> distinct = un socket serveur ouvert par webserv.</p>
+        <div class="term-extra">Contexte: server • Exemple: listen 8080; — listen 8081;</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">server_name name ...;</div>
-        <p>Nomme le serveur virtuel pour le routage par en-tête Host quand plusieurs serveurs partagent un même port.</p>
+        <p>Nomme le serveur virtuel. Utile pour le <strong>virtual hosting</strong> : si deux <code>server</code> partagent le même port, le header <code>Host</code> de la requête est comparé aux <code>server_name</code> pour choisir le bon bloc. Optionnel dans webserv.</p>
         <div class="term-extra">Contexte: server • Exemple: server_name localhost;</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">client_max_body_size size;</div>
-        <p>Taille maximale autorisée pour le corps de requête. Au-delà: réponse 413.</p>
-        <div class="term-extra">Contexte: http, server, location • Exemples: 10m et 1m</div>
+        <p>Taille maximale autorisée pour le corps d'une requête. Le check se fait <strong>tôt</strong>, sur le header <code>Content-Length</code>, avant de lire le body. Si dépassé : réponse <code>413 Request Entity Too Large</code> immédiate.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemples: 10m (serveur 8080), 1m (serveur 8081)</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">error_page code ... uri;</div>
-        <p>Associe un code d’erreur à une URI interne ou à une redirection dédiée.</p>
-        <div class="term-extra">Contexte: http, server, location • Exemples: 404 et 500</div>
+        <p>Associe un code d'erreur HTTP à une page personnalisée. Si le serveur produit ce code, il tente de servir la page. Si la page elle-même est introuvable, il faut un fallback HTML inline — jamais de réponse vide.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemples: 404 /errors/404.html — 500 /errors/500.html</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
-        <div class="term-name">location [modificateur] uri { ... }</div>
-        <p>Applique une configuration en fonction de l’URI. Le matching se fait d’abord sur les préfixes, puis regex si présentes.</p>
+        <div class="term-name">location [prefix] uri { ... }</div>
+        <p>Applique une configuration en fonction de l'URI de la requête. Le matching se fait par <strong>plus long préfixe</strong> : <code>/api/users</code> matche <code>/api</code> plutôt que <code>/</code>. Pas de regex dans webserv.</p>
         <div class="term-extra">Contexte: server, location • Exemples: /, /api, /upload, /files, /old-page, /cgi-bin</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">root path;</div>
-        <p>Répertoire racine utilisé pour construire le chemin local du fichier à servir.</p>
-        <div class="term-extra">Contexte: http, server, location • Exemple: /var/www/html</div>
+        <p>Répertoire racine pour résoudre le chemin physique d'un fichier. La règle du sujet (Cas 2) : <code>chemin = root + (URI − préfixe location)</code>. Exemple : <code>location /api</code> + <code>root /var/www/api</code> + URI <code>/api/users.json</code> → fichier à <code>/var/www/api/users.json</code>.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemple: root /var/www/html;</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">index file ...;</div>
-        <p>Fichier par défaut d’un répertoire (module index), typiquement index.html.</p>
+        <p>Fichier servi automatiquement quand l'URI pointe sur un répertoire. Le serveur vérifie l'index <strong>avant</strong> d'envisager <code>autoindex</code>. Si l'index n'existe pas et <code>autoindex off</code> : <code>403 Forbidden</code>.</p>
         <div class="term-extra">Contexte: http, server, location • Exemple: index index.html;</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">autoindex on | off;</div>
-        <p>Active ou non le listing d’un dossier lorsqu’aucun index n’est trouvé (module autoindex).</p>
-        <div class="term-extra">Contexte: http, server, location • Exemple: /files = on</div>
+        <p>Active le listing du contenu d'un répertoire quand aucun fichier <code>index</code> n'est trouvé. Génère une réponse HTML avec les entrées du dossier. Implémenté avec <code>opendir</code> / <code>readdir</code>.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemple: /files = on, toutes les autres locations = off</div>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-2);">
-        <div class="term-name">return code [text|URL|URI];</div>
-        <p>Renvoie immédiatement un statut HTTP (souvent pour redirection ou sortie rapide).</p>
-        <div class="term-extra">Contexte: server, location, if • Exemple: return 301 /new-page;</div>
+        <div class="term-name">return code [URL|URI];</div>
+        <p>Renvoie <strong>immédiatement</strong> un statut HTTP sans résoudre de fichier. Court-circuite tout le reste du pipeline (root, index, CGI, upload). Utilisé pour les redirections permanentes (<code>301</code>) ou temporaires (<code>302</code>).</p>
+        <div class="term-extra">Contexte: server, location • Exemple: return 301 /new-page;</div>
       </article>
+    </div>
+
+    <div class="analogy-panel">
+      <div class="analogy-icon">📚</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie — le répertoire téléphonique</div>
+        <p>
+          Le fichier de config, c'est un <strong>répertoire téléphonique structuré</strong>.
+          Chaque bloc <code>server</code> est une entreprise (son numéro = le port).
+          Les blocs <code>location</code> sont les <strong>services internes</strong> de cette entreprise
+          ("/accueil", "/comptabilité", "/archives").
+          <br><br>
+          Quand un appel arrive, on regarde d'abord au bon numéro de téléphone (port),
+          puis on lit l'annuaire interne pour trouver le service le plus précis.
+          <code>return</code> = "le standard te redirige directement, tu n'attends pas".
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔑</span><span><code>client_max_body_size</code> : le check se fait sur <code>Content-Length</code> <strong>avant</strong> de lire le body. Ne pas attendre la fin de la lecture pour rejeter.</span></div>
+      <div class="key-point"><span class="key-point-icon">📐</span><span>Résolution de chemin : <code>root + (URI − préfixe_location)</code>. C'est le Cas 2 du sujet — toujours retirer le préfixe de la location avant de concaténer avec root.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span><code>return</code> court-circuite tout. Aucune résolution de fichier, aucun CGI, aucun upload. La réponse est envoyée dès que la directive est trouvée.</span></div>
     </div>
 
     <div class="quote-box" style="--step-color: var(--accent-2);">
@@ -215,26 +258,71 @@
 
   <div class="step-divider"></div>
 
-  <section class="step-section" id="routing" style="--step-color: var(--accent-4);">
+  <!-- ══════════════════════════════ -->
+  <!-- 03 — MATCHING / ROUTAGE       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="routing" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
     <div class="step-header">
       <div class="step-number-badge">03</div>
       <div>
         <div class="step-fn">matching</div>
-        <div class="step-subtitle">Comment une requête choisit son bloc</div>
+        <div class="step-subtitle">Comment une requête choisit son bloc — et quel fichier elle lit</div>
       </div>
     </div>
 
-    <div class="panel" style="--step-color: var(--accent-4);">
-      <div class="panel-label">Ordre concret sur ton config</div>
-      <p>
-        1) Le port d’arrivée sélectionne d’abord le bloc <code>server</code> (8080 ou 8081).<br>
-        2) Ensuite, dans ce serveur, la requête est comparée aux <code>location</code> par préfixe.<br>
-        3) La route retenue applique ses directives: fichiers statiques, redirection, upload, CGI.
-      </p>
-      <div class="chips">
-        <span class="chip">GET /files/report.txt → location /files</span>
-        <span class="chip">POST /upload → location /upload</span>
-        <span class="chip">GET /old-page → location /old-page</span>
+    <div class="analogy-panel">
+      <div class="analogy-icon">📬</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie — le centre de tri postal</div>
+        <p>
+          Imagine un centre de tri qui reçoit des colis.
+          Le <strong>code postal</strong> (port) détermine d'abord à quelle agence le colis est affecté (bloc <code>server</code>).
+          <br><br>
+          Dans l'agence, le <strong>début de l'adresse</strong> (préfixe d'URI) détermine le service :
+          un colis pour "/api/..." va au guichet "/api", pas au guichet généraliste "/".
+          On choisit toujours le guichet dont l'adresse est la <strong>plus précise</strong> (plus long préfixe).
+          <br><br>
+          Ensuite, l'adresse physique finale est calculée : <code>root</code> + le reste de l'adresse sans le préfixe
+          → c'est là où le fichier est lu sur le disque.
+        </p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4);">
+        <div class="panel-label">Les 3 étapes du routage</div>
+        <p>
+          <strong>1. Sélection du serveur</strong> : le port d'arrivée de la connexion détermine quel bloc <code>server</code> répond.
+          Si plusieurs serveurs partagent le même port, on compare le header <code>Host</code> avec <code>server_name</code>.
+        </p>
+        <p>
+          <strong>2. Sélection de la location</strong> : on compare l'URI à tous les préfixes déclarés.
+          La location dont le préfixe est le plus long et qui matche l'URI est retenue.
+        </p>
+        <p>
+          <strong>3. Résolution du chemin</strong> : <code>root + (URI − préfixe_location)</code>.
+          Le préfixe est retiré de l'URI avant de concaténer avec <code>root</code>.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4);">
+        <div class="panel-label">Exemples de résolution complète</div>
+        <p>
+          <code>GET /api/users.json</code><br>
+          → location choisie : <code>/api</code> (plus long que <code>/</code>)<br>
+          → <code>root /var/www/api</code> + <code>/users.json</code><br>
+          → fichier : <code>/var/www/api/users.json</code>
+        </p>
+        <p>
+          <code>GET /files/doc.pdf</code><br>
+          → location choisie : <code>/files</code><br>
+          → <code>root /var/www/shared</code> + <code>/doc.pdf</code><br>
+          → fichier : <code>/var/www/shared/doc.pdf</code> — puis <code>autoindex on</code> si dossier
+        </p>
+        <p>
+          <code>GET /old-page</code><br>
+          → location choisie : <code>/old-page</code><br>
+          → <code>return 301 /new-page</code> → réponse immédiate, pas de fichier
+        </p>
       </div>
     </div>
 
@@ -244,120 +332,205 @@
           <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
           <span class="code-filename">routing-trace.txt</span>
         </div>
-        <span class="code-tag">Exemples rapides</span>
+        <span class="code-tag">Trace complète de chaque requête</span>
       </div>
-      <pre>GET /api/users HTTP/1.1   -> match <span class="dir">location</span> /api
-                           -> <span class="dir">root</span> /var/www/api
+      <pre>GET /api/users HTTP/1.1
+  → port 8080 → server A
+  → plus long préfixe : <span class="dir">location</span> /api
+  → <span class="dir">root</span> /var/www/api + /users → <span class="num">/var/www/api/users</span>
 
-GET /files/ HTTP/1.1      -> match <span class="dir">location</span> /files
-                           -> <span class="dir">autoindex</span> on
-                           -> listing de dossier si pas d'index
+GET /files/ HTTP/1.1
+  → port 8080 → server A
+  → plus long préfixe : <span class="dir">location</span> /files
+  → <span class="dir">root</span> /var/www/shared + / → tente index → <span class="dir">autoindex</span> on → listing
 
-GET /old-page HTTP/1.1    -> match <span class="dir">location</span> /old-page
-                           -> <span class="dir">return</span> 301 /new-page
+GET /old-page HTTP/1.1
+  → port 8080 → server A
+  → plus long préfixe : <span class="dir">location</span> /old-page
+  → <span class="dir">return</span> <span class="num">301</span> /new-page → réponse immédiate
 
-POST /upload HTTP/1.1     -> match <span class="dir">location</span> /upload
-                           -> limite body (server)
-                           -> stockage upload /tmp/uploads</pre>
+POST /upload HTTP/1.1  (body: 15 Mo)
+  → port 8080 → server A
+  → Content-Length 15m > client_max_body_size <span class="num">10m</span> → <span class="num">413</span> immédiat
+
+POST /cgi-bin/script.py HTTP/1.1
+  → port 8080 → server A
+  → plus long préfixe : <span class="dir">location</span> /cgi-bin
+  → extension .py → cgi_pass /usr/bin/python3 → fork + execve</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📏</span><span>Le matching est <strong>toujours</strong> par plus long préfixe. <code>/api/v2/users</code> matche <code>/api/v2</code> si elle existe, sinon <code>/api</code>, jamais les deux.</span></div>
+      <div class="key-point"><span class="key-point-icon">➖</span><span>Formule path = <code>root + (URI − préfixe)</code>. Webserv retire le préfixe de la location avant de coller à root — c'est l'exemple exact du sujet (<code>/kapouet/pouic/toto</code> → <code>/tmp/www/pouic/toto</code>).</span></div>
+      <div class="key-point"><span class="key-point-icon">🚦</span><span>Ordre de priorité dans la location : <code>return</code> en premier → puis path resolution → puis CGI si extension matche → sinon fichier statique.</span></div>
     </div>
   </section>
 
   <div class="step-divider"></div>
 
-  <section class="step-section" id="behavior" style="--step-color: var(--accent-5);">
+  <!-- ══════════════════════════════ -->
+  <!-- 04 — EFFETS RUNTIME           -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="behavior" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
     <div class="step-header">
       <div class="step-number-badge">04</div>
       <div>
-        <div class="step-fn">effets</div>
-        <div class="step-subtitle">Ce que chaque terme change réellement</div>
+        <div class="step-fn">effets runtime</div>
+        <div class="step-subtitle">Ce que chaque directive change dans la réponse HTTP</div>
       </div>
     </div>
 
     <div class="terms-grid">
       <article class="term-card" style="--step-color: var(--accent-5);">
-        <div class="term-name">error_page 404 /errors/404.html;</div>
-        <p>Quand la ressource est introuvable, ton serveur doit produire cette page d’erreur dédiée au lieu d’un message brut.</p>
+        <div class="term-name">error_page 404 /errors/404.html</div>
+        <p>Quand le serveur ne trouve pas la ressource demandée, il tente de servir cette page d'erreur dédiée. Si elle-même est absente : réponse <code>404</code> avec un body HTML minimal inline.</p>
       </article>
+
       <article class="term-card" style="--step-color: var(--accent-5);">
-        <div class="term-name">client_max_body_size 10m;</div>
-        <p>Sur le serveur 8080, un upload de 15 Mo doit être rejeté en 413 avant traitement applicatif.</p>
+        <div class="term-name">client_max_body_size 10m</div>
+        <p>Sur le serveur 8080, tout body déclaré ≥ 10 Mo est rejeté en <code>413</code> dès la lecture du header <code>Content-Length</code>, sans toucher au body. Sur 8081 : limite de 1 Mo.</p>
       </article>
+
       <article class="term-card" style="--step-color: var(--accent-5);">
-        <div class="term-name">root + URI</div>
-        <p>Exemple: <code>location /api</code> + <code>root /var/www/api</code> + URI <code>/api/users.json</code> donne un chemin local résolu selon ta logique de mapping.</p>
+        <div class="term-name">root + URI (path resolution)</div>
+        <p>
+          <code>location /api</code> + <code>root /var/www/api</code> + URI <code>/api/data.json</code><br>
+          → retire le préfixe <code>/api</code><br>
+          → ajoute le suffixe <code>/data.json</code> à root<br>
+          → lit <code>/var/www/api/data.json</code> sur le disque.
+        </p>
       </article>
+
       <article class="term-card" style="--step-color: var(--accent-5);">
-        <div class="term-name">index index.html;</div>
-        <p>Sur un répertoire, le serveur tente d’abord <code>index.html</code> avant d’envisager un listing ou un 404.</p>
+        <div class="term-name">index index.html</div>
+        <p>Requête sur <code>GET /</code> → URI est un répertoire → le serveur tente <code>/var/www/html/index.html</code>. Si absent et <code>autoindex off</code> : <code>403 Forbidden</code>.</p>
       </article>
+
       <article class="term-card" style="--step-color: var(--accent-5);">
-        <div class="term-name">autoindex on;</div>
-        <p>Pour <code>/files</code>, le serveur renvoie la liste des entrées du dossier si aucun index n’est présent.</p>
+        <div class="term-name">autoindex on (location /files)</div>
+        <p>Requête sur <code>GET /files/</code> → si aucun index trouvé → le serveur génère une page HTML listant le contenu du dossier via <code>opendir</code> + <code>readdir</code>. Réponse <code>200</code> avec ce listing.</p>
       </article>
+
       <article class="term-card" style="--step-color: var(--accent-5);">
-        <div class="term-name">return 301 /new-page;</div>
-        <p>Réponse immédiate de redirection permanente. Aucune résolution de fichier derrière cette route.</p>
+        <div class="term-name">return 301 /new-page</div>
+        <p>Requête sur <code>GET /old-page</code> → réponse immédiate : <code>301 Moved Permanently</code> avec header <code>Location: /new-page</code>. Zéro accès disque, aucun CGI, aucun traitement body.</p>
       </article>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🗂️</span><span>Ordre de résolution d'un répertoire : 1) tenter l'index → 2) si <code>autoindex on</code> générer le listing → 3) sinon <code>403</code>. Ne jamais envoyer un <code>404</code> pour un dossier qui existe.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔁</span><span>La page <code>error_page</code> doit être résolvable par tes propres règles <code>root/location</code>. Une page d'erreur introuvable → fallback body inline obligatoire (jamais de réponse vide).</span></div>
+      <div class="key-point"><span class="key-point-icon">🧮</span><span>Toutes ces décisions — 413, 301, listing, index, 403 — sont prises à runtime sur chaque requête, à partir des structures C++ chargées une fois au démarrage.</span></div>
     </div>
   </section>
 
   <div class="step-divider"></div>
 
-  <section class="step-section" id="custom" style="--step-color: var(--accent-1);">
+  <!-- ══════════════════════════════ -->
+  <!-- 05 — DIRECTIVES CUSTOM WEBSERV-->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="custom" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
     <div class="step-header">
       <div class="step-number-badge">05</div>
       <div>
         <div class="step-fn">webserv-only</div>
-        <div class="step-subtitle">Termes custom de ton projet</div>
+        <div class="step-subtitle">Les directives propres à ton projet</div>
       </div>
     </div>
 
     <div class="panel" style="--step-color: var(--accent-1);">
-      <div class="panel-label">Directives non core NGINX</div>
+      <div class="panel-label">Directives non standard NGINX</div>
       <p>
-        <code>allowed_methods</code>, <code>upload_store</code> et <code>cgi_pass</code> ne sont pas des directives
-        du module core officiel NGINX. Elles sont utilisées ici pour répondre explicitement au sujet webserv.
+        <code>allowed_methods</code>, <code>upload_store</code> et <code>cgi_pass</code> ne sont pas dans le module core officiel NGINX.
+        Elles sont conçues pour répondre explicitement aux exigences du sujet webserv.
+      </p>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1);">
+        <div class="panel-label">allowed_methods GET POST DELETE</div>
+        <p>
+          Liste les méthodes HTTP autorisées pour cette location.
+          Si la méthode de la requête n'est pas dans la liste :
+          réponse <code>405 Method Not Allowed</code> avec le header <code>Allow: GET POST DELETE</code>
+          listant les méthodes acceptées.
+        </p>
+        <p>
+          La vérification se fait <strong>tôt</strong> dans le pipeline, avant la résolution de chemin ou le CGI.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1);">
+        <div class="panel-label">upload_store /tmp/uploads</div>
+        <p>
+          Dossier de destination pour les fichiers uploadés via <code>multipart/form-data</code>.
+          Le serveur décode le body (boundary splitting), extrait le fichier, et écrit le contenu binaire
+          dans ce dossier.
+        </p>
+        <p>
+          Le dossier <strong>doit exister</strong> et être writable. À vérifier à la validation de la config,
+          pas à runtime. Nettoyer le nom de fichier : path traversal (<code>..</code>), caractères interdits,
+          collisions.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1);">
+      <div class="panel-label">cgi_pass .py /usr/bin/python3  +  .php /usr/bin/php-cgi</div>
+      <p>
+        Associe une extension de fichier à un interpréteur CGI. Quand l'URI correspond à un fichier
+        avec cette extension, le serveur l'exécute via <code>fork</code> + <code>execve</code>.
       </p>
       <p>
-        En pratique: <code>allowed_methods</code> pilote 405, <code>upload_store</code> choisit la destination disque,
-        <code>cgi_pass</code> associe une extension à un interpréteur.
+        Le processus enfant reçoit les variables CGI en environnement (<code>REQUEST_METHOD</code>,
+        <code>QUERY_STRING</code>, <code>CONTENT_TYPE</code>, <code>CONTENT_LENGTH</code>, etc.),
+        le body via <code>stdin</code>, et retourne sa réponse sur <code>stdout</code>.
+        Le serveur fait <code>chdir</code> dans le répertoire du script avant <code>execve</code>
+        pour que les chemins relatifs fonctionnent.
       </p>
-      <div class="chips">
-        <span class="chip">allowed_methods GET POST DELETE</span>
-        <span class="chip">upload_store /tmp/uploads</span>
-        <span class="chip">cgi_pass .py /usr/bin/python3</span>
-      </div>
-      <div class="warning">
-        Point important: si tu veux un mode “strictement NGINX”, l’équivalent de limitation de méthodes est
-        classiquement géré avec <code>limit_except</code>. Mais pour webserv, ton format custom est totalement cohérent
-        si le parser et l’exécution respectent bien les règles du sujet.
-      </div>
+      <p>
+        <strong>Règle du sujet :</strong> <code>fork</code> est réservé <strong>exclusivement</strong> aux CGI.
+        Le process enfant doit être attendu avec <code>waitpid</code>.
+        Si le CGI ne retourne pas de <code>Content-Length</code>, <code>EOF</code> sur stdout marque la fin.
+      </p>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div><strong>fork est une règle dure :</strong> utiliser <code>fork</code> en dehors du CGI = note 0 immédiate selon le sujet. La seule exception autorisée est l'exécution d'un script CGI via <code>fork</code> + <code>execve</code>.</div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔱</span><span><code>fork</code> réservé au CGI uniquement. Le processus enfant hérite des pipes (stdin/stdout), des variables d'environnement CGI, et doit être <code>waitpid</code>-é.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔒</span><span><code>upload_store</code> : valider l'existence et les droits du dossier au démarrage. Sanitizer le nom de fichier (retirer <code>..</code>, espaces, caractères interdits) avant l'écriture.</span></div>
+      <div class="key-point"><span class="key-point-icon">🚫</span><span><code>allowed_methods</code> → <code>405</code> + header <code>Allow:</code> obligatoire. La vérification se fait avant la résolution de chemin — ne pas chercher le fichier si la méthode est interdite.</span></div>
     </div>
   </section>
 
   <div class="step-divider"></div>
 
-  <section class="step-section" id="checklist" style="--step-color: var(--accent-6);">
+  <!-- ══════════════════════════════ -->
+  <!-- 06 — CHECKLIST                -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="checklist" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
     <div class="step-header">
       <div class="step-number-badge">06</div>
       <div>
-        <div class="step-fn">ready-to-implement</div>
-        <div class="step-subtitle">Checklist de validation du vocabulaire</div>
+        <div class="step-fn">checklist d'implémentation</div>
+        <div class="step-subtitle">Ce que ton code doit prouver pour chaque terme</div>
       </div>
     </div>
 
-    <div class="panel" style="--step-color: var(--accent-6);">
-      <div class="panel-label">Ce que ton implémentation doit prouver</div>
-      <p>
-        - Chaque terme du fichier a une structure C++ claire (server, location, erreurs, limites body, redirections).<br>
-        - Le matching <code>server</code> puis <code>location</code> est déterministe.<br>
-        - Les effets runtime sont visibles: 301, 404 custom, 413, autoindex, CGI, upload.<br>
-        - Les directives custom webserv sont validées tôt, avec messages d’erreur explicites si syntaxe invalide.
-      </p>
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🏗️</span><span>Chaque <code>server { }</code> correspond à une structure <code>ServerConfig</code> en mémoire. Chaque <code>location { }</code> à une <code>LocationConfig</code>. Chargées au démarrage, immutables ensuite.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔌</span><span>Chaque port distinct dans les blocs <code>listen</code> = un socket serveur ouvert. Tous ces sockets sont enregistrés dans <code>poll()</code> / <code>epoll</code> dès le démarrage.</span></div>
+      <div class="key-point"><span class="key-point-icon">📏</span><span>Le matching location est déterministe : itérer tous les préfixes, retenir le plus long qui matche l'URI. Implémenter un test avec plusieurs locations chevauchantes.</span></div>
+      <div class="key-point"><span class="key-point-icon">📁</span><span>La résolution de chemin suit <code>root + (URI − préfixe_location)</code>. Vérifier avec l'exemple du sujet : <code>/kapouet/pouic/toto</code> + <code>root /tmp/www</code> → <code>/tmp/www/pouic/toto</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">📊</span><span>Les codes de statut doivent être précis : <code>200</code>, <code>301</code>, <code>403</code>, <code>404</code>, <code>405</code>, <code>413</code>, <code>500</code>. Tester chaque cas avec <code>curl</code> ou le navigateur.</span></div>
+      <div class="key-point"><span class="key-point-icon">🧪</span><span>Fournir un fichier de config de test qui couvre tous les cas : statique, redirection, 404 custom, 413, autoindex, upload, CGI. Le sujet demande explicitement ces fichiers pour la soutenance.</span></div>
     </div>
 
     <div class="quote-box" style="--step-color: var(--accent-6);">
-      <p>Référence principale utilisée: ngx_http_core_module (server, listen, server_name, location, root, error_page, client_max_body_size).</p>
+      <p>Référence principale : ngx_http_core_module — server, listen, server_name, location, root, index, autoindex, error_page, client_max_body_size, return.</p>
       <cite>— https://nginx.org/en/docs/http/ngx_http_core_module.html</cite>
     </div>
   </section>
@@ -390,10 +563,7 @@ POST /upload HTTP/1.1     -> match <span class="dir">location</span> /upload
   });
 
   function scrollToId(id) {
-    if (id === 'top') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
+    if (id === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     var el = document.getElementById(id);
     if (!el) return;
     var nav = document.querySelector('.progress-bar');

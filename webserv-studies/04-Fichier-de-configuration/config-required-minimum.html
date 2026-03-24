@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/webserv-shared.css">
 </head>
-<body>
+<body class="page-config-required">
 <div class="bg-glow bg-glow-1"></div>
 <div class="bg-glow bg-glow-2"></div>
 <div class="bg-glow bg-glow-3"></div>
@@ -16,13 +16,13 @@
   <div class="progress-inner">
     <a href="../webserv-mindmap.html" class="back-link">← Retour à la cartographie</a>
     <div class="progress-back-divider"></div>
-    <a href="#listen" class="step-pill active"><span class="step-dot"></span>Listen</a>
+    <a href="#overview" class="step-pill active"><span class="step-dot"></span>Vue d'ensemble</a>
     <div class="step-connector"></div>
-    <a href="#errors" class="step-pill"><span class="step-dot"></span>Errors</a>
+    <a href="#server" class="step-pill"><span class="step-dot"></span>Niveau server</a>
     <div class="step-connector"></div>
-    <a href="#body" class="step-pill"><span class="step-dot"></span>Body size</a>
+    <a href="#location" class="step-pill"><span class="step-dot"></span>Niveau location</a>
     <div class="step-connector"></div>
-    <a href="#routes" class="step-pill"><span class="step-dot"></span>Routes</a>
+    <a href="#full" class="step-pill"><span class="step-dot"></span>Config complète</a>
   </div>
 </div>
 
@@ -30,169 +30,366 @@
   <div class="header-tag">04 — Sujet IV.3</div>
   <h1>Ce que la config doit <em>absolument</em> contenir</h1>
   <p class="header-desc">
-    Version courte et directe: uniquement les extraits minimum de ton fichier, avec l’explication associée.
+    Tout ce que le sujet IV.3 exige, organisé par scope : ce qui se configure au niveau
+    <code>server</code> (global au site) et ce qui se configure au niveau <code>location</code>
+    (par route). Dix directives. Zéro oubli.
   </p>
 </div>
 
 <div class="main">
 
-  <section class="step-section" id="listen" style="--step-color: var(--accent-2);">
+  <!-- ══════════════════════════════ -->
+  <!-- 01 — VUE D'ENSEMBLE           -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="overview" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
     <div class="step-header">
       <div class="step-number-badge">01</div>
       <div>
-        <div class="step-fn">interface:port</div>
-        <div class="step-subtitle">Définir tous les couples d’écoute</div>
+        <div class="step-fn">vue d'ensemble</div>
+        <div class="step-subtitle">Les 10 directives requises par IV.3</div>
+      </div>
+    </div>
+
+    <!-- Grille required -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">
+
+      <!-- Colonne SERVER -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+        <div style="background:rgba(74,224,255,0.08); border-bottom:1px solid rgba(74,224,255,0.2); padding:0.9rem 1.2rem; display:flex; align-items:center; gap:0.6rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-2);">Scope</span>
+          <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">server { }</code>
+          <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--text-muted);">3 directives</span>
+        </div>
+        <div style="padding:0.5rem 0;">
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.7rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">listen</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">port d'écoute</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.7rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">error_page</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">pages d'erreur custom</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.7rem 1.2rem;">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">client_max_body_size</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">limite du body</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Colonne LOCATION -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+        <div style="background:rgba(74,222,128,0.06); border-bottom:1px solid rgba(74,222,128,0.2); padding:0.9rem 1.2rem; display:flex; align-items:center; gap:0.6rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; text-transform:uppercase; letter-spacing:0.3em; color:var(--accent-4);">Scope</span>
+          <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">location { }</code>
+          <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--text-muted);">7 directives</span>
+        </div>
+        <div style="padding:0.5rem 0;">
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">allowed_methods</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">méthodes autorisées</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">return</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">redirection HTTP</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">root</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">racine disque</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">autoindex</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">listing de dossier</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">index</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">fichier par défaut</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 1.2rem; border-bottom:1px solid var(--border);">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">upload_store</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">dossier d'upload</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 1.2rem;">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.5rem; flex-shrink:0;">REQUIS</span>
+            <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">cgi_pass</code>
+            <span style="font-size:0.78rem; color:var(--text-dim); font-weight:300;">CGI par extension</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>📋</span>
+      <div>Ces 10 directives couvrent exactement la section IV.3 du sujet. <strong>Toutes doivent être démontrables à la soutenance</strong> — prépare un fichier de config de test qui les active toutes.</div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 02 — NIVEAU SERVER            -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="server" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">niveau server</div>
+        <div class="step-subtitle">listen · error_page · client_max_body_size</div>
       </div>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-2);">
       <div class="code-header">
-        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
-        <span class="code-tag">minimum</span>
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf — server level</span></div>
+        <span class="code-tag">3 directives requises</span>
       </div>
-      <pre><span class="dir">server</span> {
-    <span class="dir">listen</span> <span class="num">8080</span>;
-    server_name localhost;
-    ...
-}
-
+      <pre><span class="cmt"># ① listen — chaque port distinct = un socket serveur ouvert</span>
 <span class="dir">server</span> {
-    <span class="dir">listen</span> <span class="num">8081</span>;
-    ...
-}</pre>
-    </div>
+    <span class="dir">listen</span>               <span class="num">8080</span>;       <span class="cmt"># socket A</span>
+    <span class="dir">server_name</span>          localhost;  <span class="cmt"># optionnel (virtual host)</span>
 
-    <div class="panel" style="--step-color: var(--accent-2);">
-      <p>Ton programme doit pouvoir écouter plusieurs ports/sites. Ici: un serveur sur 8080, un autre sur 8081.</p>
-    </div>
-  </section>
+    <span class="cmt"># ② error_page — pages d'erreur personnalisées</span>
+    <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+    <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
 
-  <div class="step-divider"></div>
-
-  <section class="step-section" id="errors" style="--step-color: var(--accent-1);">
-    <div class="step-header">
-      <div class="step-number-badge">02</div>
-      <div>
-        <div class="step-fn">error pages</div>
-        <div class="step-subtitle">Pages d’erreur par défaut</div>
-      </div>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-1);">
-      <div class="code-header">
-        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
-        <span class="code-tag">minimum</span>
-      </div>
-      <pre><span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
-<span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;</pre>
-    </div>
-
-    <div class="panel" style="--step-color: var(--accent-1);">
-      <p>Quand une erreur se produit, le serveur envoie ta page personnalisée au lieu d’une page générique.</p>
-    </div>
-  </section>
-
-  <div class="step-divider"></div>
-
-  <section class="step-section" id="body" style="--step-color: var(--accent-5);">
-    <div class="step-header">
-      <div class="step-number-badge">03</div>
-      <div>
-        <div class="step-fn">client_max_body_size</div>
-        <div class="step-subtitle">Taille maximale du body client</div>
-      </div>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-5);">
-      <div class="code-header">
-        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
-        <span class="code-tag">minimum</span>
-      </div>
-      <pre><span class="dir">server</span> {
-    ...
+    <span class="cmt"># ③ client_max_body_size — limite body (check sur Content-Length)</span>
     <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
 }
 
 <span class="dir">server</span> {
-    ...
+    <span class="dir">listen</span>               <span class="num">8081</span>;       <span class="cmt"># socket B</span>
     <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
 }</pre>
     </div>
 
-    <div class="panel" style="--step-color: var(--accent-5);">
-      <p>Permet de limiter les uploads/requêtes lourdes par serveur. Ici 10 Mo pour le site principal, 1 Mo pour le second.</p>
+    <div class="terms-grid" style="margin-top:1.2rem;">
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">REQUIS</span>
+          listen
+        </div>
+        <p>Ouvre un socket TCP sur ce port au démarrage. Plusieurs blocs <code>server</code> peuvent partager le même port — la sélection se fait ensuite par <code>server_name</code>. Chaque port distinct = un socket séparé enregistré dans <code>poll()</code>.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">REQUIS</span>
+          error_page
+        </div>
+        <p>Associe un code HTTP à une page custom. Le serveur la sert à la place de la réponse d'erreur générique. Si la page est elle-même introuvable : fallback body HTML inline obligatoire. Ne jamais envoyer de réponse vide.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">REQUIS</span>
+          client_max_body_size
+        </div>
+        <p>Vérifie <code>Content-Length</code> en début de parsing — avant de lire le body. Si la valeur dépasse la limite : <code>413 Request Entity Too Large</code> immédiat. Ne pas attendre la fin de la lecture pour rejeter.</p>
+      </article>
     </div>
   </section>
 
   <div class="step-divider"></div>
 
-  <section class="step-section" id="routes" style="--step-color: var(--accent-4);">
+  <!-- ══════════════════════════════ -->
+  <!-- 03 — NIVEAU LOCATION          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="location" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
     <div class="step-header">
-      <div class="step-number-badge">04</div>
+      <div class="step-number-badge">03</div>
       <div>
-        <div class="step-fn">règles par route</div>
-        <div class="step-subtitle">Méthodes, redirection, root, listing, index, upload</div>
+        <div class="step-fn">niveau location</div>
+        <div class="step-subtitle">Les 7 directives par route — toutes requises</div>
       </div>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-4);">
       <div class="code-header">
-        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
-        <span class="code-tag">méthodes + root + index + autoindex</span>
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf — location level</span></div>
+        <span class="code-tag">7 directives requises</span>
       </div>
-      <pre><span class="dir">location</span> / {
+      <pre><span class="cmt"># ① allowed_methods  ② root  ③ index  ④ autoindex</span>
+<span class="dir">location</span> / {
     <span class="dir">root</span>            /var/www/html;
     <span class="dir">index</span>           index.html;
-    allowed_methods GET;
+    <span class="dir">allowed_methods</span> GET;
     <span class="dir">autoindex</span>       off;
 }
 
-<span class="dir">location</span> /api {
-    <span class="dir">root</span>            /var/www/api;
-    allowed_methods GET POST DELETE;
-    <span class="dir">autoindex</span>       off;
-}</pre>
-    </div>
-
-    <div class="panel" style="--step-color: var(--accent-4);">
-      <p><strong>accepted methods</strong>: contrôlées par <code>allowed_methods</code>.</p>
-      <p><strong>directory mapping</strong>: <code>root</code> fixe la base disque pour la route.</p>
-      <p><strong>default file</strong>: <code>index</code> sert le fichier d’entrée d’un dossier.</p>
-      <p><strong>directory listing</strong>: <code>autoindex on/off</code> active ou non le listing.</p>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-4);">
-      <div class="code-header">
-        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
-        <span class="code-tag">redirection</span>
-      </div>
-      <pre><span class="dir">location</span> /old-page {
+<span class="cmt"># ⑤ return (redirection HTTP)</span>
+<span class="dir">location</span> /old-page {
     <span class="dir">return</span> <span class="num">301</span> /new-page;
-}</pre>
-    </div>
+}
 
-    <div class="panel" style="--step-color: var(--accent-4);">
-      <p><strong>HTTP redirection</strong>: ici /old-page redirige en 301 vers /new-page.</p>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-4);">
-      <div class="code-header">
-        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
-        <span class="code-tag">upload autorisé</span>
-      </div>
-      <pre><span class="dir">location</span> /upload {
+<span class="cmt"># ⑥ upload_store (upload de fichiers)</span>
+<span class="dir">location</span> /upload {
     <span class="dir">root</span>            /var/www;
-    allowed_methods POST;
-    upload_store    /tmp/uploads;
+    <span class="dir">allowed_methods</span> POST;
+    <span class="dir">upload_store</span>    /tmp/uploads;
+}
+
+<span class="cmt"># ⑦ cgi_pass (CGI par extension de fichier)</span>
+<span class="dir">location</span> /cgi-bin {
+    <span class="dir">root</span>            /var/www/cgi-bin;
+    <span class="dir">allowed_methods</span> GET POST;
+    <span class="dir">cgi_pass</span>        .py  /usr/bin/python3;
+    <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
 }</pre>
     </div>
 
-    <div class="panel" style="--step-color: var(--accent-4);">
-      <p><strong>upload files</strong>: route dédiée en POST + répertoire de stockage explicite.</p>
+    <div class="terms-grid" style="margin-top:1.2rem;">
+      <article class="term-card" style="--step-color: var(--accent-4);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">① REQUIS</span>
+          allowed_methods
+        </div>
+        <p>Méthodes HTTP acceptées pour cette route. Si la requête utilise une méthode absente de la liste : <code>405 Method Not Allowed</code> + header <code>Allow:</code> listant les méthodes valides. Vérifié avant toute résolution de fichier.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-4);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">② REQUIS</span>
+          return
+        </div>
+        <p>Redirection HTTP immédiate. Court-circuite tout le reste : aucun accès disque, aucun CGI. Typiquement <code>301</code> (permanente) ou <code>302</code> (temporaire). Doit produire le header <code>Location:</code> dans la réponse.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-4);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">③ REQUIS</span>
+          root
+        </div>
+        <p>Répertoire racine. Résolution : <code>root + (URI − préfixe_location)</code>. C'est le Cas 2 du sujet : <code>location /api</code> + <code>root /var/www/api</code> + URI <code>/api/data.json</code> → fichier <code>/var/www/api/data.json</code>.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-4);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">④ REQUIS</span>
+          autoindex
+        </div>
+        <p>Active le listing du contenu d'un dossier quand aucun index n'est trouvé. <code>off</code> = <code>403 Forbidden</code> si pas d'index. Implémenté avec <code>opendir</code> / <code>readdir</code> pour générer le HTML du listing.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-4);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑤ REQUIS</span>
+          index
+        </div>
+        <p>Fichier servi automatiquement quand la requête pointe sur un répertoire. Le serveur tente <code>root + "/" + index</code>. Si absent et <code>autoindex off</code> : <code>403</code>. Si absent et <code>autoindex on</code> : listing du dossier.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-4);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑥ REQUIS</span>
+          upload_store
+        </div>
+        <p>Dossier de destination des fichiers uploadés. Le serveur décode le body <code>multipart/form-data</code>, extrait le fichier, et l'écrit dans ce dossier. Le dossier doit exister et être writable. Nettoyer le nom de fichier (path traversal, <code>..</code>).</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-4);">
+        <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑦ REQUIS</span>
+          cgi_pass
+        </div>
+        <p>Associe une extension à un interpréteur. Si l'URI correspond à cette extension : <code>fork</code> + <code>execve</code> de l'interpréteur avec les variables CGI en env, le body en <code>stdin</code>, réponse sur <code>stdout</code>. <code>fork</code> est réservé exclusivement au CGI.</p>
+      </article>
     </div>
 
-    <div class="quote-box" style="--step-color: var(--accent-4);">
-      <p>Tu couvres exactement les points demandés par le sujet IV.3, sans ajouter de règles inutiles.</p>
+    <div class="key-points" style="margin-top:1.2rem;">
+      <div class="key-point"><span class="key-point-icon">🔢</span><span>Ordre d'exécution dans une location : <strong>allowed_methods</strong> → <strong>return</strong> (si présent) → <strong>path resolution</strong> → <strong>CGI</strong> (si extension matche) → <strong>static file / autoindex</strong>.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span><code>return</code> court-circuite tout. Si présent dans la location, les autres directives (<code>root</code>, <code>index</code>, <code>cgi_pass</code>) sont ignorées.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔱</span><span><code>cgi_pass</code> implique <code>fork</code> + <code>execve</code>. C'est le seul endroit du code où <code>fork</code> est autorisé — règle dure du sujet.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 04 — CONFIG COMPLÈTE          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="full" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">config de test complète</div>
+        <div class="step-subtitle">Un seul fichier qui démontre les 10 directives requises</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv-eval.conf</span></div>
+        <span class="code-tag">toutes les 10 directives IV.3</span>
+      </div>
+      <pre><span class="cmt"># ═══ SERVEUR A — port 8080 ═══════════════════════════════════</span>
+<span class="dir">server</span> {
+    <span class="dir">listen</span>               <span class="num">8080</span>;           <span class="cmt"># ① listen</span>
+    <span class="dir">server_name</span>          localhost;
+    <span class="dir">client_max_body_size</span> <span class="num">10m</span>;            <span class="cmt"># ③ client_max_body_size</span>
+
+    <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;     <span class="cmt"># ② error_page</span>
+    <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
+
+    <span class="cmt"># Statique — méthodes + root + index + autoindex</span>
+    <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/html;  <span class="cmt"># ③ root</span>
+        <span class="dir">index</span>           index.html;     <span class="cmt"># ⑤ index</span>
+        <span class="dir">allowed_methods</span> GET;            <span class="cmt"># ① allowed_methods</span>
+        <span class="dir">autoindex</span>       off;            <span class="cmt"># ④ autoindex</span>
+    }
+
+    <span class="cmt"># Listing de dossier</span>
+    <span class="dir">location</span> /files {
+        <span class="dir">root</span>            /var/www/shared;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       on;             <span class="cmt"># ④ autoindex on</span>
+    }
+
+    <span class="cmt"># Redirection</span>
+    <span class="dir">location</span> /old-page {
+        <span class="dir">return</span> <span class="num">301</span> /new-page;           <span class="cmt"># ② return</span>
+    }
+
+    <span class="cmt"># Upload</span>
+    <span class="dir">location</span> /upload {
+        <span class="dir">root</span>            /var/www;
+        <span class="dir">allowed_methods</span> POST;
+        <span class="dir">upload_store</span>    /tmp/uploads;   <span class="cmt"># ⑥ upload_store</span>
+    }
+
+    <span class="cmt"># CGI</span>
+    <span class="dir">location</span> /cgi-bin {
+        <span class="dir">root</span>            /var/www/cgi-bin;
+        <span class="dir">allowed_methods</span> GET POST;
+        <span class="dir">cgi_pass</span>        .py  /usr/bin/python3;   <span class="cmt"># ⑦ cgi_pass</span>
+        <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
+    }
+}
+
+<span class="cmt"># ═══ SERVEUR B — port 8081 ═══════════════════════════════════</span>
+<span class="dir">server</span> {
+    <span class="dir">listen</span>               <span class="num">8081</span>;           <span class="cmt"># ① listen (second port)</span>
+    <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+
+    <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/site2;
+        <span class="dir">index</span>           index.html;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       off;
+    }
+}</pre>
+    </div>
+
+    <div class="info-box" style="margin-top:1.2rem;">
+      <span>💡</span>
+      <div><strong>Conseil soutenance :</strong> garde ce fichier tel quel dans ton repo. Pour chaque directive, tu dois pouvoir montrer le comportement en live — une requête <code>curl</code> qui déclenche un <code>301</code>, un <code>413</code>, un <code>405</code>, un listing autoindex, un upload, un CGI.</div>
+    </div>
+
+    <div class="key-points" style="margin-top:1rem;">
+      <div class="key-point"><span class="key-point-icon">🧪</span><span>Test <code>listen</code> : deux ports distincts, vérifier que les deux répondent. Test multi-port = obligatoire.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗂️</span><span>Test <code>error_page</code> : requête sur une URL inexistante → réponse 404 avec ta page custom, pas le body générique.</span></div>
+      <div class="key-point"><span class="key-point-icon">⛔</span><span>Test <code>client_max_body_size</code> : <code>curl -X POST --data-binary @bigfile.bin</code> avec un fichier > limite → <code>413</code> immédiat.</span></div>
+      <div class="key-point"><span class="key-point-icon">🚫</span><span>Test <code>allowed_methods</code> : <code>DELETE /</code> → <code>405</code> + header <code>Allow: GET</code>. La méthode interdite ne doit jamais atteindre la résolution de fichier.</span></div>
     </div>
   </section>
 
@@ -200,7 +397,7 @@
 
 <footer class="footer">
   <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
-  <p style="margin-top:0.5rem; opacity:0.4">42 Project — 04 Fichier de configuration — Extraits minimum</p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — 04 Fichier de configuration — Extraits minimum IV.3</p>
 </footer>
 
 <script>
@@ -216,10 +413,7 @@
   }
 
   document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
-    a.addEventListener('click', function(e) {
-      e.preventDefault();
-      navigateTo(a.href);
-    });
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
   });
 
   function scrollToId(id) {

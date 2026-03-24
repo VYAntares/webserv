@@ -13648,6 +13648,8 @@
     flex-shrink: 0;
     margin-top: 0.1rem;
   }
+  .key-point code { font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--accent-4); }
+  .key-point strong { color: var(--text); }
 
   /* WARNING */
   .warning {
@@ -13664,6 +13666,8 @@
     line-height: 1.7;
   }
   .warning strong { color: var(--accent-1); }
+  .warning code { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--accent-1); }
+  .warning div { flex: 1; }
 
   /* INFO BOX */
   .info-box {
@@ -13680,6 +13684,8 @@
     line-height: 1.7;
   }
   .info-box strong { color: var(--accent-2); }
+  .info-box code { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--accent-2); }
+  .info-box div { flex: 1; }
 
   /* DIVIDER */
   .step-divider {
@@ -13898,4 +13904,51 @@
   display: block;
   flex: 0 0 8px;
   min-width: 8px;
+}
+
+/* ===== Page override: epoll navigation (compact, centered) ===== */
+.page-epoll .progress-bar { overflow-x: visible; }
+.page-epoll .progress-inner { width: max-content; max-width: 100%; margin: 0 auto; justify-content: center; flex-wrap: nowrap; overflow-x: visible; gap: 0; }
+.page-epoll .step-pill { flex: 0 0 auto; font-size: 0.6rem; letter-spacing: 0.1em; padding: 0.35rem 0.8rem; }
+.page-epoll .step-connector { display: block; flex: 0 0 8px; min-width: 8px; }
+
+/* ===== Page override: mindmap navigation (restore original) ===== */
+.page-mindmap .nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10,10,15,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.page-mindmap .nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 0;
+  justify-content: center;
+}
+
+.page-mindmap .nav-item {
+  padding: 1rem 1.2rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  font-family: 'Space Mono', monospace;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.3s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.page-mindmap .nav-item:hover,
+.page-mindmap .nav-item.active {
+  color: var(--accent-1);
+  border-bottom-color: var(--accent-1);
 }
