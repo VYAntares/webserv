@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webserv — Lexer + Parser + Validation</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -200px; left: -150px; background: radial-gradient(ellipse, rgba(250,204,21,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 600px; height: 600px; top: 40vh; right: -200px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 500px; height: 500px; bottom: 10vh; left: 20%; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+
+  .progress-bar, .header, .main, .footer { position: relative; z-index: 1; }
+
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+
+  .back-link:hover { color: var(--accent-5); background: rgba(250,204,21,0.07); }
+
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .step-pill:hover { color: var(--text); }
+
+  .step-pill.active {
+    background: rgba(250,204,21,0.1);
+    color: var(--accent-5);
+  }
+
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 10px;
+  }
+
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-5);
+    background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .header h1 em { font-style: italic; color: var(--accent-5); }
+
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 680px;
+    line-height: 1.7;
+  }
+
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    scroll-margin-top: 80px;
+  }
+
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-5));
+  }
+
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-5));
+    margin-bottom: 0.3rem;
+  }
+
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-5));
+    opacity: 0.6;
+  }
+
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-5));
+    margin-bottom: 1rem;
+    opacity: 0.8;
+  }
+
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    margin-bottom: 0.55rem;
+  }
+
+  .panel p:last-child { margin-bottom: 0; }
+
+  .panel code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--step-color, var(--accent-5));
+    background: rgba(250,204,21,0.08);
+    padding: 0.08rem 0.25rem;
+    border-radius: 4px;
+  }
+
+  .panel strong { color: var(--text); }
+
+  .panel ul {
+    list-style: none;
+    margin-top: 0.7rem;
+  }
+
+  .panel ul li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    padding-left: 1.1rem;
+    position: relative;
+  }
+
+  .panel ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--step-color, var(--accent-5));
+    opacity: 0.8;
+  }
+
+  .analogy-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+  }
+
+  .analogy-icon {
+    font-size: 2.2rem;
+    flex-shrink: 0;
+    line-height: 1;
+    margin-top: 0.1rem;
+  }
+
+  .analogy-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .analogy-text p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .code-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .code-dots {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .code-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-5));
+    background: rgba(250,204,21,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+
+  .kw { color: #c084fc; }
+  .fn-name { color: #4ae0ff; }
+  .type { color: #4ade80; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .cmt { color: #4a4a6a; font-style: italic; }
+  .macro { color: #f472b6; }
+  .var { color: #e8e6f0; }
+  .punct { color: #5c5a72; }
+
+  .highlight-line {
+    display: block;
+    background: rgba(250,204,21,0.06);
+    border-left: 2px solid var(--step-color, var(--accent-5));
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem 0 1.3rem;
+  }
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .token-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.76rem;
+  }
+
+  .token-table th {
+    text-align: left;
+    padding: 0.7rem 1rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .token-table td {
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid rgba(42,42,66,0.45);
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .token-table tr:last-child td { border-bottom: none; }
+
+  .token-table td:first-child { color: var(--accent-2); }
+
+  .warning {
+    background: rgba(255,107,74,0.06);
+    border: 1px solid rgba(255,107,74,0.2);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.2rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  .warning strong { color: var(--accent-1); }
+
+  .info-box {
+    background: rgba(74,224,255,0.04);
+    border: 1px solid rgba(74,224,255,0.15);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 1.2rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  .info-box strong { color: var(--accent-2); }
+
+  .flow-mini {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    margin: 1.4rem 0;
+    padding: 1.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .flow-mini-step {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    border: 1px solid;
+  }
+
+  .flow-mini-arrow {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    padding: 0 0.3rem;
+  }
+
+  .flow-mini-step.current {
+    border-color: var(--accent-5);
+    color: var(--accent-5);
+    background: rgba(250,204,21,0.1);
+  }
+
+  .flow-mini-step.done {
+    border-color: var(--accent-4);
+    color: var(--accent-4);
+    background: rgba(74,222,128,0.06);
+  }
+
+  .flow-mini-step.next {
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
+
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  .summary-section {
+    margin-top: 4rem;
+    padding: 3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .summary-section::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(to right, var(--accent-5), var(--accent-2), var(--accent-3), var(--accent-4));
+  }
+
+  .summary-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 0.5rem;
+  }
+
+  .summary-title em { font-style: italic; color: var(--accent-5); }
+
+  .summary-subtitle {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    font-weight: 300;
+    margin-bottom: 2rem;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+
+  .summary-card {
+    padding: 1.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .summary-icon {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+  }
+
+  .summary-card-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent-5);
+    margin-bottom: 0.2rem;
+  }
+
+  .summary-card-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.55;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+
+  .footer p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  .footer a {
+    color: var(--accent-5);
+    text-decoration: none;
+  }
+
+  @media (max-width: 900px) {
+    .summary-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 760px) {
+    .progress-bar, .header, .main, .footer {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    .two-col { grid-template-columns: 1fr; }
+
+    .step-header {
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .step-number-badge { font-size: 3rem; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#pourquoi" class="step-pill active" id="nav-pourquoi"><span class="step-dot"></span>Pourquoi</a>
+    <div class="step-connector"></div>
+    <a href="#lexer" class="step-pill" id="nav-lexer"><span class="step-dot"></span>Lexer</a>
+    <div class="step-connector"></div>
+    <a href="#parser" class="step-pill" id="nav-parser"><span class="step-dot"></span>Parser</a>
+    <div class="step-connector"></div>
+    <a href="#validation" class="step-pill" id="nav-validation"><span class="step-dot"></span>Validation</a>
+    <div class="step-connector"></div>
+    <a href="#pipeline" class="step-pill" id="nav-pipeline"><span class="step-dot"></span>Pipeline</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Parsing config webserv</div>
+  <h1>Lexer + Parser + <em>Validation</em></h1>
+  <p class="header-desc">
+    Explication complète, étape par étape, pour comprendre exactement ce que doit faire ce point du projet.
+    Objectif : que tu puisses expliquer le flux à l’oral sans zone floue.
+  </p>
+</div>
+
+<div class="main">
+
+  <section class="step-section" id="pourquoi" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">pourquoiToutCa()</div>
+        <div class="step-subtitle">Pourquoi on sépare Lexer, Parser et Validation</div>
+      </div>
+    </div>
+
+    <div class="flow-mini">
+      <div class="flow-mini-step current">fichier.conf</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">lexer</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">parser</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">validation</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">runtime</div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Le problème concret</div>
+        <p>Ton serveur lit un texte libre avec des accolades, points-virgules, commentaires, directives, etc.</p>
+        <p>Si tu veux parser ce texte directement “à la main” dans tous les sens, tu te retrouves vite avec du code fragile et des erreurs difficiles à diagnostiquer.</p>
+        <p>La séparation en 3 phases rend le système stable et lisible :</p>
+        <ul>
+          <li><code>Lexer</code> : découpe le texte en briques propres (tokens).</li>
+          <li><code>Parser</code> : comprend la grammaire et remplit tes structures C++.</li>
+          <li><code>Validation</code> : vérifie que la config est cohérente avant de lancer le serveur.</li>
+        </ul>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🏗️</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie simple</div>
+          <p>
+            Lexer = tu coupes les pièces Lego.
+            Parser = tu assembles selon le plan.
+            Validation = tu vérifies que la maison tient debout avant d’y habiter.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Point clé soutenance :</strong> ces 3 phases se font au startup (au lancement), pas à chaque requête HTTP.
+        Les requêtes runtime utilisent simplement les structures déjà construites.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="lexer" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">lexer()</div>
+        <div class="step-subtitle">C’est quoi un lexer, exactement ?</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2)">
+      <div class="panel-label">Définition claire</div>
+      <p>Le lexer (tokenizer) lit le fichier caractère par caractère et produit une suite de <strong>tokens</strong>.</p>
+      <p>Un token = une “brique atomique” utile au parser : mot, <code>{</code>, <code>}</code>, <code>;</code>, fin de fichier.</p>
+      <p>Il ignore les espaces et les commentaires. Il peut aussi stocker la ligne pour afficher des erreurs précises.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table class="token-table">
+        <tr><th>Token Type</th><th>Exemple</th><th>Rôle</th></tr>
+        <tr><td>WORD</td><td><code>server</code>, <code>listen</code>, <code>8080</code></td><td>directive, argument, chemin, valeur</td></tr>
+        <tr><td>OPEN_BRACE</td><td><code>{</code></td><td>ouverture de bloc</td></tr>
+        <tr><td>CLOSE_BRACE</td><td><code>}</code></td><td>fermeture de bloc</td></tr>
+        <tr><td>SEMICOLON</td><td><code>;</code></td><td>fin de directive</td></tr>
+        <tr><td>END_OF_FILE</td><td>EOF</td><td>fin de flux</td></tr>
+      </table>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">lexer.cpp</div>
+        </div>
+        <div class="code-tag">tokenisation</div>
+      </div>
+<pre><span class="kw">enum</span> <span class="type">TokenType</span> <span class="punct">{</span>
+  <span class="macro">WORD</span><span class="punct">,</span> <span class="macro">OPEN_BRACE</span><span class="punct">,</span> <span class="macro">CLOSE_BRACE</span><span class="punct">,</span> <span class="macro">SEMICOLON</span><span class="punct">,</span> <span class="macro">END_OF_FILE</span>
+<span class="punct">};</span>
+
+<span class="kw">struct</span> <span class="type">Token</span> <span class="punct">{</span>
+  <span class="type">TokenType</span> <span class="var">type</span><span class="punct">;</span>
+  <span class="type">std::string</span> <span class="var">value</span><span class="punct">;</span>
+  <span class="kw">int</span> <span class="var">line</span><span class="punct">;</span>
+<span class="punct">};</span>
+
+<span class="type">std::vector&lt;Token&gt;</span> <span class="fn-name">lex</span><span class="punct">(</span><span class="kw">const</span> <span class="type">std::string</span><span class="punct">&</span> <span class="var">content</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="type">std::vector&lt;Token&gt;</span> <span class="var">tokens</span><span class="punct">;</span>
+  <span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+  <span class="kw">int</span> <span class="var">line</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+
+  <span class="kw">while</span> <span class="punct">(</span><span class="var">i</span> <span class="punct">&lt;</span> <span class="var">content</span><span class="punct">.</span><span class="var">size</span><span class="punct">())</span> <span class="punct">{</span>
+    <span class="kw">char</span> <span class="var">c</span> <span class="punct">=</span> <span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">];</span>
+
+<span class="highlight-line">    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">isspace</span><span class="punct">(</span><span class="var">c</span><span class="punct">))</span> <span class="punct">{</span> <span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">'\n'</span><span class="punct">)</span> <span class="var">line</span><span class="punct">++;</span> <span class="var">i</span><span class="punct">++;</span> <span class="kw">continue</span><span class="punct">;</span> <span class="punct">}</span></span>
+<span class="highlight-line">    <span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">'#'</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">while</span><span class="punct">(</span><span class="var">i</span> <span class="punct">&lt;</span> <span class="var">content</span><span class="punct">.</span><span class="var">size</span><span class="punct">()</span> <span class="punct">&amp;&amp;</span> <span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">!=</span> <span class="str">'\n'</span><span class="punct">)</span> <span class="var">i</span><span class="punct">++;</span> <span class="kw">continue</span><span class="punct">;</span> <span class="punct">}</span></span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">'{'</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">tokens</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">((</span><span class="type">Token</span><span class="punct">){</span><span class="macro">OPEN_BRACE</span><span class="punct">,</span> <span class="str">"{"</span><span class="punct">,</span> <span class="var">line</span><span class="punct">});</span> <span class="var">i</span><span class="punct">++;</span> <span class="kw">continue</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">'}'</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">tokens</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">((</span><span class="type">Token</span><span class="punct">){</span><span class="macro">CLOSE_BRACE</span><span class="punct">,</span> <span class="str">"}"</span><span class="punct">,</span> <span class="var">line</span><span class="punct">});</span> <span class="var">i</span><span class="punct">++;</span> <span class="kw">continue</span><span class="punct">;</span> <span class="punct">}</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">';'</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">tokens</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">((</span><span class="type">Token</span><span class="punct">){</span><span class="macro">SEMICOLON</span><span class="punct">,</span> <span class="str">";"</span><span class="punct">,</span> <span class="var">line</span><span class="punct">});</span> <span class="var">i</span><span class="punct">++;</span> <span class="kw">continue</span><span class="punct">;</span> <span class="punct">}</span>
+
+    <span class="type">std::string</span> <span class="var">word</span><span class="punct">;</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="var">i</span> <span class="punct">&lt;</span> <span class="var">content</span><span class="punct">.</span><span class="var">size</span><span class="punct">()</span> <span class="punct">&amp;&amp;</span> <span class="punct">!</span><span class="fn-name">isspace</span><span class="punct">(</span><span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">])</span>
+           <span class="punct">&amp;&amp;</span> <span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">!=</span> <span class="str">'{'</span> <span class="punct">&amp;&amp;</span> <span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">!=</span> <span class="str">'}'</span>
+           <span class="punct">&amp;&amp;</span> <span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">!=</span> <span class="str">';'</span> <span class="punct">&amp;&amp;</span> <span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">!=</span> <span class="str">'#'</span><span class="punct">)</span> <span class="punct">{</span>
+      <span class="var">word</span> <span class="punct">+=</span> <span class="var">content</span><span class="punct">[</span><span class="var">i</span><span class="punct">++];</span>
+    <span class="punct">}</span>
+    <span class="var">tokens</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">((</span><span class="type">Token</span><span class="punct">){</span><span class="macro">WORD</span><span class="punct">,</span> <span class="var">word</span><span class="punct">,</span> <span class="var">line</span><span class="punct">});</span>
+  <span class="punct">}</span>
+
+  <span class="var">tokens</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">((</span><span class="type">Token</span><span class="punct">){</span><span class="macro">END_OF_FILE</span><span class="punct">,</span> <span class="str">""</span><span class="punct">,</span> <span class="var">line</span><span class="punct">});</span>
+  <span class="kw">return</span> <span class="var">tokens</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Le lexer ne “comprend” pas la config.</strong> Il découpe seulement.
+        Si un token <code>listen</code> apparaît dans un mauvais contexte, c’est le parser (puis la validation) qui doit le refuser.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="parser" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">parser()</div>
+        <div class="step-subtitle">Que fait le parser ?</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Son rôle exact</div>
+        <p>Le parser lit la séquence de tokens et applique les règles de grammaire : ce qui est autorisé, où, et dans quel ordre.</p>
+        <p>Exemple de règle :</p>
+        <ul>
+          <li>Un bloc <code>server</code> doit ouvrir avec <code>{</code> et fermer avec <code>}</code>.</li>
+          <li>Une directive simple se termine par <code>;</code>.</li>
+          <li><code>location /path { ... }</code> est un sous-bloc dans <code>server</code>.</li>
+        </ul>
+        <p>Le parser remplit ensuite tes structures <code>ServerConfig</code> / <code>LocationConfig</code>.</p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🧠</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Le lexer lit des mots séparés. Le parser reconstruit des phrases qui ont du sens grammatical.
+            Même mots, mais pas du tout la même responsabilité.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">parser.cpp</div>
+        </div>
+        <div class="code-tag">recursive descent</div>
+      </div>
+<pre><span class="kw">class</span> <span class="type">ConfigParser</span> <span class="punct">{</span>
+  <span class="type">std::vector&lt;Token&gt;</span> <span class="var">_t</span><span class="punct">;</span>
+  <span class="type">size_t</span> <span class="var">_pos</span><span class="punct">;</span>
+
+  <span class="type">Token</span><span class="punct">&</span> <span class="fn-name">cur</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">_t</span><span class="punct">[</span><span class="var">_pos</span><span class="punct">];</span> <span class="punct">}</span>
+  <span class="type">Token</span> <span class="fn-name">eat</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">_t</span><span class="punct">[</span><span class="var">_pos</span><span class="punct">++];</span> <span class="punct">}</span>
+
+  <span class="kw">void</span> <span class="fn-name">expect</span><span class="punct">(</span><span class="type">TokenType</span> <span class="var">tt</span><span class="punct">)</span> <span class="punct">{</span>
+<span class="highlight-line">    <span class="kw">if</span> <span class="punct">(</span><span class="fn-name">cur</span><span class="punct">().</span><span class="var">type</span> <span class="punct">!=</span> <span class="var">tt</span><span class="punct">)</span> <span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"syntax error line "</span> <span class="punct">+</span> <span class="fn-name">toString</span><span class="punct">(</span><span class="fn-name">cur</span><span class="punct">().</span><span class="var">line</span><span class="punct">));</span></span>
+    <span class="fn-name">eat</span><span class="punct">();</span>
+  <span class="punct">}</span>
+
+  <span class="type">LocationConfig</span> <span class="fn-name">parseLocation</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="type">LocationConfig</span> <span class="var">loc</span><span class="punct">;</span>
+    <span class="var">loc</span><span class="punct">.</span><span class="var">path</span> <span class="punct">=</span> <span class="fn-name">eat</span><span class="punct">().</span><span class="var">value</span><span class="punct">;</span> <span class="cmt">// ex: /api</span>
+    <span class="fn-name">expect</span><span class="punct">(</span><span class="macro">OPEN_BRACE</span><span class="punct">);</span>
+
+    <span class="kw">while</span> <span class="punct">(</span><span class="fn-name">cur</span><span class="punct">().</span><span class="var">type</span> <span class="punct">!=</span> <span class="macro">CLOSE_BRACE</span><span class="punct">)</span> <span class="punct">{</span>
+      <span class="type">std::string</span> <span class="var">d</span> <span class="punct">=</span> <span class="fn-name">eat</span><span class="punct">().</span><span class="var">value</span><span class="punct">;</span>
+      <span class="kw">if</span> <span class="punct">(</span><span class="var">d</span> <span class="punct">==</span> <span class="str">"root"</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">loc</span><span class="punct">.</span><span class="var">root</span> <span class="punct">=</span> <span class="fn-name">eat</span><span class="punct">().</span><span class="var">value</span><span class="punct">;</span> <span class="fn-name">expect</span><span class="punct">(</span><span class="macro">SEMICOLON</span><span class="punct">);</span> <span class="punct">}</span>
+      <span class="kw">else if</span> <span class="punct">(</span><span class="var">d</span> <span class="punct">==</span> <span class="str">"index"</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">loc</span><span class="punct">.</span><span class="var">index</span> <span class="punct">=</span> <span class="fn-name">eat</span><span class="punct">().</span><span class="var">value</span><span class="punct">;</span> <span class="fn-name">expect</span><span class="punct">(</span><span class="macro">SEMICOLON</span><span class="punct">);</span> <span class="punct">}</span>
+      <span class="kw">else</span> <span class="punct">{</span> <span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"unknown directive in location: "</span> <span class="punct">+</span> <span class="var">d</span><span class="punct">);</span> <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="fn-name">expect</span><span class="punct">(</span><span class="macro">CLOSE_BRACE</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="var">loc</span><span class="punct">;</span>
+  <span class="punct">}</span>
+<span class="punct">};</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>🧩</span>
+      <div>
+        <strong>Résumé parser :</strong> il transforme une suite de tokens en structures métier utilisables au runtime.
+        Sans parser, tu as des tokens; avec parser, tu as des <code>ServerConfig</code> prêts à être exploités.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="validation" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">validate()</div>
+        <div class="step-subtitle">La validation, c’est quoi ?</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4)">
+      <div class="panel-label">La différence avec le parser</div>
+      <p><strong>Parser</strong> = validité syntaxique (“est-ce que le fichier est bien écrit ?”).</p>
+      <p><strong>Validation</strong> = validité fonctionnelle (“est-ce que ça a du sens pour lancer le serveur ?”).</p>
+      <p>Exemples d’erreurs de validation (pas forcément de syntaxe) :</p>
+      <ul>
+        <li>Port hors plage <code>1..65535</code>.</li>
+        <li>Méthode inconnue <code>PUT</code> si ton projet n’accepte que GET/POST/DELETE.</li>
+        <li>Chemin <code>root</code> inexistant.</li>
+        <li>Code de redirection invalide.</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">validation.cpp</div>
+        </div>
+        <div class="code-tag">startup checks</div>
+      </div>
+<pre><span class="kw">void</span> <span class="fn-name">validateConfig</span><span class="punct">(</span><span class="kw">const</span> <span class="type">std::vector&lt;ServerConfig&gt;</span><span class="punct">&</span> <span class="var">servers</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">servers</span><span class="punct">.</span><span class="var">size</span><span class="punct">();</span> <span class="punct">++</span><span class="var">i</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="type">ServerConfig</span><span class="punct">&</span> <span class="var">s</span> <span class="punct">=</span> <span class="var">servers</span><span class="punct">[</span><span class="var">i</span><span class="punct">];</span>
+
+<span class="highlight-line">    <span class="kw">if</span> <span class="punct">(</span><span class="var">s</span><span class="punct">.</span><span class="var">port</span> <span class="punct">&lt;</span> <span class="num">1</span> <span class="punct">||</span> <span class="var">s</span><span class="punct">.</span><span class="var">port</span> <span class="punct">&gt;</span> <span class="num">65535</span><span class="punct">)</span>
+      <span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"invalid port"</span><span class="punct">);</span></span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">.</span><span class="var">empty</span><span class="punct">())</span>
+      <span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"server has no location"</span><span class="punct">);</span>
+
+    <span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">j</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">j</span> <span class="punct">&lt;</span> <span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">.</span><span class="var">size</span><span class="punct">();</span> <span class="punct">++</span><span class="var">j</span><span class="punct">)</span> <span class="punct">{</span>
+      <span class="kw">const</span> <span class="type">LocationConfig</span><span class="punct">&</span> <span class="var">loc</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">[</span><span class="var">j</span><span class="punct">];</span>
+
+      <span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">k</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">k</span> <span class="punct">&lt;</span> <span class="var">loc</span><span class="punct">.</span><span class="var">allowedMethods</span><span class="punct">.</span><span class="var">size</span><span class="punct">();</span> <span class="punct">++</span><span class="var">k</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="type">std::string</span> <span class="var">m</span> <span class="punct">=</span> <span class="var">loc</span><span class="punct">.</span><span class="var">allowedMethods</span><span class="punct">[</span><span class="var">k</span><span class="punct">];</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">m</span> <span class="punct">!=</span> <span class="str">"GET"</span> <span class="punct">&amp;&amp;</span> <span class="var">m</span> <span class="punct">!=</span> <span class="str">"POST"</span> <span class="punct">&amp;&amp;</span> <span class="var">m</span> <span class="punct">!=</span> <span class="str">"DELETE"</span><span class="punct">)</span>
+          <span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"invalid method: "</span> <span class="punct">+</span> <span class="var">m</span><span class="punct">);</span>
+      <span class="punct">}</span>
+    <span class="punct">}</span>
+  <span class="punct">}</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>🚫</span>
+      <div>
+        <strong>Ne lance jamais le serveur avec une config invalide.</strong>
+        Mieux vaut échouer au startup avec un message clair que planter plus tard en plein traitement de requêtes.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="pipeline" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">pipelineComplet()</div>
+        <div class="step-subtitle">Du fichier .conf au runtime HTTP</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">main.cpp</div>
+        </div>
+        <div class="code-tag">startup orchestration</div>
+      </div>
+<pre><span class="kw">int</span> <span class="fn-name">main</span><span class="punct">(</span><span class="kw">int</span> <span class="var">argc</span><span class="punct">,</span> <span class="kw">char</span><span class="punct">**</span><span class="var">argv</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="type">std::string</span> <span class="var">content</span> <span class="punct">=</span> <span class="fn-name">readFile</span><span class="punct">(</span><span class="var">argv</span><span class="punct">[</span><span class="num">1</span><span class="punct">]);</span>
+
+<span class="highlight-line">  <span class="type">std::vector&lt;Token&gt;</span> <span class="var">tokens</span> <span class="punct">=</span> <span class="fn-name">lex</span><span class="punct">(</span><span class="var">content</span><span class="punct">);</span></span>
+<span class="highlight-line">  <span class="type">std::vector&lt;ServerConfig&gt;</span> <span class="var">servers</span> <span class="punct">=</span> <span class="fn-name">parse</span><span class="punct">(</span><span class="var">tokens</span><span class="punct">);</span></span>
+<span class="highlight-line">  <span class="fn-name">validateConfig</span><span class="punct">(</span><span class="var">servers</span><span class="punct">);</span></span>
+
+  <span class="fn-name">initListeningSockets</span><span class="punct">(</span><span class="var">servers</span><span class="punct">);</span>
+  <span class="fn-name">runEventLoop</span><span class="punct">(</span><span class="var">servers</span><span class="punct">);</span>
+  <span class="kw">return</span> <span class="num">0</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-6)">
+      <div class="panel-label">Lecture runtime</div>
+      <p>Une fois ce pipeline terminé, chaque requête HTTP fait seulement :</p>
+      <ul>
+        <li>Choix du serveur par port (et host si implémenté).</li>
+        <li>Choix de la location (préfixe le plus long).</li>
+        <li>Application des règles déjà validées.</li>
+      </ul>
+      <p>Donc le travail “complexe” est déplacé au startup pour garder le runtime propre et robuste.</p>
+    </div>
+
+    <div class="info-box">
+      <span>✅</span>
+      <div>
+        <strong>Réponse directe à ta question :</strong>
+        <code>lexer</code> découpe, <code>parser</code> structure, <code>validation</code> sécurise.
+        Les trois sont obligatoires pour un webserv stable.
+      </div>
+    </div>
+  </section>
+
+  <div class="summary-section">
+    <div class="summary-title">Résumé <em>ultra-court</em></div>
+    <div class="summary-subtitle">Si tu dois l’expliquer en 20 secondes</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">✂️</div>
+        <div>
+          <div class="summary-card-fn">Lexer</div>
+          <div class="summary-card-desc">Transforme le texte brut en tokens simples.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🧱</div>
+        <div>
+          <div class="summary-card-fn">Parser</div>
+          <div class="summary-card-desc">Assemble les tokens selon la grammaire et remplit les structs config.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🛡️</div>
+        <div>
+          <div class="summary-card-fn">Validation</div>
+          <div class="summary-card-desc">Refuse les configs incohérentes avant le lancement du serveur.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🚀</div>
+        <div>
+          <div class="summary-card-fn">Runtime</div>
+          <div class="summary-card-desc">Utilise une config déjà saine pour traiter les requêtes sans ambiguïté.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — 04 Fichier de configuration — Lexer + Parser + Validation</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  var backBtn = document.getElementById('back-btn');
+  if (backBtn) {
+    backBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateTo(backBtn.href);
+    });
+  }
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      var href = a.getAttribute('href');
+      if (!href || href.length < 2) return;
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sectionIds = ['pourquoi', 'lexer', 'parser', 'validation', 'pipeline'];
+  var sections = sectionIds.map(function(id) { return document.getElementById(id); });
+  var navEls = sectionIds.map(function(id) { return document.getElementById('nav-' + id); });
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        navEls.forEach(function(n) { if (n) n.classList.remove('active'); });
+        var idx = sections.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { if (s) observer.observe(s); });
+</script>
+</body>
+</html>

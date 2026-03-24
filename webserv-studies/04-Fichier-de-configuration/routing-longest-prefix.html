@@ -295,73 +295,73 @@
   }
 
   .code-panel {
-    background: var(--surface);
+    background: #0d0d14;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
     margin-bottom: 1.5rem;
   }
 
   .code-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 1rem;
-    border-bottom: 1px solid var(--border);
     background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
 
   .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
 
-  .code-dots { display: flex; gap: 5px; }
+  .code-dots { display: flex; gap: 0.35rem; }
 
   .code-dot {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    background: var(--surface-3);
   }
 
   .code-dots .code-dot:nth-child(1) { background: #ff5f57; }
-  .code-dots .code-dot:nth-child(2) { background: #ffbd2e; }
+  .code-dots .code-dot:nth-child(2) { background: #febc2e; }
   .code-dots .code-dot:nth-child(3) { background: #28c840; }
 
   .code-filename {
     font-family: 'Space Mono', monospace;
-    font-size: 0.6rem;
+    font-size: 0.65rem;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
   }
 
   .code-tag {
     font-family: 'Space Mono', monospace;
     font-size: 0.55rem;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 0.2rem 0.5rem;
+    letter-spacing: 0.2em;
+    padding: 0.2rem 0.6rem;
     border-radius: 4px;
-    color: var(--accent-6);
+    color: var(--step-color, var(--accent-6));
     background: rgba(244,114,182,0.08);
   }
 
   .code-panel pre {
-    padding: 1.2rem 1.5rem;
+    padding: 1.4rem 1.5rem;
     overflow-x: auto;
     font-family: 'Space Mono', monospace;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     line-height: 1.8;
-    color: var(--text-dim);
+    color: #c9c7de;
     tab-size: 4;
   }
 
   .kw { color: var(--accent-3); }
   .fn-name { color: var(--accent-2); }
-  .str { color: var(--accent-4); }
+  .str { color: var(--accent-5); }
   .num { color: var(--accent-1); }
-  .cmt { color: var(--text-muted); font-style: italic; }
+  .cmt { color: #4a4a6a; font-style: italic; }
   .var { color: var(--text); }
-  .type { color: var(--accent-6); }
+  .type { color: var(--accent-4); }
+  .macro { color: var(--accent-6); }
+  .punct { color: var(--text-muted); }
   .path { color: var(--accent-5); }
 
   .highlight-line {
@@ -654,13 +654,13 @@
 
     <span class="kw">bool</span> <span class="var">boundaryOk</span> =
       (<span class="var">uri</span>.size() == <span class="var">p</span>.size()) ||
-      (<span class="var">p</span>[<span class="var">p</span>.size() - <span class="num">1</span>] == <span class="str'">'/'</span>) ||
-      (<span class="var">uri</span>[<span class="var">p</span>.size()] == <span class="str'">'/'</span>);
+      (<span class="var">p</span>[<span class="var">p</span>.size() - <span class="num">1</span>] == <span class="str">'/'</span>) ||
+      (<span class="var">uri</span>[<span class="var">p</span>.size()] == <span class="str">'/'</span>);
 
-    @media (max-width: 800px) {
-      .two-col { grid-template-columns: 1fr; }
-      .progress-inner { justify-content: center; }
-    }
+    <span class="kw">if</span> (!<span class="var">boundaryOk</span>) <span class="kw">continue</span>;
+
+    <span class="kw">if</span> (<span class="var">p</span>.size() &gt; <span class="var">bestLen</span>) {
+      <span class="var">best</span> = &<span class="var">srv</span>.locations[<span class="var">i</span>];
       <span class="var">bestLen</span> = <span class="var">p</span>.size();
     }
   }
