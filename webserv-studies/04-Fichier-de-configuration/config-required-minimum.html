@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webserv IV.3 — Ce que la config doit contenir</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #2a2a42;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -220px; left: -180px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 620px; height: 620px; top: 35vh; right: -220px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 520px; height: 520px; bottom: 8vh; left: 18%; background: radial-gradient(ellipse, rgba(250,204,21,0.05) 0%, transparent 70%); }
+
+  .progress-bar,
+  .header,
+  .main,
+  .footer { position: relative; z-index: 1; }
+
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+
+  .back-link:hover {
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.07);
+  }
+
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .step-pill:hover { color: var(--text); }
+
+  .step-pill.active {
+    background: rgba(74,224,255,0.1);
+    color: var(--accent-2);
+  }
+
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 6px;
+  }
+
+  .header {
+    max-width: 900px;
+    padding: 3rem 2rem 2rem;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .header h1 em { font-style: italic; color: var(--accent-2); }
+
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 760px;
+    line-height: 1.7;
+  }
+
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    scroll-margin-top: 80px;
+  }
+
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-2));
+  }
+
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 0.3rem;
+  }
+
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.4rem;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-2));
+    opacity: 0.6;
+  }
+
+  .panel p {
+    font-size: 0.92rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+
+  .panel p + p { margin-top: 0.55rem; }
+
+  .code-panel {
+    background: #0d0f17;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    position: relative;
+  }
+
+  .code-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-2));
+    opacity: 0.7;
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid #23273a;
+    background: #101320;
+  }
+
+  .code-header-left { display: flex; align-items: center; gap: 0.65rem; }
+
+  .code-dots { display: flex; gap: 0.4rem; }
+
+  .code-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #39435f;
+  }
+
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+  }
+
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--step-color, var(--accent-2));
+  }
+
+  .code-panel pre {
+    margin: 0;
+    padding: 1.1rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.74rem;
+    line-height: 1.65;
+    color: #d7def8;
+  }
+
+  .code-panel .dir { color: #4ae0ff; }
+  .code-panel .num { color: #facc15; }
+  .code-panel .cmt { color: #6f7897; }
+
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 1.25rem 0;
+  }
+
+  .quote-box {
+    border-left: 2px solid var(--step-color, var(--accent-2));
+    padding: 0.9rem 1rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 0 8px 8px 0;
+    margin-top: 0.9rem;
+  }
+
+  .quote-box p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.12rem;
+    line-height: 1.45;
+    color: var(--text);
+  }
+
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+  }
+
+  .footer a { color: var(--accent-2); text-decoration: none; }
+
+  @media (max-width: 950px) {
+    .step-connector { display: none; }
+    .progress-inner { overflow-x: auto; scrollbar-width: thin; }
+  }
+
+  @media (max-width: 760px) {
+    .progress-bar,
+    .header,
+    .main,
+    .footer { padding-left: 1rem; padding-right: 1rem; }
+
+    .step-header {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .step-number-badge { font-size: 3rem; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#listen" class="step-pill active"><span class="step-dot"></span>Listen</a>
+    <div class="step-connector"></div>
+    <a href="#errors" class="step-pill"><span class="step-dot"></span>Errors</a>
+    <div class="step-connector"></div>
+    <a href="#body" class="step-pill"><span class="step-dot"></span>Body size</a>
+    <div class="step-connector"></div>
+    <a href="#routes" class="step-pill"><span class="step-dot"></span>Routes</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Sujet IV.3</div>
+  <h1>Ce que la config doit <em>absolument</em> contenir</h1>
+  <p class="header-desc">
+    Version courte et directe: uniquement les extraits minimum de ton fichier, avec l’explication associée.
+  </p>
+</div>
+
+<div class="main">
+
+  <section class="step-section" id="listen" style="--step-color: var(--accent-2);">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">interface:port</div>
+        <div class="step-subtitle">Définir tous les couples d’écoute</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2);">
+      <div class="code-header">
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
+        <span class="code-tag">minimum</span>
+      </div>
+      <pre><span class="dir">server</span> {
+    <span class="dir">listen</span> <span class="num">8080</span>;
+    server_name localhost;
+    ...
+}
+
+<span class="dir">server</span> {
+    <span class="dir">listen</span> <span class="num">8081</span>;
+    ...
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2);">
+      <p>Ton programme doit pouvoir écouter plusieurs ports/sites. Ici: un serveur sur 8080, un autre sur 8081.</p>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="errors" style="--step-color: var(--accent-1);">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">error pages</div>
+        <div class="step-subtitle">Pages d’erreur par défaut</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1);">
+      <div class="code-header">
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
+        <span class="code-tag">minimum</span>
+      </div>
+      <pre><span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+<span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1);">
+      <p>Quand une erreur se produit, le serveur envoie ta page personnalisée au lieu d’une page générique.</p>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="body" style="--step-color: var(--accent-5);">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">client_max_body_size</div>
+        <div class="step-subtitle">Taille maximale du body client</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
+        <span class="code-tag">minimum</span>
+      </div>
+      <pre><span class="dir">server</span> {
+    ...
+    <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+}
+
+<span class="dir">server</span> {
+    ...
+    <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5);">
+      <p>Permet de limiter les uploads/requêtes lourdes par serveur. Ici 10 Mo pour le site principal, 1 Mo pour le second.</p>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="routes" style="--step-color: var(--accent-4);">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">règles par route</div>
+        <div class="step-subtitle">Méthodes, redirection, root, listing, index, upload</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
+        <span class="code-tag">méthodes + root + index + autoindex</span>
+      </div>
+      <pre><span class="dir">location</span> / {
+    <span class="dir">root</span>            /var/www/html;
+    <span class="dir">index</span>           index.html;
+    allowed_methods GET;
+    <span class="dir">autoindex</span>       off;
+}
+
+<span class="dir">location</span> /api {
+    <span class="dir">root</span>            /var/www/api;
+    allowed_methods GET POST DELETE;
+    <span class="dir">autoindex</span>       off;
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <p><strong>accepted methods</strong>: contrôlées par <code>allowed_methods</code>.</p>
+      <p><strong>directory mapping</strong>: <code>root</code> fixe la base disque pour la route.</p>
+      <p><strong>default file</strong>: <code>index</code> sert le fichier d’entrée d’un dossier.</p>
+      <p><strong>directory listing</strong>: <code>autoindex on/off</code> active ou non le listing.</p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
+        <span class="code-tag">redirection</span>
+      </div>
+      <pre><span class="dir">location</span> /old-page {
+    <span class="dir">return</span> <span class="num">301</span> /new-page;
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <p><strong>HTTP redirection</strong>: ici /old-page redirige en 301 vers /new-page.</p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf</span></div>
+        <span class="code-tag">upload autorisé</span>
+      </div>
+      <pre><span class="dir">location</span> /upload {
+    <span class="dir">root</span>            /var/www;
+    allowed_methods POST;
+    upload_store    /tmp/uploads;
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <p><strong>upload files</strong>: route dédiée en POST + répertoire de stockage explicite.</p>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-4);">
+      <p>Tu couvres exactement les points demandés par le sujet IV.3, sans ajouter de règles inutiles.</p>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — 04 Fichier de configuration — Extraits minimum</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (!href || href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sections = document.querySelectorAll('.step-section');
+  var navPills = document.querySelectorAll('.step-pill');
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        var id = entry.target.id;
+        navPills.forEach(function(pill) {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { observer.observe(s); });
+</script>
+</body>
+</html>

@@ -1213,9 +1213,9 @@
         </div>
       </div>
 
-      <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+      <div class="card" data-page="04-Fichier-de-configuration/config-required-minimum.html" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim); cursor: pointer;">
         <span class="card-tag">Sujet IV.3</span>
-        <h3>Ce que la config doit absolument couvrir</h3>
+        <h3><a href="04-Fichier-de-configuration/config-required-minimum.html" style="text-decoration: none;">Ce que la config doit absolument couvrir</a></h3>
         <p>
           Le minimum attendu : paires interface:port, pages d'erreur par défaut, taille max du body client, 
           et par route : méthodes HTTP autorisées, redirection, racine de fichiers, directory listing, 
@@ -1225,11 +1225,14 @@
           « In the configuration file, you should be able to define all the interface:port pairs on which your server will listen to. »
           — webserv.pdf, IV.3
         </div>
+        <div class="card-links">
+          <a class="card-link" href="04-Fichier-de-configuration/config-required-minimum.html">Voir le cours →</a>
+        </div>
       </div>
 
-      <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
+      <div class="card" data-page="04-Fichier-de-configuration/routing-longest-prefix.html" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim); cursor: pointer;">
         <span class="card-tag">Routing</span>
-        <h3>Sélection de route : préfixe le plus long</h3>
+        <h3><a href="04-Fichier-de-configuration/routing-longest-prefix.html" style="text-decoration: none;">Sélection de route : préfixe le plus long</a></h3>
         <p>
           Le sujet ne demande pas de regex : un matching par préfixe suffit. 
           Si plusieurs <code>location</code> matchent l'URI, on choisit la plus spécifique 
@@ -1239,6 +1242,9 @@
         <div class="card-quote">
           « Specify rules or configurations on a URL/route (no regex required here). »
           — webserv.pdf, IV.3
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="04-Fichier-de-configuration/routing-longest-prefix.html">Voir le cours →</a>
         </div>
       </div>
 
