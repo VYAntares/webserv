@@ -566,6 +566,49 @@
     color: var(--accent-2);
     text-decoration: none;
   }
+
+  /* ─── WIRE DIAGRAM ─── */
+  .wire-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; overflow-x: auto; }
+  .wire-title { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); margin-bottom: 1rem; text-align: center; }
+  .wire-row { display: flex; align-items: stretch; margin-bottom: 0.3rem; font-family: 'Space Mono', monospace; font-size: 0.75rem; line-height: 1.6; }
+  .wire-bytes { flex: 1; padding: 0.5rem 0.8rem; border-radius: 6px; color: var(--text); }
+  .wire-annotation { flex: 1; padding: 0.5rem 0.8rem; color: var(--text-muted); font-size: 0.72rem; display: flex; align-items: center; }
+  .wire-arrow { color: var(--text-muted); padding: 0 0.5rem; display: flex; align-items: center; font-size: 0.7rem; }
+  .wire-syn { background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.15); }
+  .wire-data { background: rgba(74,224,255,0.06); border: 1px solid rgba(74,224,255,0.12); }
+  .wire-ack { background: rgba(250,204,21,0.06); border: 1px solid rgba(250,204,21,0.12); }
+  .wire-fin { background: rgba(255,107,74,0.06); border: 1px solid rgba(255,107,74,0.15); }
+  .wire-http { background: rgba(192,132,252,0.06); border: 1px solid rgba(192,132,252,0.12); }
+  .wire-label { font-size: 0.6rem; color: var(--text-muted); text-align: center; padding: 0.3rem 0; }
+
+  /* ─── PROTOCOL TABLE ─── */
+  .proto-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+  .proto-table th { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); text-align: left; padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); font-weight: 400; }
+  .proto-table td { font-size: 0.8rem; padding: 0.65rem 1rem; border-bottom: 1px solid rgba(42,42,66,0.4); color: var(--text-dim); vertical-align: top; line-height: 1.6; }
+  .proto-table td:first-child { font-family: 'Space Mono', monospace; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+  .proto-table code { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--accent-2); background: rgba(74,224,255,0.06); padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .proto-table tr:hover td { background: rgba(74,224,255,0.02); }
+
+  /* ─── TSHARK TABLE ─── */
+  .tshark-table { width: 100%; border-collapse: collapse; font-family: 'Space Mono', monospace; font-size: 0.7rem; margin-bottom: 1.5rem; }
+  .tshark-table th { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 400; }
+  .tshark-table td { padding: 0.5rem 0.8rem; border-bottom: 1px solid rgba(42,42,66,0.4); color: var(--text-dim); vertical-align: top; }
+  .tshark-table tr.tcp td { opacity: 0.5; }
+  .tshark-table tr.http td { color: var(--text); }
+  .tshark-table td.pkt-num { color: var(--text-muted); }
+  .tshark-table .tag-syn { color: var(--accent-4); font-size: 0.6rem; font-weight: 700; }
+  .tshark-table .tag-ack { color: var(--accent-5); font-size: 0.6rem; }
+  .tshark-table .tag-http { color: var(--accent-3); font-size: 0.6rem; font-weight: 700; }
+  .tshark-table .tag-fin { color: var(--accent-1); font-size: 0.6rem; font-weight: 700; }
+
+  /* ─── LAYER STACK ─── */
+  .layer-stack { display: flex; flex-direction: column; gap: 0; margin-bottom: 1.5rem; }
+  .layer-row { display: flex; align-items: center; border: 1px solid var(--border); border-bottom: none; }
+  .layer-row:last-child { border-bottom: 1px solid var(--border); border-radius: 0 0 10px 10px; }
+  .layer-row:first-child { border-radius: 10px 10px 0 0; }
+  .layer-name { font-family: 'Space Mono', monospace; font-size: 0.7rem; font-weight: 700; padding: 0.7rem 1rem; width: 140px; flex-shrink: 0; text-align: center; }
+  .layer-proto { flex: 1; padding: 0.7rem 1rem; font-size: 0.8rem; color: var(--text-dim); display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .layer-proto code { font-family: 'Space Mono', monospace; font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -596,6 +639,10 @@
     <a href="#recv-send" class="step-pill" id="nav-recv-send">
       <span class="step-dot"></span>recv/send
     </a>
+    <div class="step-connector"></div>
+    <a href="#tcp" class="step-pill" id="nav-tcp"><span class="step-dot"></span>TCP</a>
+    <div class="step-connector"></div>
+    <a href="#protocoles" class="step-pill" id="nav-protocoles"><span class="step-dot"></span>Protocoles</a>
   </div>
 </div>
 
@@ -1263,6 +1310,515 @@
     </div>
   </div>
 
+  <div class="step-divider" style="margin: 3rem 0;"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 6 : TCP — LE PROTOCOLE       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="tcp" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color: var(--accent-5);">TCP — le protocole</div>
+        <div class="step-subtitle">Ce qui se passe <em>sous</em> tes appels socket</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5)">
+      <div class="panel-label">Pourquoi on parle toujours de TCP</div>
+      <p>
+        Quand tu appelles <code style="color:var(--accent-5)">socket(AF_INET, SOCK_STREAM, 0)</code>,
+        le <code style="color:var(--accent-5)">SOCK_STREAM</code> dit au kernel : &laquo; utilise <strong>TCP</strong> &raquo;.
+        TCP (<strong>Transmission Control Protocol</strong>, <a href="https://datatracker.ietf.org/doc/html/rfc9293" style="color:var(--accent-2);">RFC 9293</a>)
+        est le protocole qui transforme un r&eacute;seau non fiable (paquets perdus, dupliqu&eacute;s, d&eacute;sordonn&eacute;s)
+        en un <strong>flux d'octets fiable et ordonn&eacute;</strong> entre deux machines.
+      </p>
+      <p style="margin-top:0.6rem;">
+        Tout ce que fait HTTP (requ&ecirc;tes, r&eacute;ponses, headers, body) passe <strong>par-dessus TCP</strong>.
+        Sans TCP, pas de garantie que tes donn&eacute;es arrivent, ni dans le bon ordre.
+      </p>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Ce que TCP garantit</div>
+        <p><strong>Fiabilit&eacute;</strong> &mdash; chaque octet envoy&eacute; arrive &agrave; destination, ou le syst&egrave;me te signale une erreur.</p>
+        <p style="margin-top:0.4rem;"><strong>Ordre</strong> &mdash; les octets arrivent dans l'ordre o&ugrave; ils ont &eacute;t&eacute; envoy&eacute;s, m&ecirc;me si les paquets IP prennent des chemins diff&eacute;rents.</p>
+        <p style="margin-top:0.4rem;"><strong>Contr&ocirc;le de flux</strong> &mdash; TCP ralentit l'&eacute;metteur si le r&eacute;cepteur ne peut pas suivre (champ <code style="color:var(--accent-5)">Window</code>).</p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Comment il fait</div>
+        <p><strong>Num&eacute;ros de s&eacute;quence</strong> &mdash; chaque octet a un num&eacute;ro unique (32 bits). Le r&eacute;cepteur sait exactement ce qu'il a re&ccedil;u et ce qui manque.</p>
+        <p style="margin-top:0.4rem;"><strong>Acquittements (ACK)</strong> &mdash; le r&eacute;cepteur renvoie &laquo; j'ai re&ccedil;u jusqu'&agrave; l'octet X &raquo;. Si l'&eacute;metteur ne re&ccedil;oit pas d'ACK, il retransmet.</p>
+        <p style="margin-top:0.4rem;"><strong>Checksum</strong> &mdash; chaque segment TCP a un checksum. Si les donn&eacute;es sont corrompues, le segment est jet&eacute;.</p>
+      </div>
+    </div>
+
+    <!-- THREE-WAY HANDSHAKE -->
+    <div style="margin-top:1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 0;">
+        <div class="panel-label">Phase 1 &mdash; Three-Way Handshake (connexion)</div>
+        <p>
+          Avant d'&eacute;changer des donn&eacute;es, TCP &eacute;tablit une connexion en <strong>3 messages</strong>.
+          C'est ce qui se passe dans le kernel quand <code style="color:var(--accent-5)">accept()</code> retourne.
+        </p>
+      </div>
+    </div>
+
+    <div class="wire-box" style="margin-top:0; border-top:none; border-radius: 0 0 12px 12px;">
+      <div class="wire-title">Three-Way Handshake &mdash; &eacute;tablissement de connexion</div>
+
+      <div class="wire-label" style="color:var(--accent-4);">Client &rarr; Serveur</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-syn" style="flex:0.5;"><span style="color:var(--accent-4); font-weight:700;">1. SYN</span></div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-syn" style="flex:2;">
+          Seq=<span style="color:var(--accent-2)">0</span> &mdash; &laquo; je veux me connecter, mon num&eacute;ro de s&eacute;quence commence &agrave; 0 &raquo;
+        </div>
+      </div>
+
+      <div class="wire-label" style="color:var(--accent-3);">Serveur &rarr; Client</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-http" style="flex:0.5;"><span style="color:var(--accent-3); font-weight:700;">2. SYN-ACK</span></div>
+        <div class="wire-arrow">&larr;</div>
+        <div class="wire-bytes wire-http" style="flex:2;">
+          Seq=<span style="color:var(--accent-2)">0</span> Ack=<span style="color:var(--accent-5)">1</span> &mdash; &laquo; OK, moi aussi je commence &agrave; 0, et j'ai re&ccedil;u ton SYN &raquo;
+        </div>
+      </div>
+
+      <div class="wire-label" style="color:var(--accent-4);">Client &rarr; Serveur</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-ack" style="flex:0.5;"><span style="color:var(--accent-5); font-weight:700;">3. ACK</span></div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-ack" style="flex:2;">
+          Seq=<span style="color:var(--accent-2)">1</span> Ack=<span style="color:var(--accent-5)">1</span> &mdash; &laquo; confirm&eacute;, on est connect&eacute;s &raquo; &rarr; <strong style="color:var(--accent-4)">ESTABLISHED</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOUR-WAY CLOSE -->
+    <div style="margin-top:1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 0;">
+        <div class="panel-label">Phase 3 &mdash; Four-Way Close (fermeture)</div>
+        <p>
+          Quand ton serveur appelle <code style="color:var(--accent-5)">close(fd)</code>,
+          TCP envoie un <strong>FIN</strong> pour signaler la fin.
+          Les deux c&ocirc;t&eacute;s doivent confirmer &mdash; la fermeture est <strong>bidirectionnelle</strong>.
+        </p>
+      </div>
+    </div>
+
+    <div class="wire-box" style="margin-top:0; border-top:none; border-radius: 0 0 12px 12px;">
+      <div class="wire-title">Four-Way Close &mdash; fermeture propre</div>
+
+      <div class="wire-label" style="color:var(--accent-1);">Serveur &rarr; Client (Connection: close)</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-fin" style="flex:0.5;"><span style="color:var(--accent-1); font-weight:700;">FIN-ACK</span></div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-fin" style="flex:2;">
+          &laquo; j'ai fini d'envoyer &raquo; &rarr; serveur passe en <strong>FIN-WAIT</strong>
+        </div>
+      </div>
+
+      <div class="wire-label" style="color:var(--accent-4);">Client &rarr; Serveur</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-fin" style="flex:0.5;"><span style="color:var(--accent-1); font-weight:700;">FIN-ACK</span></div>
+        <div class="wire-arrow">&larr;</div>
+        <div class="wire-bytes wire-fin" style="flex:2;">
+          &laquo; moi aussi j'ai fini &raquo; &rarr; client passe en <strong>LAST-ACK</strong>
+        </div>
+      </div>
+
+      <div class="wire-label" style="color:var(--accent-1);">Serveur &rarr; Client</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-ack" style="flex:0.5;"><span style="color:var(--accent-5); font-weight:700;">ACK</span></div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-ack" style="flex:2;">
+          &laquo; confirm&eacute; &raquo; &rarr; les deux passent en <strong style="color:var(--accent-1)">CLOSED</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- TSHARK CAPTURE -->
+    <div style="margin-top:2rem;">
+      <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 0;">
+        <div class="panel-label">Preuve sur le wire &mdash; capture tshark r&eacute;elle</div>
+        <p>
+          Voici une capture <code style="color:var(--accent-5)">tshark -i any -f "port 8080"</code>
+          pendant qu'on fait <code style="color:var(--accent-5)">curl -v -X POST http://localhost:8080/</code>
+          sur notre serveur <code style="color:var(--accent-5)">main3.cpp</code>.
+          Chaque ligne est un paquet r&eacute;el captur&eacute; sur le r&eacute;seau.
+        </p>
+      </div>
+    </div>
+
+    <div style="background: var(--surface); border: 1px solid var(--border); border-top:none; border-radius: 0 0 12px 12px; overflow-x: auto; padding: 0.5rem 0;">
+      <table class="tshark-table">
+        <thead>
+          <tr><th>#</th><th>Temps</th><th>Source &rarr; Dest</th><th>Proto</th><th>Info</th><th>Phase</th></tr>
+        </thead>
+        <tbody>
+          <tr class="tcp"><td class="pkt-num">1</td><td>0.000</td><td>client:41722 &rarr; srv:8080</td><td>TCP</td><td>[<span class="tag-syn">SYN</span>] Seq=0</td><td rowspan="3" style="color:var(--accent-4); font-size:0.62rem; vertical-align:middle;">Handshake<br>3-way</td></tr>
+          <tr class="tcp"><td class="pkt-num">2</td><td>0.000</td><td>srv:8080 &rarr; client:41722</td><td>TCP</td><td>[<span class="tag-syn">SYN, ACK</span>] Seq=0 Ack=1</td></tr>
+          <tr class="tcp"><td class="pkt-num">3</td><td>0.000</td><td>client:41722 &rarr; srv:8080</td><td>TCP</td><td>[<span class="tag-ack">ACK</span>] Seq=1 Ack=1</td></tr>
+          <tr class="http"><td class="pkt-num">4</td><td>0.000</td><td>client:41722 &rarr; srv:8080</td><td><span class="tag-http">HTTP</span></td><td>POST / HTTP/1.1 (79 bytes)</td><td rowspan="4" style="color:var(--accent-3); font-size:0.62rem; vertical-align:middle;">&Eacute;change<br>HTTP</td></tr>
+          <tr class="tcp"><td class="pkt-num">5</td><td>0.000</td><td>srv:8080 &rarr; client:41722</td><td>TCP</td><td>[<span class="tag-ack">ACK</span>] Seq=1 Ack=80</td></tr>
+          <tr class="http"><td class="pkt-num">6</td><td>0.001</td><td>srv:8080 &rarr; client:41722</td><td><span class="tag-http">HTTP</span></td><td>HTTP/1.1 200 OK (text/html)</td></tr>
+          <tr class="tcp"><td class="pkt-num">7</td><td>0.001</td><td>client:41722 &rarr; srv:8080</td><td>TCP</td><td>[<span class="tag-ack">ACK</span>] Seq=80 Ack=106</td></tr>
+          <tr class="tcp"><td class="pkt-num">8</td><td>0.001</td><td>srv:8080 &rarr; client:41722</td><td>TCP</td><td>[<span class="tag-fin">FIN, ACK</span>] Seq=106 Ack=80</td><td rowspan="3" style="color:var(--accent-1); font-size:0.62rem; vertical-align:middle;">Fermeture<br>TCP</td></tr>
+          <tr class="tcp"><td class="pkt-num">9</td><td>0.001</td><td>client:41722 &rarr; srv:8080</td><td>TCP</td><td>[<span class="tag-fin">FIN, ACK</span>] Seq=80 Ack=107</td></tr>
+          <tr class="tcp"><td class="pkt-num">10</td><td>0.001</td><td>srv:8080 &rarr; client:41722</td><td>TCP</td><td>[<span class="tag-ack">ACK</span>] Seq=107 Ack=81</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box" style="margin-top: 1.5rem;">
+      <span style="font-size:1.2rem;">&#128161;</span>
+      <div>
+        <strong>Toute la transaction en ~1.4 ms</strong> (loopback 127.0.0.1).
+        Le serveur ferme la connexion imm&eacute;diatement apr&egrave;s sa r&eacute;ponse (<code style="color:var(--accent-2)">Connection: close</code>).
+        Chaque requ&ecirc;te HTTP = une connexion TCP ouverte puis ferm&eacute;e.
+        C'est le comportement de notre <code style="color:var(--accent-2)">main3.cpp</code>.
+      </div>
+    </div>
+
+    <!-- TCP STATES -->
+    <div style="margin-top:1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Les 11 &eacute;tats d'une connexion TCP (RFC 9293)</div>
+        <p>
+          Chaque connexion TCP passe par ces &eacute;tats. Tu peux les voir avec <code style="color:var(--accent-5)">netstat -an</code>
+          ou <code style="color:var(--accent-5)">ss -tan</code>. Pour webserv, les plus importants sont
+          <strong>LISTEN</strong>, <strong>ESTABLISHED</strong>, <strong>CLOSE-WAIT</strong> et <strong>TIME-WAIT</strong>.
+        </p>
+      </div>
+    </div>
+
+    <div class="flow-mini" style="flex-direction: column; align-items: stretch; gap: 0.3rem; margin-top: 0;">
+      <div style="display:flex; gap:0.3rem; align-items:center;">
+        <span class="flow-mini-step next" style="flex:1; text-align:center;">CLOSED</span>
+        <span class="flow-mini-arrow">&rarr;</span>
+        <span class="flow-mini-step" style="flex:1; text-align:center; border-color:var(--accent-3); color:var(--accent-3); background:rgba(192,132,252,0.06);">LISTEN</span>
+        <span class="flow-mini-arrow">&rarr;</span>
+        <span class="flow-mini-step" style="flex:1; text-align:center; border-color:var(--accent-5); color:var(--accent-5); background:rgba(250,204,21,0.06);">SYN-RCVD</span>
+        <span class="flow-mini-arrow">&rarr;</span>
+        <span class="flow-mini-step done" style="flex:1; text-align:center;">ESTABLISHED</span>
+      </div>
+      <div style="text-align:center; color:var(--text-muted); font-size:0.65rem; padding: 0.2rem 0;">
+        &uarr; connexion &mdash; &eacute;change de donn&eacute;es &mdash; fermeture &darr;
+      </div>
+      <div style="display:flex; gap:0.3rem; align-items:center;">
+        <span class="flow-mini-step done" style="flex:1; text-align:center;">ESTABLISHED</span>
+        <span class="flow-mini-arrow">&rarr;</span>
+        <span class="flow-mini-step" style="flex:1; text-align:center; border-color:var(--accent-1); color:var(--accent-1); background:rgba(255,107,74,0.06);">FIN-WAIT-1</span>
+        <span class="flow-mini-arrow">&rarr;</span>
+        <span class="flow-mini-step" style="flex:1; text-align:center; border-color:var(--accent-1); color:var(--accent-1); background:rgba(255,107,74,0.06);">FIN-WAIT-2</span>
+        <span class="flow-mini-arrow">&rarr;</span>
+        <span class="flow-mini-step" style="flex:1; text-align:center; border-color:var(--accent-6); color:var(--accent-6); background:rgba(244,114,182,0.06);">TIME-WAIT</span>
+        <span class="flow-mini-arrow">&rarr;</span>
+        <span class="flow-mini-step next" style="flex:1; text-align:center;">CLOSED</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider" style="margin: 2rem 0;"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 7 : PROTOCOLES RÉSEAU         -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="protocoles" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">07</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color: var(--accent-6);">La pile r&eacute;seau</div>
+        <div class="step-subtitle">TCP n'est pas seul &mdash; les autres protocoles</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-6)">
+      <div class="panel-label">Le mod&egrave;le en couches</div>
+      <p>
+        Le r&eacute;seau fonctionne en <strong>couches empil&eacute;es</strong>. Chaque couche a un r&ocirc;le pr&eacute;cis
+        et encapsule la couche au-dessus. HTTP ne conna&icirc;t pas les paquets IP.
+        TCP ne conna&icirc;t pas les requ&ecirc;tes GET. Chaque couche fait son travail et passe &agrave; la suivante.
+      </p>
+    </div>
+
+    <div class="layer-stack" style="margin-top: 1.5rem;">
+      <div class="layer-row" style="background: rgba(192,132,252,0.06);">
+        <div class="layer-name" style="color: var(--accent-3);">Application</div>
+        <div class="layer-proto">
+          <code style="color:var(--accent-3); background:rgba(192,132,252,0.1);">HTTP/1.1</code>
+          <code style="color:var(--accent-3); background:rgba(192,132,252,0.1);">DNS</code>
+          <code style="color:var(--accent-3); background:rgba(192,132,252,0.1);">mDNS</code>
+          <code style="color:var(--accent-3); background:rgba(192,132,252,0.1);">FTP</code>
+          <code style="color:var(--accent-3); background:rgba(192,132,252,0.1);">SMTP</code>
+          <code style="color:var(--accent-3); background:rgba(192,132,252,0.1);">SSH</code>
+        </div>
+      </div>
+      <div class="layer-row" style="background: rgba(250,204,21,0.04);">
+        <div class="layer-name" style="color: var(--accent-5);">S&eacute;curit&eacute;</div>
+        <div class="layer-proto">
+          <code style="color:var(--accent-5); background:rgba(250,204,21,0.08);">TLS 1.3</code>
+          <span style="font-size:0.75rem; color:var(--text-muted);">&larr; entre TCP et HTTP pour HTTPS</span>
+        </div>
+      </div>
+      <div class="layer-row" style="background: rgba(74,224,255,0.04);">
+        <div class="layer-name" style="color: var(--accent-2);">Transport</div>
+        <div class="layer-proto">
+          <code style="color:var(--accent-2); background:rgba(74,224,255,0.08);">TCP</code>
+          <code style="color:var(--accent-2); background:rgba(74,224,255,0.08);">UDP</code>
+          <span style="font-size:0.75rem; color:var(--text-muted);">&larr; <strong>SOCK_STREAM</strong> vs <strong>SOCK_DGRAM</strong></span>
+        </div>
+      </div>
+      <div class="layer-row" style="background: rgba(74,222,128,0.04);">
+        <div class="layer-name" style="color: var(--accent-4);">R&eacute;seau</div>
+        <div class="layer-proto">
+          <code style="color:var(--accent-4); background:rgba(74,222,128,0.08);">IPv4</code>
+          <code style="color:var(--accent-4); background:rgba(74,222,128,0.08);">IPv6</code>
+          <code style="color:var(--accent-4); background:rgba(74,222,128,0.08);">ICMP</code>
+          <span style="font-size:0.75rem; color:var(--text-muted);">&larr; <strong>AF_INET</strong></span>
+        </div>
+      </div>
+      <div class="layer-row" style="background: rgba(255,107,74,0.04);">
+        <div class="layer-name" style="color: var(--accent-1);">Liaison</div>
+        <div class="layer-proto">
+          <code style="color:var(--accent-1); background:rgba(255,107,74,0.08);">Ethernet</code>
+          <code style="color:var(--accent-1); background:rgba(255,107,74,0.08);">Wi-Fi</code>
+          <code style="color:var(--accent-1); background:rgba(255,107,74,0.08);">Loopback</code>
+          <span style="font-size:0.75rem; color:var(--text-muted);">&larr; trames physiques</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-top: 0;">
+      <span style="font-size:1.2rem;">&#128161;</span>
+      <div>
+        <strong>Webserv se situe &agrave; la couche Application.</strong>
+        Tu &eacute;cris HTTP. Le kernel g&egrave;re TCP + IP + Ethernet pour toi.
+        Tes appels <code style="color:var(--accent-2)">socket()</code>, <code style="color:var(--accent-2)">send()</code>,
+        <code style="color:var(--accent-2)">recv()</code> sont l'interface entre ta couche (Application)
+        et la couche Transport (TCP).
+      </div>
+    </div>
+
+    <!-- TCP vs UDP -->
+    <div style="margin-top: 2rem;">
+      <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+        <div class="panel-label">TCP vs UDP &mdash; les deux protocoles de transport</div>
+        <p>
+          Quand tu cr&eacute;es un socket, tu choisis <strong>TCP</strong> (<code style="color:var(--accent-5)">SOCK_STREAM</code>)
+          ou <strong>UDP</strong> (<code style="color:var(--accent-5)">SOCK_DGRAM</code>).
+          Ce sont les deux protocoles de la couche Transport.
+          Webserv utilise TCP parce que HTTP a besoin de fiabilit&eacute;.
+        </p>
+      </div>
+    </div>
+
+    <table class="proto-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>TCP (SOCK_STREAM)</th>
+          <th>UDP (SOCK_DGRAM)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--accent-2);">Connexion</td>
+          <td>oui &mdash; handshake 3-way avant d'&eacute;changer</td>
+          <td>non &mdash; on envoie directement</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">Fiabilit&eacute;</td>
+          <td>oui &mdash; retransmission si perte</td>
+          <td>non &mdash; si un paquet se perd, tant pis</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">Ordre</td>
+          <td>oui &mdash; octets dans l'ordre</td>
+          <td>non &mdash; datagrammes dans n'importe quel ordre</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">Donn&eacute;es</td>
+          <td>flux continu d'octets (byte stream)</td>
+          <td>messages ind&eacute;pendants (datagrammes)</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">Latence</td>
+          <td>plus lent (handshake + ACKs)</td>
+          <td>plus rapide (pas d'&eacute;tablissement)</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">Utilis&eacute; par</td>
+          <td><code>HTTP</code>, <code>SSH</code>, <code>FTP</code>, <code>SMTP</code></td>
+          <td><code>DNS</code>, <code>mDNS</code>, jeux vid&eacute;o, streaming vid&eacute;o</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- PROTOCOLES CULTURE GÉNÉRALE -->
+    <div style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+        <div class="panel-label">Protocoles &agrave; conna&icirc;tre &mdash; culture g&eacute;n&eacute;rale</div>
+        <p>
+          HTTP n'est qu'un protocole parmi des dizaines. Voici les principaux
+          que tu croiseras en d&eacute;veloppement, class&eacute;s par couche.
+        </p>
+      </div>
+    </div>
+
+    <table class="proto-table">
+      <thead>
+        <tr><th>Protocole</th><th>Couche</th><th>Transport</th><th>R&ocirc;le</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--accent-3);">HTTP/1.1</td>
+          <td>Application</td>
+          <td><code>TCP</code> port 80</td>
+          <td>Transfert de pages web, APIs REST &mdash; <strong>c'est ce que webserv impl&eacute;mente</strong></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-5);">HTTPS</td>
+          <td>Application</td>
+          <td><code>TCP</code> + <code>TLS</code> port 443</td>
+          <td>HTTP chiffr&eacute;. TLS 1.3 s'ins&egrave;re entre TCP et HTTP pour chiffrer tout le flux</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">DNS</td>
+          <td>Application</td>
+          <td><code>UDP</code> port 53</td>
+          <td>R&eacute;sout les noms de domaine &rarr; adresses IP (<code>google.com</code> &rarr; <code>142.250.x.x</code>)</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-6);">mDNS</td>
+          <td>Application</td>
+          <td><code>UDP</code> multicast port 5353</td>
+          <td>DNS local sans serveur &mdash; d&eacute;couverte de services sur le LAN (<code>.local</code>)</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-4);">SSH</td>
+          <td>Application</td>
+          <td><code>TCP</code> port 22</td>
+          <td>Shell distant s&eacute;curis&eacute;. Utilis&eacute; pour se connecter &agrave; ta VM</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-1);">FTP</td>
+          <td>Application</td>
+          <td><code>TCP</code> ports 20/21</td>
+          <td>Transfert de fichiers (ancien, remplac&eacute; par SFTP/SCP)</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-5);">TLS 1.3</td>
+          <td>S&eacute;curit&eacute;</td>
+          <td>au-dessus de <code>TCP</code></td>
+          <td>Chiffrement du flux. Handshake en 1 aller-retour (vs 2 pour TLS 1.2). Certificats, cl&eacute;s, AES</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">TCP</td>
+          <td>Transport</td>
+          <td>&mdash;</td>
+          <td>Flux fiable et ordonn&eacute; &mdash; <code>SOCK_STREAM</code>. RFC 9293</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-2);">UDP</td>
+          <td>Transport</td>
+          <td>&mdash;</td>
+          <td>Datagrammes rapides, sans garantie &mdash; <code>SOCK_DGRAM</code>. RFC 768</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-4);">IP (v4/v6)</td>
+          <td>R&eacute;seau</td>
+          <td>&mdash;</td>
+          <td>Routage des paquets entre machines &mdash; <code>AF_INET</code> / <code>AF_INET6</code></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-4);">ICMP</td>
+          <td>R&eacute;seau</td>
+          <td>&mdash;</td>
+          <td>Messages de contr&ocirc;le &mdash; c'est ce qu'utilise <code>ping</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- ENCAPSULATION DIAGRAM -->
+    <div style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Encapsulation &mdash; comment les couches s'embo&icirc;tent</div>
+        <p>
+          Quand ton serveur fait <code style="color:var(--accent-5)">send(fd, "HTTP/1.1 200 OK...", ...)</code>,
+          voici ce qui se passe en r&eacute;alit&eacute; dans le kernel :
+        </p>
+      </div>
+    </div>
+
+    <div class="wire-box" style="margin-top: 0; border-top: none; border-radius: 0 0 12px 12px;">
+      <div class="wire-title">Encapsulation d'une r&eacute;ponse HTTP</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-http" style="flex:1; text-align:center;">
+          <span style="color:var(--accent-3); font-weight:700;">HTTP</span>
+          <span style="color:var(--text-muted); font-size:0.65rem;"> &mdash; &laquo; HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n... &raquo;</span>
+        </div>
+      </div>
+      <div class="wire-label">&darr; TCP ajoute son header (ports, seq, ack, flags)</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-data" style="flex:0.25; text-align:center; font-size:0.65rem;">
+          <span style="color:var(--accent-2); font-weight:700;">TCP hdr</span><br>
+          <span style="color:var(--text-muted);">20 bytes</span>
+        </div>
+        <div class="wire-bytes wire-http" style="flex:0.75; text-align:center;">
+          <span style="color:var(--accent-3);">donn&eacute;es HTTP</span>
+        </div>
+      </div>
+      <div class="wire-label">&darr; IP ajoute son header (adresses IP src/dst)</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-syn" style="flex:0.2; text-align:center; font-size:0.65rem;">
+          <span style="color:var(--accent-4); font-weight:700;">IP hdr</span><br>
+          <span style="color:var(--text-muted);">20 bytes</span>
+        </div>
+        <div class="wire-bytes wire-data" style="flex:0.2; text-align:center; font-size:0.65rem;">
+          <span style="color:var(--accent-2);">TCP</span>
+        </div>
+        <div class="wire-bytes wire-http" style="flex:0.6; text-align:center;">
+          <span style="color:var(--accent-3);">HTTP</span>
+        </div>
+      </div>
+      <div class="wire-label">&darr; Ethernet ajoute son header + trailer</div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-fin" style="flex:0.15; text-align:center; font-size:0.65rem;">
+          <span style="color:var(--accent-1); font-weight:700;">Eth</span><br>
+          <span style="color:var(--text-muted);">14 B</span>
+        </div>
+        <div class="wire-bytes wire-syn" style="flex:0.15; text-align:center; font-size:0.65rem;">
+          <span style="color:var(--accent-4);">IP</span>
+        </div>
+        <div class="wire-bytes wire-data" style="flex:0.15; text-align:center; font-size:0.65rem;">
+          <span style="color:var(--accent-2);">TCP</span>
+        </div>
+        <div class="wire-bytes wire-http" style="flex:0.5; text-align:center;">
+          <span style="color:var(--accent-3);">HTTP</span>
+        </div>
+        <div class="wire-bytes wire-fin" style="flex:0.1; text-align:center; font-size:0.65rem;">
+          <span style="color:var(--accent-1);">FCS</span><br>
+          <span style="color:var(--text-muted);">4 B</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="warning" style="margin-top: 1.5rem;">
+      <span style="font-size:1.2rem;">&#9888;&#65039;</span>
+      <div>
+        <strong>Pour webserv, tu n'as pas besoin de conna&icirc;tre TLS, DNS ou UDP.</strong>
+        Le sujet ne demande que du <strong>HTTP/1.1 sur TCP</strong>.
+        Mais comprendre les couches t'aide &agrave; d&eacute;bugger : si <code style="color:var(--accent-1)">connect()</code> refuse,
+        c'est TCP (couche Transport). Si la r&eacute;ponse est mal form&eacute;e, c'est HTTP (couche Application).
+        Ce ne sont pas les m&ecirc;mes probl&egrave;mes.
+      </div>
+    </div>
+  </section>
+
 </div>
 
 <footer class="footer">
@@ -1298,7 +1854,7 @@
   sections.forEach(s => observer.observe(s));
 
   // Update nav pills on scroll
-  const navIds = ['socket','bind','listen','accept','recv-send'];
+  const navIds = ['socket','bind','listen','accept','recv-send','tcp','protocoles'];
   const sectionEls = navIds.map(id => document.getElementById(id));
   const navEls = navIds.map(id => document.getElementById('nav-' + id));
 

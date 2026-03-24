@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NGINX & fichier de configuration — Fondations Webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -220px; left: -180px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 620px; height: 620px; top: 35vh; right: -220px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 540px; height: 540px; bottom: 8vh; left: 18%; background: radial-gradient(ellipse, rgba(250,204,21,0.05) 0%, transparent 70%); }
+
+  .progress-bar,
+  .header,
+  .main,
+  .footer { position: relative; z-index: 1; }
+
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+
+  .back-link:hover {
+    color: var(--accent-3);
+    background: rgba(192,132,252,0.07);
+  }
+
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .step-pill:hover { color: var(--text); }
+
+  .step-pill.active {
+    background: rgba(192,132,252,0.1);
+    color: var(--accent-3);
+  }
+
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 6px;
+  }
+
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-3);
+    background: rgba(192,132,252,0.08);
+    border: 1px solid rgba(192,132,252,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .header h1 em { font-style: italic; color: var(--accent-3); }
+
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 700px;
+    line-height: 1.7;
+  }
+
+  .header-desc code {
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-3);
+  }
+
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-3));
+  }
+
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-3));
+    margin-bottom: 0.3rem;
+  }
+
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 760px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-3));
+    opacity: 0.6;
+  }
+
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-3));
+    margin-bottom: 1rem;
+    opacity: 0.85;
+  }
+
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+
+  .panel p + p { margin-top: 0.8rem; }
+
+  .panel p strong { color: var(--text); font-weight: 500; }
+
+  .panel p code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-3));
+    background: rgba(192,132,252,0.08);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  .panel ul {
+    list-style: none;
+    margin-top: 0.7rem;
+  }
+
+  .panel ul li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+
+  .panel ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--step-color, var(--accent-3));
+    opacity: 0.6;
+  }
+
+  .quote-box {
+    border-left: 3px solid var(--step-color, var(--accent-3));
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    background: rgba(192,132,252,0.04);
+    border-radius: 0 8px 8px 0;
+  }
+
+  .quote-box p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 0.3rem;
+  }
+
+  .quote-box cite {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  .glossary {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 1.2rem;
+  }
+
+  .glossary-item {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .glossary-item:last-child { border-bottom: none; }
+
+  .glossary-term {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-3));
+    padding: 0.9rem 1.2rem;
+    background: var(--surface-2);
+    min-width: 190px;
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .glossary-def {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    padding: 0.9rem 1.2rem;
+    line-height: 1.6;
+    background: var(--surface);
+  }
+
+  .chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+  }
+
+  .chip {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--step-color, var(--accent-3));
+    background: rgba(192,132,252,0.08);
+    border: 1px solid rgba(192,132,252,0.22);
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+  }
+
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-3));
+    background: rgba(192,132,252,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+
+  pre {
+    padding: 1.3rem 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.75;
+    color: #c9c7de;
+  }
+
+  .cmt { color: #6f6c8b; font-style: italic; }
+  .kw { color: #c084fc; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .dir { color: #4ae0ff; }
+  .ok { color: #4ade80; }
+
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+
+  .footer p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  .footer a { color: var(--accent-3); text-decoration: none; }
+
+</style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#nginx" class="step-pill active" id="nav-nginx"><span class="step-dot"></span>NGINX</a>
+    <div class="step-connector"></div>
+    <a href="#process" class="step-pill" id="nav-process"><span class="step-dot"></span>Processus</a>
+    <div class="step-connector"></div>
+    <a href="#conf" class="step-pill" id="nav-conf"><span class="step-dot"></span>Config</a>
+    <div class="step-connector"></div>
+    <a href="#static" class="step-pill" id="nav-static"><span class="step-dot"></span>Statique</a>
+    <div class="step-connector"></div>
+    <a href="#signals" class="step-pill" id="nav-signals"><span class="step-dot"></span>Reload</a>
+    <div class="step-connector"></div>
+    <a href="#webserv" class="step-pill" id="nav-webserv"><span class="step-dot"></span>Webserv</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Fichier de configuration</div>
+  <h1>C'est quoi <em>NGINX</em> ?</h1>
+  <p class="header-desc">
+    On part d'exemples concrets du Beginner's Guide : structure <code>server/location</code>,
+    mapping URI → fichiers, et commandes <code>nginx -s</code>. Ensuite, on relie ces exemples
+    à ce que webserv doit implémenter en C++.
+  </p>
+</div>
+
+<div class="main">
+
+  <section class="step-section" id="nginx" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">nginx</div>
+        <div class="step-subtitle">Un serveur web orienté configuration</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">nginx.conf</span>
+        </div>
+        <span class="code-tag">Exemple minimal</span>
+      </div>
+      <pre><span class="cmt"># Structure de base vue dans le guide officiel</span>
+<span class="dir">events</span> {
+}
+
+<span class="dir">http</span> {
+  <span class="dir">server</span> {
+    <span class="dir">location</span> / {
+      <span class="dir">root</span> /data/www;
+    }
+  }
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Définition claire</div>
+        <p>
+          NGINX est un serveur web et un proxy HTTP dont le comportement est piloté par des directives
+          déclaratives dans <code>nginx.conf</code>. Tu ne codes pas les routes en dur : tu décris
+          <strong>ce qui doit se passer</strong>, et NGINX l'applique à runtime.
+        </p>
+        <p>
+          Le guide officiel insiste sur une idée simple : NGINX est modulaire, et ses modules sont contrôlés
+          par la configuration. Le fichier de config est donc le centre de gravité du serveur.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Ce que ça t'apprend pour webserv</div>
+        <ul>
+          <li>Ton binaire doit démarrer à partir d'un fichier de config, pas d'un comportement hardcodé.</li>
+          <li>Une directive = un paramètre de comportement exploité pendant le traitement des requêtes.</li>
+          <li>Les règles de routage se décident via les blocs et contextes, pas via des <code>if</code> dispersés.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-3);">
+      <p>« The way nginx and its modules work is determined in the configuration file. »</p>
+      <cite>— NGINX Beginner's Guide</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="process" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">master + workers</div>
+        <div class="step-subtitle">Qui fait quoi dans NGINX</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Architecture runtime</div>
+        <p>
+          NGINX exécute un <strong>master process</strong> et plusieurs <strong>worker processes</strong>.
+          Le master lit/valide la config et gère le cycle de vie des workers. Les workers traitent les
+          connexions et les requêtes selon un modèle événementiel.
+        </p>
+        <div class="chip-list">
+          <span class="chip">master = contrôle</span>
+          <span class="chip">worker = I/O</span>
+          <span class="chip">modèle event-driven</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Parallèle webserv</div>
+        <p>
+          Webserv n'exige pas de reproduire le multi-process de NGINX. En revanche, il faut reproduire la logique :
+          une phase <strong>lecture/validation de config</strong> au démarrage, puis une phase
+          <strong>boucle événementielle stable</strong> qui applique ces règles à chaque requête.
+        </p>
+      </div>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-2);">
+      <p>« nginx has one master process and several worker processes. »</p>
+      <cite>— NGINX Beginner's Guide</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="conf" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">configuration syntax</div>
+        <div class="step-subtitle">Directives, blocs, contextes</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">syntax-demo.conf</span>
+        </div>
+        <span class="code-tag">Directive simple vs bloc</span>
+      </div>
+      <pre><span class="cmt"># simple directive: finit par ;</span>
+<span class="dir">listen</span> <span class="num">8080</span>;
+
+<span class="cmt"># block directive: contient { ... }</span>
+<span class="dir">server</span> {
+  <span class="dir">location</span> /images/ {
+    <span class="dir">root</span> /data;
+  }
+}
+
+<span class="cmt"># commentaire: tout ce qui suit # est ignoré</span></pre>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Structure officielle</div>
+      <p>
+        Une directive simple se termine par <code>;</code>. Une directive bloc utilise des accolades <code>{ }</code>.
+        Quand un bloc peut contenir d'autres directives, on parle de <strong>contexte</strong>
+        (ex: <code>events</code>, <code>http</code>, <code>server</code>, <code>location</code>).
+      </p>
+      <p>
+        Hiérarchie standard : directives globales en <code>main</code>, puis <code>http</code>,
+        puis <code>server</code>, puis <code>location</code>. Les commentaires commencent par <code>#</code>.
+      </p>
+    </div>
+
+    <div class="glossary">
+      <div class="glossary-item">
+        <div class="glossary-term">simple directive</div>
+        <div class="glossary-def">Nom + paramètres + <code>;</code>. Exemple conceptuel: listen, root, index.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">block directive</div>
+        <div class="glossary-def">Nom + paramètres + bloc <code>{ ... }</code> contenant d'autres directives.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">context</div>
+        <div class="glossary-def">Zone de portée d'une directive. <code>location</code> s'applique dans <code>server</code>, etc.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">comment</div>
+        <div class="glossary-def">Tout ce qui suit <code>#</code> sur une ligne est ignoré par le parser.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="static" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">location + root</div>
+        <div class="step-subtitle">Servir du contenu statique</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">server-static.conf</span>
+        </div>
+        <span class="code-tag">Exemple officiel statique</span>
+      </div>
+      <pre><span class="dir">server</span> {
+  <span class="dir">location</span> / {
+    <span class="dir">root</span> /data/www;
+  }
+
+  <span class="dir">location</span> /images/ {
+    <span class="dir">root</span> /data;
+  }
+}
+
+<span class="cmt"># /images/example.png → /data/images/example.png</span>
+<span class="cmt"># /some/example.html → /data/www/some/example.html</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Logique de matching</div>
+        <p>
+          NGINX teste l'URI contre les <code>location</code>. Entre plusieurs préfixes compatibles,
+          la règle est : <strong>le préfixe le plus long gagne</strong>.
+          C'est la base de l'aiguillage des requêtes statiques.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Logique de résolution</div>
+        <p>
+          Une fois la route choisie, NGINX compose le chemin local via <code>root</code> + URI
+          pour trouver le fichier. S'il n'existe pas : réponse d'erreur (souvent 404).
+          C'est exactement le comportement décrit dans ton sujet webserv IV.3.
+        </p>
+      </div>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-5);">
+      <p>« If there are several matching location blocks nginx selects the one with the longest prefix. »</p>
+      <cite>— NGINX Beginner's Guide, Serving Static Content</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="signals" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">nginx -s</div>
+        <div class="step-subtitle">Start, stop, reload sans downtime brutal</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">terminal</span>
+        </div>
+        <span class="code-tag">Commandes utiles</span>
+      </div>
+      <pre><span class="cmt"># démarrer nginx</span>
+nginx
+
+<span class="cmt"># recharger la config après modification</span>
+nginx -s reload
+
+<span class="cmt"># arrêt propre (graceful)</span>
+nginx -s quit
+
+<span class="cmt"># arrêt rapide</span>
+nginx -s stop</pre>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Signaux de contrôle</div>
+      <p>
+        Le master reçoit des signaux : <code>stop</code> (arrêt rapide), <code>quit</code> (graceful),
+        <code>reload</code> (relecture de config), <code>reopen</code> (reopen logs).
+      </p>
+      <p>
+        Sur <code>reload</code>, NGINX valide d'abord la nouvelle config. Si elle est correcte, il démarre
+        de nouveaux workers et demande aux anciens de finir leurs requêtes en cours. Si elle est invalide,
+        rollback automatique vers l'ancienne config.
+      </p>
+      <div class="chip-list">
+        <span class="chip">nginx -s reload</span>
+        <span class="chip">validation avant application</span>
+        <span class="chip">graceful shutdown des anciens workers</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="webserv" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">webserv IV.3</div>
+        <div class="step-subtitle">Ce que tu dois en implémenter</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Checklist directe du sujet</div>
+        <ul>
+          <li>Paires <code>interface:port</code> (plusieurs serveurs/sites).</li>
+          <li><code>error_page</code> par défaut.</li>
+          <li><code>client_max_body_size</code>.</li>
+          <li>Par route : méthodes, redirection, root, autoindex, index, upload, CGI par extension.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Traduction implémentation</div>
+        <ul>
+          <li>Un lexer + parser robuste pour blocs imbriqués et directives.</li>
+          <li>Validation stricte au démarrage avant d'ouvrir les sockets.</li>
+          <li>Matching des <code>location</code> sans regex (préfixe).</li>
+          <li>Moteur runtime stable : pas de crash, serveur résilient.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-6);">
+      <p>« You can take inspiration from the 'server' section of the NGINX configuration file. »</p>
+      <cite>— webserv.pdf, IV.3 Configuration file</cite>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — 04 Fichier de configuration</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  function scrollToId(id) {
+    if (id === 'top') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (!href || href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sections = document.querySelectorAll('.step-section');
+  var navPills = document.querySelectorAll('.step-pill');
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        var id = entry.target.id;
+        navPills.forEach(function(pill) {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { observer.observe(s); });
+</script>
+</body>
+</html>

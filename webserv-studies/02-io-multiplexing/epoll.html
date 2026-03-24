@@ -2021,9 +2021,26 @@
     <div class="panel" style="margin-bottom: 1.5rem;">
       <div class="panel-label">Ce que fait cet exemple</div>
       <p>
-        Un serveur TCP minimaliste qui utilise epoll en <strong>edge-triggered</strong> pour accepter des connexions
-        et renvoyer en écho tout ce que les clients envoient. Chaque étape est commentée.
+        Un serveur TCP minimaliste qui utilise epoll en <strong>level-triggered</strong> (mode par défaut) pour accepter
+        des connexions et renvoyer en écho tout ce que les clients envoient. Chaque étape est commentée.
       </p>
+    </div>
+
+    <div class="warning" style="margin-bottom: 1.5rem; margin-top: 0;">
+      <span>⚠️</span>
+      <div>
+        <strong>Pourquoi level-triggered et pas edge-triggered ?</strong><br><br>
+        L'énoncé de Webserv interdit explicitement : <em>"Checking the value of errno to adjust the server behaviour
+        is strictly forbidden after performing a read or write operation."</em><br><br>
+        Or, le mode <strong>edge-triggered (EPOLLET)</strong> nécessite obligatoirement de lire en boucle
+        jusqu'à <code>errno == EAGAIN</code> — sinon des données sont perdues.
+        Cette contrainte rend <strong>EPOLLET incompatible avec l'énoncé</strong>.<br><br>
+        En <strong>level-triggered</strong>, un seul <code>recv()</code> par notification suffit :
+        s'il reste des données, epoll re-signale le fd au prochain tour. Pas besoin de checker <code>errno</code>.
+        C'est aussi plus simple à implémenter et moins sujet aux bugs (starvation, données perdues).
+        Le gain de performance d'edge-triggered ne se voit que sur des serveurs à très haute charge
+        (nginx, 10 000+ connexions) — pas à l'échelle de Webserv.
+      </div>
     </div>
 
     <div class="code-panel">
@@ -2034,7 +2051,7 @@
           </div>
           <span class="code-filename">echo_server_epoll.cpp</span>
         </div>
-        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Exemple complet</span>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Level-triggered</span>
       </div>
       <pre><span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
 <span class="macro">#include</span> <span class="str">&lt;sys/socket.h&gt;</span>
@@ -2043,12 +2060,11 @@
 <span class="macro">#include</span> <span class="str">&lt;unistd.h&gt;</span>
 <span class="macro">#include</span> <span class="str">&lt;cstdio&gt;</span>
 <span class="macro">#include</span> <span class="str">&lt;cstdlib&gt;</span>
-<span class="macro">#include</span> <span class="str">&lt;cerrno&gt;</span>
 
 <span class="macro">#define</span> <span class="macro">MAX_EVENTS</span> <span class="num">64</span>
 <span class="macro">#define</span> <span class="macro">PORT</span>       <span class="num">8080</span>
 
-<span class="cmt">// Rendre un fd non-bloquant (obligatoire pour EPOLLET)</span>
+<span class="cmt">// Rendre un fd non-bloquant</span>
 <span class="kw">void</span> <span class="fn-name">set_nonblocking</span>(<span class="type">int</span> <span class="var">fd</span>) {
     <span class="type">int</span> <span class="var">flags</span> = <span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_GETFL</span>, <span class="num">0</span>);
     <span class="fn-name">fcntl</span>(<span class="var">fd</span>, <span class="macro">F_SETFL</span>, <span class="var">flags</span> | <span class="macro">O_NONBLOCK</span>);
@@ -2075,7 +2091,7 @@
 
 <span class="highlight-line">    <span class="cmt">// ━━━ ÉTAPE 3 : Enregistrer le socket d'écoute ━━━</span></span>
 <span class="highlight-line">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
-<span class="highlight-line">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLET</span>;  <span class="cmt">// lecture, edge-triggered</span></span>
+<span class="highlight-line">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;  <span class="cmt">// level-triggered (pas de EPOLLET)</span></span>
 <span class="highlight-line">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">listen_fd</span>;</span>
 <span class="highlight-line">    <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">listen_fd</span>, &amp;<span class="var">ev</span>);</span>
 
@@ -2090,53 +2106,46 @@
 
             <span class="cmt">// ─── Nouveau client ? ───</span>
             <span class="kw">if</span> (<span class="var">fd</span> == <span class="var">listen_fd</span>) {
-                <span class="cmt">// En ET, on accept() en boucle jusqu'à EAGAIN</span>
-                <span class="kw">while</span> (<span class="num">1</span>) {
-                    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
-                    <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
-                    <span class="type">int</span> <span class="var">conn_fd</span> = <span class="fn-name">accept</span>(<span class="var">listen_fd</span>,
-                        (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
+                <span class="cmt">// En LT, un seul accept() suffit</span>
+                <span class="cmt">// S'il y a d'autres clients, epoll re-signale</span>
+                <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
+                <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
+                <span class="type">int</span> <span class="var">conn_fd</span> = <span class="fn-name">accept</span>(<span class="var">listen_fd</span>,
+                    (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
 
-                    <span class="kw">if</span> (<span class="var">conn_fd</span> == <span class="num">-1</span>) {
-                        <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span>)
-                            <span class="kw">break</span>;  <span class="cmt">// plus de clients en attente</span>
-                        <span class="fn-name">perror</span>(<span class="str">"accept"</span>);
-                        <span class="kw">break</span>;
-                    }
+                <span class="kw">if</span> (<span class="var">conn_fd</span> == <span class="num">-1</span>)
+                    <span class="kw">continue</span>;
 
-                    <span class="fn-name">set_nonblocking</span>(<span class="var">conn_fd</span>);
-                    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span> | <span class="macro">EPOLLET</span>;
-                    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">conn_fd</span>;
-                    <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">conn_fd</span>, &amp;<span class="var">ev</span>);
-                    <span class="fn-name">printf</span>(<span class="str">"Nouveau client: fd %d\n"</span>, <span class="var">conn_fd</span>);
-                }
+                <span class="fn-name">set_nonblocking</span>(<span class="var">conn_fd</span>);
+                <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;  <span class="cmt">// LT aussi pour le client</span>
+                <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">conn_fd</span>;
+                <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">conn_fd</span>, &amp;<span class="var">ev</span>);
+                <span class="fn-name">printf</span>(<span class="str">"Nouveau client: fd %d\n"</span>, <span class="var">conn_fd</span>);
                 <span class="kw">continue</span>;
-            }
-
-            <span class="cmt">// ─── Données d'un client ? ───</span>
-            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>) {
-                <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
-                <span class="cmt">// En ET, lire en boucle jusqu'à EAGAIN</span>
-                <span class="kw">while</span> (<span class="num">1</span>) {
-                    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);
-                    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
-                        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">-1</span> &amp;&amp; <span class="var">errno</span> == <span class="macro">EAGAIN</span>)
-                            <span class="kw">break</span>;  <span class="cmt">// plus rien à lire</span>
-                        <span class="cmt">// n == 0 → déconnexion, n == -1 → erreur</span>
-                        <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
-                        <span class="fn-name">close</span>(<span class="var">fd</span>);
-                        <span class="fn-name">printf</span>(<span class="str">"Client déconnecté: fd %d\n"</span>, <span class="var">fd</span>);
-                        <span class="kw">break</span>;
-                    }
-                    <span class="cmt">// Echo : renvoyer ce qu'on a reçu</span>
-                    <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="var">n</span>, <span class="num">0</span>);
-                }
             }
 
             <span class="cmt">// ─── Erreur ou déconnexion ? ───</span>
             <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
                 <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
                 <span class="fn-name">close</span>(<span class="var">fd</span>);
+                <span class="kw">continue</span>;
+            }
+
+            <span class="cmt">// ─── Données d'un client ? ───</span>
+            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>) {
+                <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+                <span class="cmt">// En LT, un seul recv() suffit</span>
+                <span class="cmt">// S'il reste des données, epoll re-signale le fd</span>
+                <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);
+                <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
+                    <span class="cmt">// n == 0 → déconnexion, n &lt; 0 → erreur</span>
+                    <span class="fn-name">epoll_ctl</span>(<span class="var">epoll_fd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
+                    <span class="fn-name">close</span>(<span class="var">fd</span>);
+                    <span class="fn-name">printf</span>(<span class="str">"Client déconnecté: fd %d\n"</span>, <span class="var">fd</span>);
+                } <span class="kw">else</span> {
+                    <span class="cmt">// Echo : renvoyer ce qu'on a reçu</span>
+                    <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="var">n</span>, <span class="num">0</span>);
+                }
             }
         }
     }
@@ -2150,19 +2159,19 @@
     <div class="key-points">
       <div class="key-point">
         <span class="key-point-icon">1️⃣</span>
-        <span>On crée le socket d'écoute et on le met en <strong>non-bloquant</strong></span>
+        <span>On crée le socket d'écoute, <code>setsockopt</code>, <code>bind</code>, <code>listen</code>, <strong>non-bloquant</strong></span>
       </div>
       <div class="key-point">
         <span class="key-point-icon">2️⃣</span>
-        <span>On crée l'instance epoll avec <code>epoll_create1(0)</code></span>
+        <span>On crée l'instance epoll et on enregistre le socket avec <code>EPOLLIN</code> <strong>sans EPOLLET</strong></span>
       </div>
       <div class="key-point">
         <span class="key-point-icon">3️⃣</span>
-        <span>On enregistre le socket d'écoute avec <code>EPOLLIN | EPOLLET</code></span>
+        <span><strong>Un seul recv()/accept() par notification</strong> — pas de boucle while, pas de check errno</span>
       </div>
       <div class="key-point">
         <span class="key-point-icon">4️⃣</span>
-        <span>La boucle : <code>epoll_wait</code> → itérer sur les fds prêts → accept/recv/send</span>
+        <span>S'il reste des données, epoll <strong>re-signale automatiquement</strong> le fd au prochain <code>epoll_wait</code></span>
       </div>
     </div>
   </section>
@@ -2266,28 +2275,32 @@
     <div class="faq-item">
       <div class="faq-q">
         <span class="faq-q-num">Q7</span>
-        Faut-il toujours lire jusqu'à EAGAIN en edge-triggered ?
+        Pourquoi on utilise level-triggered dans Webserv et pas edge-triggered ?
       </div>
       <div class="faq-a">
-        Pour les <strong>fichiers orientés paquets</strong> (datagram socket, terminal en mode canonique) :
-        <strong>oui, obligatoirement</strong>. Pour les <strong>flux</strong> (pipe, TCP socket) : tu peux aussi
-        vérifier si <code>recv()</code> retourne moins que demandé — ça signifie que le buffer est vidé.
-        Mais la méthode la plus sûre reste de lire jusqu'à <code>EAGAIN</code>.
+        Trois raisons : 
+		<strong>1)</strong> L'énoncé interdit de checker <code>errno</code> après read/write,
+        or EPOLLET nécessite obligatoirement <code>errno == EAGAIN</code> comme condition de sortie de boucle.
+        <strong>2)</strong> En level-triggered, un seul <code>recv()</code> par notification suffit — plus simple,
+        moins de bugs. 
+		<strong>3)</strong> Le gain de performance d'edge-triggered ne se voit qu'à très haute
+        charge (10 000+ connexions simultanées, type nginx). Pour Webserv, la différence est nulle.
       </div>
     </div>
 
     <div class="step-divider" style="margin: 2rem 0;"></div>
 
     <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
-      <div class="panel-label">Piège #1 — Starvation en edge-triggered</div>
+      <div class="panel-label">Piège #1 — Starvation en edge-triggered (culture générale)</div>
       <p>
-        Si un fd a <strong>beaucoup de données</strong>, la boucle « lire jusqu'à EAGAIN » peut monopoliser
-        le processus et <strong>affamer les autres fds</strong>. Les connexions avec peu de trafic ne sont
-        jamais traitées.
+        En edge-triggered, si un fd a <strong>beaucoup de données</strong>, la boucle « lire jusqu'à EAGAIN »
+        peut monopoliser le processus et <strong>affamer les autres fds</strong>.
+        C'est un problème complexe à résoudre (round-robin, quotas par fd).
       </p>
       <p>
-        <strong>Solution :</strong> maintenir une liste de fds « prêts » dans ton application.
-        Lire une quantité limitée par fd, puis passer au fd suivant (round-robin).
+        <strong>En level-triggered, ce problème n'existe pas :</strong> tu fais un seul <code>recv()</code>,
+        tu passes au fd suivant, et epoll te re-signale s'il reste des données. L'équité entre clients
+        est naturelle.
       </p>
     </div>
 

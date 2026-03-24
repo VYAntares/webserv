@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Le fichier de configuration Webserv — Guide complet</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 760px; height: 760px; top: -260px; left: -180px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 650px; height: 650px; top: 35vh; right: -220px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 560px; height: 560px; bottom: 8vh; left: 18%; background: radial-gradient(ellipse, rgba(250,204,21,0.05) 0%, transparent 70%); }
+
+  .progress-bar,
+  .header,
+  .main,
+  .footer { position: relative; z-index: 1; }
+
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+
+  .progress-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+
+  .back-link:hover {
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.07);
+  }
+
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .step-pill:hover { color: var(--text); }
+
+  .step-pill.active {
+    background: rgba(74,224,255,0.1);
+    color: var(--accent-2);
+  }
+
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 6px;
+  }
+
+  .header {
+    max-width: 900px;
+    padding: 3rem 2rem 2rem;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .header h1 em { font-style: italic; color: var(--accent-2); }
+
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 760px;
+    line-height: 1.7;
+  }
+
+  .header-desc code {
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-2);
+  }
+
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-2));
+  }
+
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 0.3rem;
+  }
+
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 760px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-2));
+    opacity: 0.6;
+  }
+
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-2));
+    margin-bottom: 1rem;
+    opacity: 0.85;
+  }
+
+  .panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+  }
+
+  .panel p + p { margin-top: 0.8rem; }
+
+  .panel p strong { color: var(--text); font-weight: 500; }
+
+  .panel p code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.08);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  .panel ul { list-style: none; margin-top: 0.7rem; }
+
+  .panel ul li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.75;
+    font-weight: 300;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+
+  .panel ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--step-color, var(--accent-2));
+    opacity: 0.6;
+  }
+
+  .panel ul li code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.77rem;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.08);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+
+  .sub-block {
+    margin-top: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+  }
+
+  .mini-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--step-color, var(--accent-2));
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    margin-bottom: 0.5rem;
+  }
+
+  .code-panel {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 1.3rem 0 1.5rem;
+  }
+
+  .code-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 0.35rem; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--step-color, var(--accent-2));
+    background: rgba(74,224,255,0.08);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+
+  pre {
+    padding: 1.4rem 1.5rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #c9c7de;
+  }
+
+  .dir { color: #4ae0ff; }
+  .kw { color: #c084fc; }
+  .str { color: #facc15; }
+  .num { color: #fb923c; }
+  .typ { color: #4ade80; }
+  .cmt { color: #6f6c8b; font-style: italic; }
+  .ok { color: #4ade80; }
+  .bad { color: #ff6b4a; }
+
+  .quote-box {
+    border-left: 3px solid var(--step-color, var(--accent-2));
+    padding: 1.2rem 1.5rem;
+    margin: 1.5rem 0;
+    background: rgba(74,224,255,0.04);
+    border-radius: 0 8px 8px 0;
+  }
+
+  .quote-box p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 0.3rem;
+  }
+
+  .quote-box cite {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  .info-box,
+  .warning-box {
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    color: var(--text-dim);
+  }
+
+  .info-box {
+    background: rgba(74,224,255,0.05);
+    border: 1px solid rgba(74,224,255,0.2);
+  }
+
+  .warning-box {
+    background: rgba(255,107,74,0.05);
+    border: 1px solid rgba(255,107,74,0.2);
+  }
+
+  .info-box strong { color: var(--accent-2); }
+  .warning-box strong { color: var(--accent-1); }
+
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+  }
+
+  .footer p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  .footer a {
+    color: var(--accent-2);
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#vue" class="step-pill active" id="nav-vue"><span class="step-dot"></span>Vue</a>
+    <div class="step-connector"></div>
+    <a href="#server" class="step-pill" id="nav-server"><span class="step-dot"></span>Server</a>
+    <div class="step-connector"></div>
+    <a href="#core" class="step-pill" id="nav-core"><span class="step-dot"></span>Directives</a>
+    <div class="step-connector"></div>
+    <a href="#location" class="step-pill" id="nav-location"><span class="step-dot"></span>Location</a>
+    <div class="step-connector"></div>
+    <a href="#routeio" class="step-pill" id="nav-routeio"><span class="step-dot"></span>Root/Index</a>
+    <div class="step-connector"></div>
+    <a href="#advanced" class="step-pill" id="nav-advanced"><span class="step-dot"></span>CGI/Upload</a>
+    <div class="step-connector"></div>
+    <a href="#parser" class="step-pill" id="nav-parser"><span class="step-dot"></span>Parser</a>
+    <div class="step-connector"></div>
+    <a href="#runtime" class="step-pill" id="nav-runtime"><span class="step-dot"></span>Runtime</a>
+    <div class="step-connector"></div>
+    <a href="#walkthrough" class="step-pill" id="nav-walkthrough"><span class="step-dot"></span>Ton fichier</a>
+    <div class="step-connector"></div>
+    <a href="#terms" class="step-pill" id="nav-terms"><span class="step-dot"></span>Glossaire</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Fichier de configuration</div>
+  <h1>Pourquoi un fichier de <em>configuration</em> ?</h1>
+  <p class="header-desc">
+    Cette page est volontairement longue et complète : on va du rôle du fichier de config jusqu'à
+    l'implémentation webserv directive par directive, avec des exemples concrets de config, des snippets
+    d'algorithme, et des checklists de validation. Objectif : zéro zone floue avant de coder.
+  </p>
+</div>
+
+<div class="main">
+
+  <section class="step-section" id="vue" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">vision globale</div>
+        <div class="step-subtitle">Ce que fait un fichier de config dans webserv</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Le problème réel</div>
+        <p>
+          Sans config, ton serveur est figé : un seul port, un seul dossier, une seule politique HTTP.
+          Avec un fichier de configuration, tu externalises ces décisions : ports d'écoute, routes,
+          méthodes autorisées, erreurs, CGI, upload, etc.
+        </p>
+        <p>
+          Et surtout : <strong>un seul binaire peut gérer plusieurs serveurs logiques</strong>.
+          Chaque bloc <code>server</code> décrit un comportement distinct (port, routes, limites),
+          mais tout tourne dans le même programme webserv.
+        </p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">Pipeline conceptuel</div>
+        <ul>
+          <li>Lire le fichier brut.</li>
+          <li>Tokeniser (<code>WORD</code>, <code>{</code>, <code>}</code>, <code>;</code>, commentaires).</li>
+          <li>Parser en structures <code>ServerConfig</code> / <code>LocationConfig</code>.</li>
+          <li>Valider toute la config au startup.</li>
+          <li>Appliquer la config à chaque requête entrante.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>« You can take inspiration from the 'server' section of the NGINX configuration file. »</p>
+      <cite>— webserv.pdf, IV.3</cite>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">webserv.conf</span>
+        </div>
+        <span class="code-tag">Exemple de référence (multi-serveurs)</span>
+      </div>
+        <pre><span class="cmt"># Site principal sur le port 8080</span>
+    <span class="dir">server</span> {
+      <span class="dir">listen</span> <span class="num">8080</span>;
+      <span class="dir">server_name</span> localhost;
+      <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+
+      <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+      <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
+
+      <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/html;
+        <span class="dir">index</span>           index.html;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       off;
+      }
+
+      <span class="dir">location</span> /api {
+        <span class="dir">root</span>            /var/www/api;
+        <span class="dir">allowed_methods</span> GET POST DELETE;
+        <span class="dir">autoindex</span>       off;
+      }
+
+      <span class="dir">location</span> /upload {
+        <span class="dir">root</span>            /var/www;
+        <span class="dir">allowed_methods</span> POST;
+        <span class="dir">upload_store</span>    /tmp/uploads;
+      }
+
+      <span class="dir">location</span> /files {
+        <span class="dir">root</span>            /var/www/shared;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       on;
+      }
+
+      <span class="dir">location</span> /old-page {
+        <span class="dir">return</span> <span class="num">301</span> /new-page;
+      }
+
+      <span class="dir">location</span> /cgi-bin {
+        <span class="dir">root</span>            /var/www/cgi-bin;
+        <span class="dir">allowed_methods</span> GET POST;
+        <span class="dir">cgi_pass</span>        .py /usr/bin/python3;
+        <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
+      }
+    }
+
+    <span class="cmt"># Deuxième serveur sur port 8081</span>
+    <span class="dir">server</span> {
+      <span class="dir">listen</span> <span class="num">8081</span>;
+      <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+
+      <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/site2;
+        <span class="dir">index</span>           index.html;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       off;
+      }
+    }</pre>
+    </div>
+
+      <div class="info-box">
+        <strong>Point clé (souvent flou) :</strong> les deux blocs <code>server</code> sont chargés en mémoire au startup.
+        Ensuite, une requête entrante est d'abord routée par son port local (<code>8080</code> ou <code>8081</code>),
+        puis seulement par les <code>location</code> du serveur sélectionné.
+      </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="server" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">server + listen + server_name</div>
+        <div class="step-subtitle">Le conteneur principal d'un site</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Le bloc server</div>
+      <p>
+        Un bloc <code>server { ... }</code> décrit une "personnalité" complète du serveur : ports d'écoute,
+        règles de routes, limites de body, pages d'erreur, CGI, etc.
+        Si tu écris plusieurs blocs <code>server</code>, webserv n'ouvre pas plusieurs programmes :
+        il ouvre plusieurs configurations et choisit la bonne à chaque connexion.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">listen-examples.conf</span>
+        </div>
+        <span class="code-tag">listen</span>
+      </div>
+      <pre><span class="dir">server</span> {
+  <span class="dir">listen</span> <span class="num">8080</span>;                <span class="cmt"># serveur logique A</span>
+}
+
+<span class="dir">server</span> {
+  <span class="dir">listen</span> <span class="num">8081</span>;                <span class="cmt"># serveur logique B</span>
+}
+
+<span class="cmt"># Même binaire webserv, deux comportements différents selon le port</span>
+<span class="cmt"># req sur :8080 -> server A ; req sur :8081 -> server B</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">listen en pratique</div>
+        <ul>
+          <li>Port valide : 1..65535.</li>
+          <li>Port &lt; 1024 : droits élevés souvent requis en Linux.</li>
+          <li>Chaque <code>listen</code> implique un socket serveur distinct.</li>
+          <li>Plusieurs blocs <code>server</code> peuvent coexister dans un seul fichier et un seul process.</li>
+          <li>Avec epoll, chaque socket d'écoute est enregistré en <code>EPOLLIN</code>.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-label">server_name (optionnel webserv)</div>
+        <p>
+          <code>server_name</code> permet de faire des virtual hosts par header <code>Host</code>. Le sujet webserv ne l'exige
+          pas strictement. Tu peux l'ignorer au début, puis l'ajouter si tu veux un routing plus proche de NGINX.
+        </p>
+        <div class="sub-block">
+          <div class="mini-title">Algorithme si implémenté</div>
+          <p>1) filtrer par port d'arrivée, 2) comparer <code>Host</code> avec les <code>server_name</code>, 3) fallback sur serveur par défaut du port.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">same-port-virtual-hosts.conf</span>
+        </div>
+        <span class="code-tag">Même port, sites différents</span>
+      </div>
+      <pre><span class="cmt"># 2 serveurs logiques sur le même port 8080</span>
+<span class="dir">server</span> {
+  <span class="dir">listen</span> <span class="num">8080</span>;
+  <span class="dir">server_name</span> site-a.com www.site-a.com;
+  <span class="dir">location</span> / { <span class="dir">root</span> /var/www/site-a; }
+}
+
+<span class="dir">server</span> {
+  <span class="dir">listen</span> <span class="num">8080</span>;
+  <span class="dir">server_name</span> site-b.com;
+  <span class="dir">location</span> / { <span class="dir">root</span> /var/www/site-b; }
+}
+
+<span class="cmt"># Sélection à runtime (idée) :</span>
+<span class="cmt"># req sur :8080 + Host: site-a.com -> server A</span>
+<span class="cmt"># req sur :8080 + Host: site-b.com -> server B</span>
+<span class="cmt"># Host inconnu -> server par défaut du port (souvent le 1er déclaré)</span></pre>
+    </div>
+
+    <div class="info-box">
+      <strong>Réponse à ta question :</strong> oui, tu peux avoir 4-5 blocs <code>server</code>, dont 2-3 sur le même port.
+      Ça sert justement à héberger plusieurs sites sur une même machine (virtual hosting), en les distinguant
+      via le header <code>Host</code> + <code>server_name</code>.
+    </div>
+
+    <div class="warning-box">
+      <strong>Important :</strong> si tu n'implémentes pas <code>server_name</code>, plusieurs serveurs sur le même port deviennent ambigus.
+      Dans ce cas, définis clairement une règle (ex: "premier server du port") et documente-la.
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="core" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">client_max_body_size + error_page</div>
+        <div class="step-subtitle">Politiques globales de sécurité et d'UX</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">core-directives.conf</span>
+        </div>
+        <span class="code-tag">Directives clés</span>
+      </div>
+      <pre><span class="dir">server</span> {
+  <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+
+  <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+  <span class="dir">error_page</span> <span class="num">500</span> <span class="num">502</span> <span class="num">503</span> <span class="num">504</span> /errors/50x.html;
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">client_max_body_size</div>
+        <p>
+          Limite la taille maximale du body client. C'est crucial pour éviter les abus mémoire/disque.
+          En réception HTTP, tu compares tôt le <code>Content-Length</code> à cette limite.
+          Si dépassement, réponse <code>413</code> sans continuer à lire inutilement.
+        </p>
+        <div class="sub-block">
+          <div class="mini-title">Unités</div>
+          <p><code>k</code>, <code>m</code>, <code>g</code> (insensible à la casse). Sans suffixe : octets bruts.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">error_page</div>
+        <p>
+          Associe un code HTTP à un fichier de réponse custom. Quand le serveur produit l'erreur,
+          il essaie d'abord de servir cette page personnalisée. Sinon fallback sur un body minimal.
+        </p>
+        <div class="warning-box">
+          <strong>Piège fréquent :</strong> la page d'erreur doit exister dans un chemin résolvable avec tes règles de root/location.
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">size-parse.cpp</span>
+        </div>
+        <span class="code-tag">Exemple C++</span>
+      </div>
+      <pre><span class="typ">size_t</span> parseSize(<span class="kw">const</span> std::string&amp; s) {
+  <span class="kw">if</span> (s.empty()) <span class="kw">throw</span> std::runtime_error(<span class="str">"empty size"</span>);
+
+  <span class="typ">char</span> suffix = std::tolower(s.back());
+  <span class="typ">std::string</span> number = s;
+  <span class="typ">size_t</span> factor = <span class="num">1</span>;
+
+  <span class="kw">if</span> (suffix == <span class="str">'k'</span> || suffix == <span class="str">'m'</span> || suffix == <span class="str">'g'</span>) {
+    number = s.substr(<span class="num">0</span>, s.size() - <span class="num">1</span>);
+    <span class="kw">if</span> (suffix == <span class="str">'k'</span>) factor = <span class="num">1024</span>;
+    <span class="kw">if</span> (suffix == <span class="str">'m'</span>) factor = <span class="num">1024</span> * <span class="num">1024</span>;
+    <span class="kw">if</span> (suffix == <span class="str">'g'</span>) factor = <span class="num">1024</span> * <span class="num">1024</span> * <span class="num">1024</span>;
+  }
+
+  <span class="typ">size_t</span> value = static_cast&lt;size_t&gt;(std::strtoull(number.c_str(), NULL, <span class="num">10</span>));
+  <span class="kw">return</span> value * factor;
+}</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="location" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">location + allowed_methods + return</div>
+        <div class="step-subtitle">Le cœur du routing HTTP</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Règle de matching</div>
+      <p>
+        En webserv (sans regex), tu fais un matching par préfixe. Parmi les <code>location</code> compatibles,
+        la plus longue gagne. Cette règle suffit pour couvrir l'énoncé et reproduire le comportement attendu.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">location-routing.conf</span>
+        </div>
+        <span class="code-tag">Exemple de routes</span>
+      </div>
+      <pre><span class="dir">location</span> / {
+  <span class="dir">allowed_methods</span> GET;
+  <span class="dir">root</span> /var/www/html;
+}
+
+<span class="dir">location</span> /api {
+  <span class="dir">allowed_methods</span> GET POST DELETE;
+  <span class="dir">root</span> /var/www/api;
+}
+
+<span class="dir">location</span> /old-page {
+  <span class="dir">return</span> <span class="num">301</span> /new-page;
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">allowed_methods</div>
+        <p>
+          Directive custom webserv : contrôle des verbes autorisés par route.
+          Si méthode non autorisée, réponse <code>405 Method Not Allowed</code> + header
+          <code>Allow:</code> listant les méthodes valides.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">return</div>
+        <p>
+          Court-circuite toute la suite. Quand <code>return</code> est défini, on ne cherche pas de fichier,
+          on répond immédiatement avec le code (et <code>Location</code> si redirection).
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">longest-prefix.cpp</span>
+        </div>
+        <span class="code-tag">Algo de sélection</span>
+      </div>
+      <pre><span class="kw">const</span> LocationConfig* findLocation(<span class="kw">const</span> ServerConfig&amp; srv, <span class="kw">const</span> std::string&amp; uri) {
+  <span class="kw">const</span> LocationConfig* best = NULL;
+  <span class="typ">size_t</span> bestLen = <span class="num">0</span>;
+
+  <span class="kw">for</span> (std::vector&lt;LocationConfig&gt;::const_iterator it = srv.locations.begin(); it != srv.locations.end(); ++it) {
+    <span class="kw">const</span> std::string&amp; p = it-&gt;path;
+    <span class="kw">if</span> (uri.compare(<span class="num">0</span>, p.size(), p) == <span class="num">0</span>) {
+      <span class="kw">if</span> (p.size() &gt; bestLen) {
+        best = &amp;(*it);
+        bestLen = p.size();
+      }
+    }
+  }
+  <span class="kw">return</span> best;
+}</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="routeio" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">root + index + autoindex</div>
+        <div class="step-subtitle">Résolution du chemin et réponse fichier</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Point critique root</div>
+      <p>
+        Beaucoup d'équipes se trompent ici. En NGINX, <code>root</code> concatène son chemin avec l'URI retenue.
+        Dans certains designs webserv, on choisit <code>root + (uri - prefix)</code>. L'important est la cohérence
+        avec tes tests et la règle explicitée dans ton sujet.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">path-resolution.txt</span>
+        </div>
+        <span class="code-tag">Exemple concret</span>
+      </div>
+      <pre><span class="cmt"># Cas 1 — stratégie "root + uri"</span>
+URI      = /kapouet/pouic/toto/pouet
+root     = /tmp/www
+résultat = /tmp/www/kapouet/pouic/toto/pouet
+
+<span class="cmt"># Cas 2 — stratégie "root + suffix" (souvent choisie en webserv custom)</span>
+location = /kapouet
+suffix   = /pouic/toto/pouet
+root     = /tmp/www
+résultat = /tmp/www/pouic/toto/pouet</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">index</div>
+        <p>
+          Si la cible est un dossier, tu testes les index dans l'ordre (<code>index.html</code>, puis <code>index.htm</code>, etc.).
+          Si aucun index trouvé : soit <code>autoindex on</code> (listing), soit refus (<code>403</code> en pratique).
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">autoindex</div>
+        <p>
+          Quand activé, tu génères une page HTML listant les entrées du dossier via <code>opendir/readdir</code>.
+          Chaque entrée doit devenir un lien cliquable. C'est utile en debug/partage, à manier prudemment en prod.
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">directory-flow.cpp</span>
+        </div>
+        <span class="code-tag">Arbre de décision</span>
+      </div>
+      <pre><span class="kw">if</span> (!exists(path)) {
+  <span class="kw">return</span> <span class="num">404</span>;
+}
+
+<span class="kw">if</span> (isDirectory(path)) {
+  std::string idx = findFirstExistingIndex(path, loc.indexFiles);
+  <span class="kw">if</span> (!idx.empty()) {
+    <span class="kw">return</span> serveFile(idx, <span class="num">200</span>);
+  }
+  <span class="kw">if</span> (loc.autoindex) {
+    <span class="kw">return</span> buildDirectoryListing(path, uri);
+  }
+  <span class="kw">return</span> <span class="num">403</span>;
+}
+
+<span class="kw">return</span> serveFile(path, <span class="num">200</span>);</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="advanced" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">upload_store + cgi_pass</div>
+        <div class="step-subtitle">Les directives avancées côté webserv</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">advanced-routes.conf</span>
+        </div>
+        <span class="code-tag">Upload + CGI</span>
+      </div>
+      <pre><span class="dir">location</span> /upload {
+  <span class="dir">allowed_methods</span> POST;
+  <span class="dir">upload_store</span> /tmp/uploads;
+}
+
+<span class="dir">location</span> /cgi-bin {
+  <span class="dir">root</span> /var/www/cgi-bin;
+  <span class="dir">allowed_methods</span> GET POST;
+  <span class="dir">cgi_pass</span> .py /usr/bin/python3;
+  <span class="dir">cgi_pass</span> .php /usr/bin/php-cgi;
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">upload_store</div>
+        <p>
+          Pour un <code>multipart/form-data</code>, tu découpes les parts avec le boundary, extrais le fichier,
+          puis écris le contenu binaire dans le dossier cible. Le dossier doit exister et être writable.
+        </p>
+        <div class="warning-box">
+          <strong>Point sécurité :</strong> nettoyer le nom de fichier (path traversal, caractères interdits, collisions).
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">cgi_pass</div>
+        <p>
+          Si l'extension matche, tu exécutes l'interpréteur via <code>fork</code> + <code>execve</code>.
+          Tu injectes les variables CGI en environnement, le body en stdin, puis tu lis stdout.
+        </p>
+        <div class="sub-block">
+          <div class="mini-title">Variables incontournables</div>
+          <p><code>REQUEST_METHOD</code>, <code>QUERY_STRING</code>, <code>CONTENT_LENGTH</code>, <code>CONTENT_TYPE</code>, <code>SCRIPT_NAME</code>, <code>PATH_INFO</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">cgi-launch.cpp</span>
+        </div>
+        <span class="code-tag">Flux CGI simplifié</span>
+      </div>
+      <pre><span class="typ">pid_t</span> pid = fork();
+<span class="kw">if</span> (pid == <span class="num">0</span>) {
+  <span class="cmt">// child</span>
+  dup2(inPipe[<span class="num">0</span>], STDIN_FILENO);
+  dup2(outPipe[<span class="num">1</span>], STDOUT_FILENO);
+  chdir(scriptDirectory.c_str());
+  execve(interpreter.c_str(), argv, envp);
+  _exit(<span class="num">1</span>);
+}
+
+<span class="cmt">// parent</span>
+write(inPipe[<span class="num">1</span>], requestBody.data(), requestBody.size());
+close(inPipe[<span class="num">1</span>]);
+std::string cgiOutput = readAll(outPipe[<span class="num">0</span>]);
+waitpid(pid, NULL, <span class="num">0</span>);</pre>
+    </div>
+
+    <div class="info-box">
+      <strong>Chunked + CGI :</strong> pour les requêtes chunked, il faut reconstituer le body avant de le donner au CGI.
+      Le script CGI attend un flux body normal terminé par EOF.
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="parser" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">07</div>
+      <div>
+        <div class="step-fn">lexer + parser + validation</div>
+        <div class="step-subtitle">Comment l'implémenter proprement en C++</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Lexer</div>
+        <p>
+          Le lexer transforme un texte brut en tokens structurés. Cette étape simplifie radicalement
+          le parser et améliore les erreurs de diagnostic (ligne/colonne).
+        </p>
+        <ul>
+          <li>Ignorer espaces et commentaires <code># ...</code>.</li>
+          <li>Sortir les séparateurs : <code>{</code>, <code>}</code>, <code>;</code>.</li>
+          <li>Capturer les mots/directives/valeurs en <code>WORD</code>.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Parser</div>
+        <p>
+          Le parser lit la suite de tokens et remplit des structures C++.
+          Le plus simple : parser récursif-descendant avec <code>expect()</code> et exceptions explicites.
+        </p>
+        <ul>
+          <li><code>server</code> ouvre un <code>ServerConfig</code>.</li>
+          <li><code>location</code> ouvre un <code>LocationConfig</code>.</li>
+          <li>Chaque directive remplit un champ strictement typé.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">config-parser.hpp</span>
+        </div>
+        <span class="code-tag">Structures recommandées</span>
+      </div>
+      <pre><span class="typ">struct</span> LocationConfig {
+  std::string path;
+  std::string root;
+  std::vector&lt;std::string&gt; indexFiles;
+  std::vector&lt;std::string&gt; allowedMethods;
+  bool autoindex;
+  std::map&lt;std::string, std::string&gt; cgiPass;
+  std::string uploadStore;
+  int returnCode;
+  std::string returnTarget;
+};
+
+<span class="typ">struct</span> ServerConfig {
+  std::vector&lt;std::pair&lt;std::string, int&gt; &gt; listens;
+  std::vector&lt;std::string&gt; serverNames;
+  size_t clientMaxBodySize;
+  std::map&lt;int, std::string&gt; errorPages;
+  std::vector&lt;LocationConfig&gt; locations;
+};</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">config-validation.cpp</span>
+        </div>
+        <span class="code-tag">Validation startup</span>
+      </div>
+      <pre><span class="kw">void</span> validate(<span class="kw">const</span> std::vector&lt;ServerConfig&gt;&amp; servers) {
+  <span class="kw">for</span> (size_t i = <span class="num">0</span>; i &lt; servers.size(); ++i) {
+    <span class="kw">const</span> ServerConfig&amp; s = servers[i];
+
+    <span class="kw">if</span> (s.listens.empty()) <span class="kw">throw</span> std::runtime_error(<span class="str">"server without listen"</span>);
+    <span class="kw">if</span> (s.locations.empty()) <span class="kw">throw</span> std::runtime_error(<span class="str">"server without location"</span>);
+
+    <span class="kw">for</span> (size_t j = <span class="num">0</span>; j &lt; s.listens.size(); ++j) {
+      <span class="kw">if</span> (s.listens[j].second &lt; <span class="num">1</span> || s.listens[j].second &gt; <span class="num">65535</span>)
+        <span class="kw">throw</span> std::runtime_error(<span class="str">"invalid listen port"</span>);
+    }
+  }
+}</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="runtime" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">08</div>
+      <div>
+        <div class="step-fn">ordre de priorité runtime</div>
+        <div class="step-subtitle">Ce que fait le serveur quand une requête arrive</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Algorithme complet conseillé</div>
+      <ul>
+        <li>Sélectionner le <code>server</code> par port (et éventuellement <code>Host</code>).</li>
+        <li>Sélectionner la <code>location</code> par plus long préfixe.</li>
+        <li>Vérifier <code>allowed_methods</code> (sinon <code>405</code>).</li>
+        <li>Si <code>return</code> existe : répondre immédiatement.</li>
+        <li>Construire le chemin fichier (root + stratégie URI).</li>
+        <li>Si extension CGI match : exécuter CGI.</li>
+        <li>Sinon servir fichier / index / autoindex / erreur.</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">request-dispatch.cpp</span>
+        </div>
+        <span class="code-tag">Pseudo-code d'orchestration</span>
+      </div>
+      <pre>Response dispatch(<span class="kw">const</span> Request&amp; req) {
+  <span class="kw">const</span> ServerConfig* srv = selectServer(req.localPort, req.host);
+  <span class="kw">const</span> LocationConfig* loc = selectLocation(*srv, req.uri);
+
+  <span class="kw">if</span> (!methodAllowed(*loc, req.method)) {
+    <span class="kw">return</span> make405(loc-&gt;allowedMethods);
+  }
+
+  <span class="kw">if</span> (loc-&gt;returnCode != <span class="num">0</span>) {
+    <span class="kw">return</span> makeReturn(loc-&gt;returnCode, loc-&gt;returnTarget);
+  }
+
+  std::string path = resolvePath(*loc, req.uri);
+
+  <span class="kw">if</span> (isCgiTarget(*loc, path)) {
+    <span class="kw">return</span> executeCgi(req, *loc, path);
+  }
+
+  <span class="kw">return</span> serveStatic(req, *loc, path, srv-&gt;errorPages);
+}</pre>
+    </div>
+
+    <div class="warning-box">
+      <strong>Robustesse attendue :</strong> toute erreur de route/fichier/CGI doit renvoyer une réponse HTTP propre,
+      jamais faire planter la boucle événementielle.
+    </div>
+
+    <div class="info-box">
+      <strong>Évaluation :</strong> prépare plusieurs fichiers de config + fichiers web par défaut
+      pour démontrer toutes les features (méthodes, redirection, erreurs, listing, upload, CGI).
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="walkthrough" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">09</div>
+      <div>
+        <div class="step-fn">walkthrough complet</div>
+        <div class="step-subtitle">Lecture pas à pas de ton fichier de configuration</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Ton fichier exact (base de travail)</div>
+      <p>
+        Ci-dessous, on reprend ton exemple tel quel. Juste après, on le démonte bloc par bloc pour expliquer
+        ce qui se passe en runtime quand une requête arrive sur chaque route.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">my-webserv.conf</span>
+        </div>
+        <span class="code-tag">Configuration complète</span>
+      </div>
+      <pre><span class="cmt"># Site principal sur le port 8080</span>
+<span class="dir">server</span> {
+    <span class="dir">listen</span> <span class="num">8080</span>;
+    <span class="dir">server_name</span> localhost;
+    <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+
+    <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+    <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
+
+    <span class="cmt"># Route racine : fichiers statiques</span>
+    <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/html;
+        <span class="dir">index</span>           index.html;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       off;
+    }
+
+    <span class="cmt"># API : GET et POST autorisés</span>
+    <span class="dir">location</span> /api {
+        <span class="dir">root</span>            /var/www/api;
+        <span class="dir">allowed_methods</span> GET POST DELETE;
+        <span class="dir">autoindex</span>       off;
+    }
+
+    <span class="cmt"># Upload de fichiers</span>
+    <span class="dir">location</span> /upload {
+        <span class="dir">root</span>            /var/www;
+        <span class="dir">allowed_methods</span> POST;
+        <span class="dir">upload_store</span>    /tmp/uploads;
+    }
+
+    <span class="cmt"># Directory listing activé</span>
+    <span class="dir">location</span> /files {
+        <span class="dir">root</span>            /var/www/shared;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       on;
+    }
+
+    <span class="cmt"># Redirection permanente</span>
+    <span class="dir">location</span> /old-page {
+        <span class="dir">return</span> <span class="num">301</span> /new-page;
+    }
+
+    <span class="cmt"># CGI Python</span>
+    <span class="dir">location</span> /cgi-bin {
+        <span class="dir">root</span>            /var/www/cgi-bin;
+        <span class="dir">allowed_methods</span> GET POST;
+        <span class="dir">cgi_pass</span>        .py /usr/bin/python3;
+        <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
+    }
+}
+
+<span class="cmt"># Deuxième serveur sur port 8081</span>
+<span class="dir">server</span> {
+    <span class="dir">listen</span> <span class="num">8081</span>;
+    <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+
+    <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/site2;
+        <span class="dir">index</span>           index.html;
+        <span class="dir">allowed_methods</span> GET;
+        <span class="dir">autoindex</span>       off;
+    }
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce que ce fichier implique au démarrage</div>
+        <ul>
+          <li>Création de 2 contextes <code>ServerConfig</code>.</li>
+          <li>Ouverture de 2 sockets d'écoute : 8080 et 8081.</li>
+          <li>Construction de la table de routes pour chaque serveur.</li>
+          <li>Préchargement/validation des directives globales (taille body, pages d'erreur).</li>
+          <li>Préparation des maps CGI (extension → interpréteur).</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">Exemples de requêtes et résultat attendu</div>
+        <ul>
+          <li><code>GET /</code> sur port 8080 → route <code>/</code>, fichier <code>index.html</code>.</li>
+          <li><code>GET /api/users</code> sur 8080 → route <code>/api</code>, méthodes GET/POST/DELETE.</li>
+          <li><code>POST /upload</code> sur 8080 → route <code>/upload</code>, stockage <code>/tmp/uploads</code>.</li>
+          <li><code>GET /old-page</code> sur 8080 → redirection <code>301 Location: /new-page</code>.</li>
+          <li><code>GET /foo.py</code> sous <code>/cgi-bin</code> → exécution via <code>/usr/bin/python3</code>.</li>
+          <li><code>GET /</code> sur 8081 → racine <code>/var/www/site2</code>.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">runtime-trace.txt</span>
+        </div>
+        <span class="code-tag">Trace mentale</span>
+      </div>
+      <pre><span class="cmt"># Requête: DELETE /api/item/42 (port 8080)</span>
+1) server sélectionné = listen 8080
+2) location sélectionnée = /api (longest prefix)
+3) méthode DELETE autorisée ? <span class="ok">oui</span>
+4) return présent ? <span class="bad">non</span>
+5) chemin fichier/rsource calculé à partir de root=/var/www/api
+6) traitement selon ton handler API / fichier statique / CGI éventuel
+
+<span class="cmt"># Requête: PUT /api/item/42 (port 8080)</span>
+1) server=8080
+2) location=/api
+3) méthode PUT autorisée ? <span class="bad">non</span>
+4) réponse immédiate: 405 + Allow: GET, POST, DELETE</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="terms" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">10</div>
+      <div>
+        <div class="step-fn">glossaire exhaustif</div>
+        <div class="step-subtitle">Tous les termes importants (définitions + implications code)</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Termes de structure</div>
+        <ul>
+          <li><code>directive</code> : instruction de config terminée par <code>;</code>.</li>
+          <li><code>block directive</code> : directive avec bloc <code>{ ... }</code>.</li>
+          <li><code>context</code> : zone de validité d'une directive.</li>
+          <li><code>server block</code> : site virtuel complet (ports + routes).</li>
+          <li><code>location block</code> : règles applicables à un préfixe d'URI.</li>
+          <li><code>token</code> : unité lexicale produite par ton lexer.</li>
+          <li><code>AST / config model</code> : représentation interne parsée.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">Termes réseau/HTTP</div>
+        <ul>
+          <li><code>interface</code> : IP sur laquelle le socket écoute (ex: 127.0.0.1).</li>
+          <li><code>port</code> : numéro de service TCP (ex: 8080).</li>
+          <li><code>Host header</code> : nom d'hôte demandé par le client HTTP.</li>
+          <li><code>method</code> : verbe HTTP (GET/POST/DELETE...).</li>
+          <li><code>body</code> : données transportées par la requête.</li>
+          <li><code>multipart/form-data</code> : format d'upload de fichiers.</li>
+          <li><code>Content-Length</code> : taille annoncée du body.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Termes filesystem/routing</div>
+        <ul>
+          <li><code>root</code> : ancrage disque pour résoudre les fichiers.</li>
+          <li><code>index</code> : fichier par défaut d'un dossier.</li>
+          <li><code>autoindex</code> : listing auto d'un répertoire.</li>
+          <li><code>longest prefix match</code> : location la plus spécifique.</li>
+          <li><code>error_page</code> : page custom pour un code HTTP.</li>
+          <li><code>redirect</code> : réponse 3xx + header Location.</li>
+          <li><code>fallback</code> : comportement de secours si règle absente.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">Termes CGI</div>
+        <ul>
+          <li><code>CGI</code> : exécution d'un script externe pour générer la réponse.</li>
+          <li><code>interpreter</code> : binaire appelé via <code>execve</code> (python/php).</li>
+          <li><code>env vars</code> : infos requête passées au script CGI.</li>
+          <li><code>stdin</code> : body envoyé au script.</li>
+          <li><code>stdout</code> : réponse CGI récupérée par le serveur.</li>
+          <li><code>EOF</code> : fin de flux, surtout critique si pas de Content-Length CGI.</li>
+          <li><code>working directory</code> : dossier d'exécution du script.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">checklist-terminologie.txt</span>
+        </div>
+        <span class="code-tag">Checklist de maîtrise</span>
+      </div>
+      <pre>[ ] Je sais expliquer la différence server vs location
+[ ] Je sais expliquer root/index/autoindex avec exemple d'URI
+[ ] Je sais justifier le 405 + header Allow
+[ ] Je sais décrire quand return court-circuite le flux
+[ ] Je sais décrire le flux CGI (env, stdin, stdout, EOF)
+[ ] Je sais décrire le parsing (lexer → parser → validation)
+[ ] Je sais tracer une requête de l'arrivée socket jusqu'à la réponse HTTP</pre>
+    </div>
+
+    <div class="info-box">
+      <strong>Conseil oral soutenance :</strong> pour chaque terme, donne systématiquement
+      un exemple concret de requête + ce que le serveur fait. C'est ça qui rend l'explication limpide.
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — 04 Fichier de configuration (guide complet)</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  function scrollToId(id) {
+    if (id === 'top') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (!href || href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sections = document.querySelectorAll('.step-section');
+  var navPills = document.querySelectorAll('.step-pill');
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        var id = entry.target.id;
+        navPills.forEach(function(pill) {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { observer.observe(s); });
+</script>
+</body>
+</html>

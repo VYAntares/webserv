@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Adressage réseau & options de socket</title>
+<title>IP, Ports, NAT &amp; Adressage r&eacute;seau</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -532,6 +532,282 @@
   }
   .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
   .footer a { color: var(--accent-2); text-decoration: none; }
+
+  /* ─── IP OCTET DIAGRAM ─── */
+  .ip-diagram {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .ip-octet {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.8rem;
+    font-weight: 700;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    text-align: center;
+    min-width: 60px;
+    border: 2px solid;
+  }
+  .ip-dot {
+    font-family: 'Space Mono', monospace;
+    font-size: 2rem;
+    color: var(--text-muted);
+    padding: 0 0.3rem;
+  }
+  .ip-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    text-align: center;
+    margin-top: 0.4rem;
+    display: block;
+  }
+  .ip-octet-wrap { display: flex; flex-direction: column; align-items: center; }
+
+  /* ─── ADDRESS RANGE CARDS ─── */
+  .addr-range-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  @media (max-width: 700px) { .addr-range-grid { grid-template-columns: 1fr; } }
+  .addr-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .addr-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    opacity: 0.7;
+  }
+  .addr-card-ip {
+    font-family: 'Space Mono', monospace;
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+  }
+  .addr-card-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 0.6rem;
+  }
+  .addr-card-desc {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ─── PORT RANGE BAR ─── */
+  .port-bar-wrap {
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .port-bar {
+    display: flex;
+    height: 40px;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+  .port-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #000;
+    position: relative;
+  }
+  .port-legend {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  @media (max-width: 700px) { .port-legend { grid-template-columns: 1fr; } }
+  .port-legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .port-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+  }
+  .port-legend-item strong { color: var(--text); font-weight: 600; }
+  .port-legend-item code {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent-2);
+  }
+
+  /* ─── FAMOUS PORTS TABLE ─── */
+  .port-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 1.5rem 0;
+  }
+  .port-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .port-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .port-table td {
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .port-table tr:last-child td { border-bottom: none; }
+  .port-table td:first-child {
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    color: var(--accent-2);
+  }
+  .port-table td:nth-child(2) {
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-3);
+  }
+
+  /* ─── NAT NETWORK DIAGRAM ─── */
+  .net-diagram {
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .net-zones {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0;
+    align-items: stretch;
+    min-height: 200px;
+  }
+  @media (max-width: 700px) { .net-zones { grid-template-columns: 1fr; } }
+  .net-zone {
+    padding: 1.2rem;
+    border-radius: 10px;
+    border: 1px solid;
+  }
+  .net-zone-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 0.8rem;
+    text-align: center;
+  }
+  .net-device {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.7rem;
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    font-size: 0.78rem;
+  }
+  .net-device-icon { font-size: 1.1rem; flex-shrink: 0; }
+  .net-device-ip {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    margin-left: auto;
+  }
+  .net-router {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem 0.8rem;
+    min-width: 100px;
+  }
+  .net-router-icon { font-size: 2rem; margin-bottom: 0.4rem; }
+  .net-router-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent-5);
+    text-align: center;
+  }
+  .net-arrow {
+    font-size: 1.2rem;
+    color: var(--text-muted);
+    margin: 0.3rem 0;
+  }
+
+  /* ─── NAT TABLE ─── */
+  .nat-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 1.5rem 0;
+  }
+  .nat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    font-family: 'Space Mono', monospace;
+  }
+  .nat-table th {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border);
+  }
+  .nat-table td {
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .nat-table tr:last-child td { border-bottom: none; }
+  .nat-table .arrow-col { color: var(--accent-5); text-align: center; font-size: 1rem; }
 </style>
 </head>
 <body>
@@ -543,7 +819,19 @@
   <div class="progress-inner">
     <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
     <div class="progress-back-divider"></div>
-    <a href="#endianness" class="step-pill active" id="nav-endianness">
+    <a href="#ip" class="step-pill active" id="nav-ip">
+      <span class="step-dot"></span>IP
+    </a>
+    <div class="step-connector"></div>
+    <a href="#ports" class="step-pill" id="nav-ports">
+      <span class="step-dot"></span>Ports
+    </a>
+    <div class="step-connector"></div>
+    <a href="#nat" class="step-pill" id="nav-nat">
+      <span class="step-dot"></span>NAT
+    </a>
+    <div class="step-connector"></div>
+    <a href="#endianness" class="step-pill" id="nav-endianness">
       <span class="step-dot"></span>Endianness
     </a>
     <div class="step-connector"></div>
@@ -562,23 +850,389 @@
 </div>
 
 <div class="header">
-  <div class="header-tag">Réseau — Fondation</div>
-  <h1>Adressage réseau<br>&amp; <em>options de socket</em></h1>
+  <div class="header-tag">Réseau — IP, Ports, NAT & Adressage</div>
+  <h1>IP, Ports &amp; <em>NAT</em><br>Adressage réseau</h1>
   <p class="header-desc">
-    Comment transformer un couple IP:port en quelque chose que le kernel comprend,
-    pourquoi les octets sont dans le mauvais ordre par défaut,
-    et comment configurer un socket pour qu'il se comporte correctement.
+    Comprendre les adresses IP, les plages de ports, comment le NAT relie
+    ton réseau privé à Internet — puis comment transformer tout ça en structures
+    que le kernel comprend, avec le bon ordre d'octets.
   </p>
 </div>
 
 <div class="main">
 
   <!-- ══════════════════════════════ -->
-  <!-- SECTION 1 : ENDIANNESS        -->
+  <!-- SECTION 1 : ADRESSES IP       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="ip" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Adresses IPv4</div>
+        <div class="step-subtitle">4 octets pour identifier chaque machine</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 1.5rem;">
+      <div class="panel-label">Structure d'une adresse IP</div>
+      <p>
+        Une adresse IPv4 est un nombre de <strong>32 bits</strong> découpé en <strong>4 octets</strong> (0–255 chacun),
+        séparés par des points. Chaque octet = 8 bits, donc 4 × 8 = 32 bits au total.
+        <br><br>
+        Ce nombre identifie <strong>de façon unique</strong> une machine sur un réseau.
+        En pratique, une partie identifie le <strong>réseau</strong> et l'autre identifie la <strong>machine</strong> (l'hôte) sur ce réseau.
+      </p>
+    </div>
+
+    <!-- IP octet decomposition diagram -->
+    <div class="ip-diagram">
+      <div class="ip-octet-wrap">
+        <div class="ip-octet" style="border-color: var(--accent-1); color: var(--accent-1); background: rgba(255,107,74,0.08);">192</div>
+        <span class="ip-label" style="color: var(--accent-1);">réseau</span>
+      </div>
+      <span class="ip-dot">.</span>
+      <div class="ip-octet-wrap">
+        <div class="ip-octet" style="border-color: var(--accent-1); color: var(--accent-1); background: rgba(255,107,74,0.08);">168</div>
+        <span class="ip-label" style="color: var(--accent-1);">réseau</span>
+      </div>
+      <span class="ip-dot">.</span>
+      <div class="ip-octet-wrap">
+        <div class="ip-octet" style="border-color: var(--accent-3); color: var(--accent-3); background: rgba(192,132,252,0.08);">1</div>
+        <span class="ip-label" style="color: var(--accent-3);">sous-réseau</span>
+      </div>
+      <span class="ip-dot">.</span>
+      <div class="ip-octet-wrap">
+        <div class="ip-octet" style="border-color: var(--accent-2); color: var(--accent-2); background: rgba(74,224,255,0.08);">42</div>
+        <span class="ip-label" style="color: var(--accent-2);">hôte</span>
+      </div>
+    </div>
+
+    <!-- Special address ranges -->
+    <div class="addr-range-grid">
+      <div class="addr-card" style="--step-color: var(--accent-4)">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent-4);opacity:0.7;"></div>
+        <div class="addr-card-ip" style="color: var(--accent-4);">127.0.0.1</div>
+        <div class="addr-card-name" style="color: var(--accent-4);">Loopback</div>
+        <div class="addr-card-desc">
+          Ta machine elle-même. Tout le bloc <code style="color:var(--accent-4)">127.x.x.x</code> est réservé.
+          Le trafic ne quitte <strong>jamais</strong> la machine — pas de câble, pas de carte réseau.
+          <code style="color:var(--accent-4)">localhost</code> = alias de <code style="color:var(--accent-4)">127.0.0.1</code>.
+        </div>
+      </div>
+      <div class="addr-card" style="--step-color: var(--accent-3)">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent-3);opacity:0.7;"></div>
+        <div class="addr-card-ip" style="color: var(--accent-3);">192.168.x.x</div>
+        <div class="addr-card-name" style="color: var(--accent-3);">Réseau privé (LAN)</div>
+        <div class="addr-card-desc">
+          Adresses non routables sur Internet. Utilisées dans ton réseau local (box, Wi-Fi).
+          Aussi : <code style="color:var(--accent-3)">10.x.x.x</code> et <code style="color:var(--accent-3)">172.16–31.x.x</code>.
+          Définies par la <strong>RFC 1918</strong>.
+        </div>
+      </div>
+      <div class="addr-card" style="--step-color: var(--accent-2)">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent-2);opacity:0.7;"></div>
+        <div class="addr-card-ip" style="color: var(--accent-2);">8.8.8.8</div>
+        <div class="addr-card-name" style="color: var(--accent-2);">Adresse publique</div>
+        <div class="addr-card-desc">
+          Routable sur Internet, unique au monde. Attribuée par les <strong>RIR</strong> (RIPE, ARIN...).
+          Exemple : le DNS de Google. Ton serveur VPS a une IP publique.
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>0.0.0.0 (INADDR_ANY) :</strong> adresse spéciale qui signifie "toutes les interfaces".
+        Quand ton serveur fait <code>bind(fd, 0.0.0.0, 8080)</code>, il accepte les connexions sur
+        <strong>toutes</strong> ses adresses — loopback, LAN, publique. C'est ce qu'on utilise dans Webserv.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📐</span><span><strong>32 bits = ~4,3 milliards</strong> d'adresses possibles. C'est pour ça qu'on a inventé le NAT et IPv6 — on n'a plus assez d'adresses publiques.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔒</span><span>Une IP privée est <strong>invisible depuis Internet</strong>. Deux réseaux différents peuvent utiliser les mêmes IPs privées sans conflit.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 2 : LES PORTS         -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="ports" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">Les ports (0 – 65535)</div>
+        <div class="step-subtitle">Multiplexer les services sur une même IP</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Pourquoi des ports ?</div>
+        <p>
+          Une adresse IP identifie une <strong>machine</strong>. Mais une machine peut faire tourner
+          <strong>plusieurs services</strong> en même temps — un serveur web, SSH, une base de données.
+          <br><br>
+          Le <strong>port</strong> (nombre de 16 bits : 0–65535) identifie le <strong>service</strong> sur cette machine.
+          Le couple <code>IP:port</code> est l'adresse complète : <code>192.168.1.42:8080</code>.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🏢</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            L'IP est l'<em>adresse de l'immeuble</em>, le port est le <em>numéro de l'appartement</em>.
+            Le courrier arrive à l'immeuble (IP) puis est distribué au bon appartement (port).
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Port range bar -->
+    <div class="port-bar-wrap">
+      <div style="font-family:'Space Mono',monospace;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.2em;color:var(--text-muted);margin-bottom:0.8rem;">Plages de ports · 0 — 65535</div>
+      <div class="port-bar">
+        <div class="port-seg" style="flex: 1024; background: linear-gradient(135deg, #ff6b4a, #ff8a6a); color: #000;">0 – 1023</div>
+        <div class="port-seg" style="flex: 48128; background: linear-gradient(135deg, #c084fc, #d4a0ff); color: #000;">1024 – 49151</div>
+        <div class="port-seg" style="flex: 16384; background: linear-gradient(135deg, #4ae0ff, #7aecff); color: #000;">49152 – 65535</div>
+      </div>
+      <div class="port-legend">
+        <div class="port-legend-item">
+          <div class="port-legend-dot" style="background: var(--accent-1);"></div>
+          <div><strong>Well-known</strong> (0–1023)<br>Réservés aux services système. Nécessitent les droits <code>root</code> pour bind(). HTTP=80, HTTPS=443, SSH=22.</div>
+        </div>
+        <div class="port-legend-item">
+          <div class="port-legend-dot" style="background: var(--accent-3);"></div>
+          <div><strong>Registered</strong> (1024–49151)<br>Enregistrés auprès de l'IANA. Utilisables sans root. MySQL=3306, PostgreSQL=5432. <strong>C'est ici qu'on met Webserv</strong> (ex: 8080).</div>
+        </div>
+        <div class="port-legend-item">
+          <div class="port-legend-dot" style="background: var(--accent-2);"></div>
+          <div><strong>Éphémères</strong> (49152–65535)<br>Attribués dynamiquement par le kernel pour les connexions sortantes. Quand curl contacte un serveur, son port source vient d'ici.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Famous ports table -->
+    <div class="port-table-wrap">
+      <table class="port-table">
+        <thead>
+          <tr><th>Port</th><th>Service</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>:80</td><td>HTTP</td><td>Web en clair — le port par défaut quand tu tapes une URL sans préciser</td></tr>
+          <tr><td>:443</td><td>HTTPS</td><td>Web chiffré (TLS). Navigateurs modernes redirigent ici automatiquement</td></tr>
+          <tr><td>:22</td><td>SSH</td><td>Accès distant sécurisé. Ce qu'on utilise pour se connecter aux serveurs 42</td></tr>
+          <tr><td>:21</td><td>FTP</td><td>Transfert de fichiers (ancien protocole, encore utilisé)</td></tr>
+          <tr><td>:53</td><td>DNS</td><td>Résolution de noms de domaine → adresses IP</td></tr>
+          <tr><td>:3306</td><td>MySQL</td><td>Base de données relationnelle</td></tr>
+          <tr><td>:8080</td><td>HTTP alt</td><td>Port alternatif HTTP — <strong>classique pour le développement</strong> (Webserv !)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">ip_port.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3);background:rgba(192,132,252,0.08)">IP:Port en C</span>
+      </div>
+      <pre><span class="type">struct sockaddr_in</span> <span class="var">addr</span><span class="punct">;</span>
+<span class="var">addr</span><span class="punct">.</span><span class="var">sin_family</span>      <span class="punct">=</span> <span class="macro">AF_INET</span><span class="punct">;</span>          <span class="cmt">// IPv4</span>
+<span class="highlight-line"><span class="var">addr</span><span class="punct">.</span><span class="var">sin_port</span>        <span class="punct">=</span> <span class="fn-name">htons</span><span class="punct">(</span><span class="num">8080</span><span class="punct">);</span>     <span class="cmt">// ← port 8080 (registered range)</span>
+</span><span class="highlight-line"><span class="var">addr</span><span class="punct">.</span><span class="var">sin_addr</span><span class="punct">.</span><span class="var">s_addr</span> <span class="punct">=</span> <span class="fn-name">htonl</span><span class="punct">(</span><span class="macro">INADDR_ANY</span><span class="punct">);</span> <span class="cmt">// ← 0.0.0.0 = toutes les interfaces</span>
+</span>
+<span class="cmt">// Le couple IP:port est maintenant : 0.0.0.0:8080</span>
+<span class="cmt">// → écoute sur toutes les interfaces, port 8080</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔢</span><span><strong>16 bits</strong> → 65536 ports possibles par IP. C'est pour ça qu'on utilise <code>htons()</code> (Host TO Network Short) — un short = 16 bits.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span>Si tu <code>bind()</code> sur un port &lt; 1024 sans root : <code>Permission denied</code>. C'est pourquoi Webserv utilise <strong>8080</strong> (ou un autre port &gt; 1023).</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 3 : NAT               -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="nat" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">NAT — Network Address Translation</div>
+        <div class="step-subtitle">Comment ton réseau privé parle à Internet</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 1.5rem;">
+      <div class="panel-label">Le problème que résout le NAT</div>
+      <p>
+        Ton PC a une IP <strong>privée</strong> (ex: <code>192.168.1.42</code>). Elle n'existe pas sur Internet.
+        Google ne peut pas répondre à <code>192.168.1.42</code> — cette adresse n'a aucun sens en dehors de ton LAN.
+        <br><br>
+        Le <strong>NAT</strong> est le mécanisme de ta box/routeur qui <strong>remplace l'IP source</strong> de tes paquets
+        par son <strong>IP publique</strong> avant de les envoyer sur Internet — et fait l'opération inverse au retour.
+      </p>
+    </div>
+
+    <!-- Network diagram -->
+    <div class="net-diagram">
+      <div style="font-family:'Space Mono',monospace;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.2em;color:var(--text-muted);margin-bottom:1rem;">Architecture réseau typique</div>
+      <div class="net-zones">
+        <!-- LAN zone -->
+        <div class="net-zone" style="border-color: rgba(74,222,128,0.3); background: rgba(74,222,128,0.04);">
+          <div class="net-zone-title" style="color: var(--accent-4);">LAN — Réseau privé</div>
+          <div class="net-device">
+            <span class="net-device-icon">💻</span>
+            <span style="color:var(--text);">PC</span>
+            <span class="net-device-ip" style="color:var(--accent-4);">192.168.1.42</span>
+          </div>
+          <div class="net-device">
+            <span class="net-device-icon">📱</span>
+            <span style="color:var(--text);">Téléphone</span>
+            <span class="net-device-ip" style="color:var(--accent-4);">192.168.1.15</span>
+          </div>
+          <div class="net-device">
+            <span class="net-device-icon">🖥️</span>
+            <span style="color:var(--text);">Serveur local</span>
+            <span class="net-device-ip" style="color:var(--accent-4);">192.168.1.100</span>
+          </div>
+          <div class="net-device">
+            <span class="net-device-icon">🐳</span>
+            <span style="color:var(--text);">VM / Docker</span>
+            <span class="net-device-ip" style="color:var(--accent-4);">192.168.1.200</span>
+          </div>
+        </div>
+
+        <!-- Router -->
+        <div class="net-router">
+          <div class="net-router-icon">📡</div>
+          <div class="net-router-label">Box / Routeur</div>
+          <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--accent-4);margin-top:0.4rem;">192.168.1.1</div>
+          <div class="net-arrow">⟷</div>
+          <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--accent-1);margin-bottom:0.3rem;">82.67.x.x</div>
+          <div style="font-family:'Space Mono',monospace;font-size:0.5rem;color:var(--accent-5);background:rgba(250,204,21,0.1);padding:0.2rem 0.5rem;border-radius:4px;margin-top:0.3rem;">NAT</div>
+        </div>
+
+        <!-- Internet zone -->
+        <div class="net-zone" style="border-color: rgba(255,107,74,0.3); background: rgba(255,107,74,0.04);">
+          <div class="net-zone-title" style="color: var(--accent-1);">Internet — Public</div>
+          <div class="net-device">
+            <span class="net-device-icon">🌐</span>
+            <span style="color:var(--text);">Google</span>
+            <span class="net-device-ip" style="color:var(--accent-1);">142.250.x.x</span>
+          </div>
+          <div class="net-device">
+            <span class="net-device-icon">🏫</span>
+            <span style="color:var(--text);">Serveur 42</span>
+            <span class="net-device-ip" style="color:var(--accent-1);">163.172.x.x</span>
+          </div>
+          <div class="net-device">
+            <span class="net-device-icon">☁️</span>
+            <span style="color:var(--text);">VPS</span>
+            <span class="net-device-ip" style="color:var(--accent-1);">51.15.x.x</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NAT translation example -->
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Scénario 1 : PC → Google</div>
+        <p>
+          Ton PC envoie un paquet à Google :<br>
+          <code>src: 192.168.1.42:54321</code> → <code>dst: 142.250.1.1:443</code>
+          <br><br>
+          La box remplace l'IP source :<br>
+          <code>src: 82.67.x.x:54321</code> → <code>dst: 142.250.1.1:443</code>
+          <br><br>
+          Elle note dans sa <strong>table NAT</strong> : port 54321 = PC .42.
+          Quand la réponse revient sur le port 54321, elle sait qu'il faut la renvoyer au PC.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Scénario 2 : Port forwarding</div>
+        <p>
+          Tu veux que ton Webserv (sur <code>192.168.1.100:8080</code>) soit accessible depuis Internet.
+          <br><br>
+          Tu configures un <strong>port forwarding</strong> sur ta box :
+          <code>82.67.x.x:8080</code> → <code>192.168.1.100:8080</code>
+          <br><br>
+          Maintenant, quelqu'un qui tape <code>http://82.67.x.x:8080</code> dans son navigateur
+          atteint ton serveur local. C'est du NAT <strong>entrant</strong>.
+        </p>
+      </div>
+    </div>
+
+    <!-- NAT table example -->
+    <div class="nat-table-wrap">
+      <table class="nat-table">
+        <thead>
+          <tr><th>IP privée</th><th>Port local</th><th></th><th>IP publique</th><th>Port public</th><th>Destination</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="color:var(--accent-4);">192.168.1.42</td>
+            <td>54321</td>
+            <td class="arrow-col">→</td>
+            <td style="color:var(--accent-1);">82.67.x.x</td>
+            <td>54321</td>
+            <td style="color:var(--text-muted);">142.250.1.1:443</td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent-4);">192.168.1.15</td>
+            <td>60122</td>
+            <td class="arrow-col">→</td>
+            <td style="color:var(--accent-1);">82.67.x.x</td>
+            <td>60122</td>
+            <td style="color:var(--text-muted);">151.101.1.69:443</td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent-5);">* (forwarding)</td>
+            <td>8080</td>
+            <td class="arrow-col">←</td>
+            <td style="color:var(--accent-1);">82.67.x.x</td>
+            <td>8080</td>
+            <td style="color:var(--accent-4);">192.168.1.100:8080</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>À 42 :</strong> le réseau de l'école utilise aussi du NAT. Ton Mac a une IP privée (10.x.x.x).
+        Pour exposer Webserv à l'extérieur, il faudrait du port forwarding — mais ce n'est pas nécessaire
+        pour le projet. On teste en local avec <code>127.0.0.1</code> ou <code>localhost</code>.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Le NAT est <strong>transparent</strong> pour tes programmes. Ton code ne sait pas qu'il est derrière un NAT — il utilise son IP privée normalement.</span></div>
+      <div class="key-point"><span class="key-point-icon">🌍</span><span><strong>IPv6 élimine le besoin de NAT</strong> : 128 bits = 340 undécillions d'adresses. Chaque appareil peut avoir sa propre IP publique. Mais IPv4 + NAT reste dominant en 2025.</span></div>
+      <div class="key-point"><span class="key-point-icon">🖥️</span><span><strong>INADDR_ANY (0.0.0.0)</strong> dans Webserv : écoute sur toutes les interfaces. Pratique car ton serveur répond qu'on l'accède par <code>127.0.0.1</code>, par l'IP LAN, ou par l'IP publique.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 4 : ENDIANNESS        -->
   <!-- ══════════════════════════════ -->
   <section class="step-section" id="endianness" style="--step-color: var(--accent-2)">
     <div class="step-header">
-      <div class="step-number-badge">01</div>
+      <div class="step-number-badge">04</div>
       <div>
         <div class="step-fn">htons / htonl / ntohs / ntohl</div>
         <div class="step-subtitle">L'ordre des octets en réseau</div>
@@ -681,11 +1335,11 @@
   <div class="step-divider"></div>
 
   <!-- ══════════════════════════════ -->
-  <!-- SECTION 2 : GETADDRINFO       -->
+  <!-- SECTION 5 : GETADDRINFO       -->
   <!-- ══════════════════════════════ -->
   <section class="step-section" id="getaddrinfo" style="--step-color: var(--accent-3)">
     <div class="step-header">
-      <div class="step-number-badge">02</div>
+      <div class="step-number-badge">05</div>
       <div>
         <div class="step-fn">getaddrinfo() / freeaddrinfo()</div>
         <div class="step-subtitle">Résoudre une adresse proprement</div>
@@ -769,11 +1423,11 @@
   <div class="step-divider"></div>
 
   <!-- ══════════════════════════════ -->
-  <!-- SECTION 3 : GETSOCKNAME       -->
+  <!-- SECTION 6 : GETSOCKNAME       -->
   <!-- ══════════════════════════════ -->
   <section class="step-section" id="getsockname" style="--step-color: var(--accent-4)">
     <div class="step-header">
-      <div class="step-number-badge">03</div>
+      <div class="step-number-badge">06</div>
       <div>
         <div class="step-fn">getsockname()</div>
         <div class="step-subtitle">Demander au socket son adresse</div>
@@ -840,11 +1494,11 @@
   <div class="step-divider"></div>
 
   <!-- ══════════════════════════════ -->
-  <!-- SECTION 4 : SETSOCKOPT        -->
+  <!-- SECTION 7 : SETSOCKOPT        -->
   <!-- ══════════════════════════════ -->
   <section class="step-section" id="setsockopt" style="--step-color: var(--accent-5)">
     <div class="step-header">
-      <div class="step-number-badge">04</div>
+      <div class="step-number-badge">07</div>
       <div>
         <div class="step-fn">setsockopt()</div>
         <div class="step-subtitle">Configurer le comportement du socket</div>
@@ -926,6 +1580,27 @@
     <div class="summary-title">Récap — <em>l'essentiel</em></div>
     <div class="summary-subtitle">Ce que tu dois retenir et utiliser dans Webserv</div>
     <div class="summary-grid">
+      <div class="summary-card" style="--step-color: var(--accent-1)">
+        <div class="summary-icon">🌐</div>
+        <div>
+          <div class="summary-card-fn">IPv4 : 32 bits = 4 octets</div>
+          <div class="summary-card-desc">127.0.0.1 = loopback, 192.168.x.x = privé, 0.0.0.0 = toutes les interfaces. L'IP identifie la machine.</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-3)">
+        <div class="summary-icon">🔌</div>
+        <div>
+          <div class="summary-card-fn">Ports : 0–65535 (16 bits)</div>
+          <div class="summary-card-desc">0-1023 = root, 1024-49151 = registered (Webserv ici), 49152+ = éphémères. Le port identifie le service.</div>
+        </div>
+      </div>
+      <div class="summary-card" style="--step-color: var(--accent-5)">
+        <div class="summary-icon">📡</div>
+        <div>
+          <div class="summary-card-fn">NAT : privé ↔ public</div>
+          <div class="summary-card-desc">La box remplace l'IP privée par la publique. Port forwarding pour rendre un serveur local accessible depuis Internet.</div>
+        </div>
+      </div>
       <div class="summary-card" style="--step-color: var(--accent-2)">
         <div class="summary-icon">🔄</div>
         <div>
@@ -961,7 +1636,7 @@
 
 <footer class="footer">
   <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
-  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — Adressage réseau & options de socket</p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — IP, Ports, NAT & Adressage réseau</p>
 </footer>
 
 <script>
@@ -992,7 +1667,7 @@
   sections.forEach(s => observer.observe(s));
 
   // Update nav pills on scroll
-  const navIds = ['endianness', 'getaddrinfo', 'getsockname', 'setsockopt'];
+  const navIds = ['ip', 'ports', 'nat', 'endianness', 'getaddrinfo', 'getsockname', 'setsockopt'];
   const sectionEls = navIds.map(id => document.getElementById(id));
   const navEls = navIds.map(id => document.getElementById('nav-' + id));
 

@@ -1098,25 +1098,31 @@
         </div>
       </div>
 
-      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
+      <div class="card" data-page="03-http-protocol/mime-types.html" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim); cursor: pointer;">
         <span class="card-tag">Contenu</span>
-        <h3>MIME Types & Content-Type</h3>
+        <h3><a href="03-http-protocol/mime-types.html" style="text-decoration: none;">MIME Types & Content-Type</a></h3>
         <p>
-          Le serveur doit identifier le type de fichier servi et envoyer le bon <code>Content-Type</code> : 
-          <code>text/html</code>, <code>image/png</code>, <code>application/json</code>, etc. 
-          Sans cela, le navigateur ne sait pas comment interpréter la réponse. 
+          Le serveur doit identifier le type de fichier servi et envoyer le bon <code>Content-Type</code> :
+          <code>text/html</code>, <code>image/png</code>, <code>application/json</code>, etc.
+          Sans cela, le navigateur ne sait pas comment interpréter la réponse.
           Typiquement implémenté via une map extension → MIME type.
         </p>
+        <div class="card-links">
+          <a class="card-link" href="03-http-protocol/mime-types.html">Voir le cours →</a>
+        </div>
       </div>
 
-      <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
+      <div class="card" data-page="03-http-protocol/multipart-upload.html" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim); cursor: pointer;">
         <span class="card-tag">Upload</span>
-        <h3>Upload de fichiers (multipart/form-data)</h3>
+        <h3><a href="03-http-protocol/multipart-upload.html" style="text-decoration: none;">Upload de fichiers (multipart/form-data)</a></h3>
         <p>
-          Les uploads passent par un POST avec un <code>Content-Type: multipart/form-data</code>. 
-          Le body contient des "parts" séparées par un boundary. Chaque part a ses propres headers 
+          Les uploads passent par un POST avec un <code>Content-Type: multipart/form-data</code>.
+          Le body contient des "parts" séparées par un boundary. Chaque part a ses propres headers
           (nom du champ, nom de fichier, type MIME) suivis du contenu binaire.
         </p>
+        <div class="card-links">
+          <a class="card-link" href="03-http-protocol/multipart-upload.html">Voir le cours →</a>
+        </div>
         <div class="card-quote">
           « Clients must be able to upload files. »
           — webserv.pdf, IV.1 Requirements
@@ -1157,45 +1163,123 @@
     </div>
 
     <div class="concepts-grid">
-      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
-        <span class="card-tag">Parsing</span>
-        <h3>Parser un fichier de config structuré</h3>
+      <div class="card" data-page="04-Fichier-de-configuration/nginx-config-foundations.html" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim); cursor: pointer;">
+        <span class="card-tag">Fondation</span>
+        <h3><a href="04-Fichier-de-configuration/nginx-config-foundations.html" style="text-decoration: none;">C'est quoi NGINX, concrètement ?</a></h3>
         <p>
-          Implémenter un lexer/parser pour lire des blocs imbriqués (server, location). 
-          Gérer les accolades, les directives, les valeurs, les commentaires. 
-          Le format n'est pas imposé mais NGINX est la référence suggérée. 
-          Validation des valeurs : ports valides, chemins existants, méthodes HTTP connues.
+          NGINX est un serveur web (et proxy) basé sur un modèle événementiel. 
+          Il sépare un <strong>master process</strong> (lecture/validation de config) et des <strong>worker processes</strong>
+          (traitement des requêtes). Son comportement est défini dans <code>nginx.conf</code>, par contextes
+          (<code>main</code> → <code>http</code> → <code>server</code> → <code>location</code>). 
+          Dans webserv, on reprend cette logique déclarative : règles en config, pas en dur dans le code C++.
+        </p>
+        <div class="card-quote">
+          « nginx has one master process and several worker processes. »
+          — NGINX Beginner’s Guide
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="04-Fichier-de-configuration/nginx-config-foundations.html">Voir le cours →</a>
+          <a class="card-link" href="https://nginx.org/en/docs/beginners_guide.html" target="_blank">NGINX Beginner Guide</a>
+          <a class="card-link" href="https://nginx.org/en/docs/beginners_guide.html#conf_structure" target="_blank">Configuration File’s Structure</a>
+        </div>
+      </div>
+
+      <div class="card" data-page="04-Fichier-de-configuration/config-file-complete-guide.html" style="--card-accent: var(--accent-2); --card-accent-dim: var(--accent-2-dim); cursor: pointer;">
+        <span class="card-tag">Fondation</span>
+        <h3><a href="04-Fichier-de-configuration/config-file-complete-guide.html" style="text-decoration: none;">Pourquoi un fichier de configuration ?</a></h3>
+        <p>
+          Le fichier de config sépare la logique réseau/HTTP du comportement fonctionnel du site. 
+          Un seul binaire peut alors servir plusieurs ports, plusieurs routes et plusieurs règles 
+          sans recompilation. Au démarrage, le serveur lit ce fichier, valide les directives, 
+          puis construit les structures de configuration utilisées à chaque requête.
         </p>
         <div class="card-links">
-          <a class="card-link" href="https://nginx.org/en/docs/beginners_guide.html" target="_blank">NGINX Beginner Guide</a>
+          <a class="card-link" href="04-Fichier-de-configuration/config-file-complete-guide.html">Voir le cours →</a>
+        </div>
+      </div>
+
+      <div class="card" data-page="04-Fichier-de-configuration/config-terms-glossary.html" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim); cursor: pointer;">
+        <span class="card-tag">Vocabulaire</span>
+        <h3><a href="04-Fichier-de-configuration/config-terms-glossary.html" style="text-decoration: none;">Les termes à maîtriser</a></h3>
+        <p>
+          <code>server</code> définit un site virtuel, <code>listen</code> définit l'interface et le port, 
+          <code>location</code> définit une règle par préfixe d'URI, <code>root</code> ancre la recherche 
+          de fichiers sur le disque, <code>index</code> choisit le fichier par défaut d'un répertoire, 
+          <code>autoindex</code> active ou non le listing de dossier.
+        </p>
+        <div class="card-links">
+          <a class="card-link" href="04-Fichier-de-configuration/config-terms-glossary.html">Voir le glossaire →</a>
           <a class="card-link" href="https://nginx.org/en/docs/http/ngx_http_core_module.html" target="_blank">NGINX Core Module</a>
         </div>
       </div>
 
       <div class="card" style="--card-accent: var(--accent-4); --card-accent-dim: var(--accent-4-dim);">
-        <span class="card-tag">Directives</span>
-        <h3>Ce que la config doit supporter</h3>
+        <span class="card-tag">Sujet IV.3</span>
+        <h3>Ce que la config doit absolument couvrir</h3>
         <p>
-          Le sujet liste explicitement : paires interface:port, pages d'erreur par défaut, 
-          taille max du body client, et par route : méthodes autorisées, redirections, 
-          racine du répertoire, directory listing, fichier index par défaut, 
-          upload autorisé avec chemin de stockage, et exécution CGI par extension.
+          Le minimum attendu : paires interface:port, pages d'erreur par défaut, taille max du body client, 
+          et par route : méthodes HTTP autorisées, redirection, racine de fichiers, directory listing, 
+          fichier index, upload autorisé avec chemin de stockage, et exécution CGI selon l'extension.
         </p>
         <div class="card-quote">
-          « Directory where the requested file should be located (e.g., if URL /kapouet is rooted to /tmp/www, URL /kapouet/pouic/toto/pouet will search for /tmp/www/pouic/toto/pouet). »
+          « In the configuration file, you should be able to define all the interface:port pairs on which your server will listen to. »
           — webserv.pdf, IV.3
         </div>
       </div>
 
       <div class="card" style="--card-accent: var(--accent-1); --card-accent-dim: var(--accent-1-dim);">
         <span class="card-tag">Routing</span>
-        <h3>Matching de routes (sans regex)</h3>
+        <h3>Sélection de route : préfixe le plus long</h3>
         <p>
-          Quand une requête arrive, le serveur doit trouver quel bloc <code>location</code> 
-          correspond à l'URI demandée. Le sujet précise explicitement qu'aucune regex n'est requise — 
-          un matching par préfixe suffit. Il faut ensuite combiner le root de la location 
-          avec le reste du chemin pour trouver le fichier.
+          Le sujet ne demande pas de regex : un matching par préfixe suffit. 
+          Si plusieurs <code>location</code> matchent l'URI, on choisit la plus spécifique 
+          (préfixe le plus long). Cette étape détermine quelle configuration route s'applique 
+          avant toute résolution de fichier.
         </p>
+        <div class="card-quote">
+          « Specify rules or configurations on a URL/route (no regex required here). »
+          — webserv.pdf, IV.3
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+        <span class="card-tag">Parsing</span>
+        <h3>Lexer + Parser + Validation</h3>
+        <p>
+          Le parser lit des blocs imbriqués, gère accolades/directives/valeurs/commentaires, 
+          puis remplit des structures <code>ServerConfig</code> et <code>LocationConfig</code>. 
+          La validation se fait au démarrage : ports valides, méthodes connues, chemins cohérents, 
+          directives obligatoires présentes.
+        </p>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-3); --card-accent-dim: var(--accent-3-dim);">
+        <span class="card-tag">Résolution</span>
+        <h3>Du root au fichier final</h3>
+        <p>
+          Une fois la location choisie, le serveur construit le chemin cible à partir de 
+          <code>root</code> + URI résiduelle, vérifie si la cible existe, puis applique la logique : 
+          fichier direct, index si répertoire, autoindex si activé, sinon erreur appropriée. 
+          C'est le cœur du comportement statique du serveur.
+        </p>
+        <div class="card-quote">
+          « ...if URL /kapouet is rooted to /tmp/www, URL /kapouet/pouic/toto/pouet will search for /tmp/www/pouic/toto/pouet. »
+          — webserv.pdf, IV.3
+        </div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+        <span class="card-tag">Pratique Webserv</span>
+        <h3>CGI, upload et robustesse runtime</h3>
+        <p>
+          Les routes peuvent autoriser l'upload et déclencher un CGI selon l'extension. 
+          Le serveur doit préparer l'environnement CGI, unchunk les bodies si nécessaire, 
+          traiter EOF comme fin de flux quand requis, et rester résilient en cas d'erreurs 
+          pour ne jamais bloquer l'event loop.
+        </p>
+        <div class="card-links">
+          <a class="card-link" href="https://datatracker.ietf.org/doc/html/rfc3875" target="_blank">RFC 3875 — CGI/1.1</a>
+        </div>
       </div>
     </div>
   </section>

@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glossaire configuration Webserv — Termes à maîtriser</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 760px; height: 760px; top: -260px; left: -180px; background: radial-gradient(ellipse, rgba(192,132,252,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 640px; height: 640px; top: 35vh; right: -220px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 540px; height: 540px; bottom: 8vh; left: 18%; background: radial-gradient(ellipse, rgba(250,204,21,0.05) 0%, transparent 70%); }
+
+  .progress-bar,
+  .header,
+  .main,
+  .footer { position: relative; z-index: 1; }
+
+  .progress-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+  }
+
+  .progress-inner {
+    max-width: 980px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .back-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.2s, background 0.2s;
+  }
+
+  .back-link:hover {
+    color: var(--accent-3);
+    background: rgba(192,132,252,0.07);
+  }
+
+  .progress-back-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 0.75rem;
+  }
+
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 100px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .step-pill:hover { color: var(--text); }
+
+  .step-pill.active {
+    background: rgba(192,132,252,0.1);
+    color: var(--accent-3);
+  }
+
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 6px;
+  }
+
+  .header {
+    padding: 3rem 2rem 2rem;
+    max-width: 980px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--accent-3);
+    background: rgba(192,132,252,0.08);
+    border: 1px solid rgba(192,132,252,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 1.2rem;
+  }
+
+  .header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .header h1 em { font-style: italic; color: var(--accent-3); }
+
+  .header-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    max-width: 840px;
+    line-height: 1.7;
+  }
+
+  .header-desc code {
+    font-family: 'Space Mono', monospace;
+    color: var(--accent-3);
+  }
+
+  .main {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  .step-section {
+    padding: 4rem 0 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    scroll-margin-top: 80px;
+  }
+
+  .step-section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .step-number-badge {
+    font-family: 'Instrument Serif', serif;
+    font-size: 4rem;
+    line-height: 1;
+    opacity: 0.15;
+    flex-shrink: 0;
+    color: var(--step-color, var(--accent-3));
+  }
+
+  .step-fn {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--step-color, var(--accent-3));
+    margin-bottom: 0.3rem;
+  }
+
+  .step-subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  .step-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 1.5rem 0;
+  }
+
+  .code-panel {
+    background: #0d0f17;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+    position: relative;
+  }
+
+  .code-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-3));
+    opacity: 0.7;
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid #23273a;
+    background: #101320;
+  }
+
+  .code-header-left { display: flex; align-items: center; gap: 0.65rem; }
+
+  .code-dots { display: flex; gap: 0.4rem; }
+
+  .code-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #39435f;
+  }
+
+  .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dot:nth-child(2) { background: #febc2e; }
+  .code-dot:nth-child(3) { background: #28c840; }
+
+  .code-filename {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    letter-spacing: 0.03em;
+  }
+
+  .code-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--step-color, var(--accent-3));
+    opacity: 0.9;
+  }
+
+  .code-panel pre {
+    margin: 0;
+    padding: 1.2rem;
+    overflow-x: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.74rem;
+    line-height: 1.7;
+    color: #d7def8;
+  }
+
+  .code-panel .dir { color: #4ae0ff; }
+  .code-panel .num { color: #facc15; }
+  .code-panel .cmt { color: #6f7897; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.6rem;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1.2rem;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-3));
+    opacity: 0.55;
+  }
+
+  .panel-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--step-color, var(--accent-3));
+    margin-bottom: 0.9rem;
+    opacity: 0.9;
+  }
+
+  .panel p {
+    font-size: 0.92rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+    font-weight: 300;
+  }
+
+  .panel p + p { margin-top: 0.7rem; }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .chip {
+    border: 1px solid rgba(139,137,160,0.24);
+    background: rgba(139,137,160,0.06);
+    color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.64rem;
+    padding: 0.22rem 0.55rem;
+    border-radius: 999px;
+  }
+
+  .terms-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .term-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem;
+    position: relative;
+  }
+
+  .term-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: var(--step-color, var(--accent-3));
+    opacity: 0.45;
+  }
+
+  .term-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--step-color, var(--accent-3));
+    margin-bottom: 0.55rem;
+  }
+
+  .term-card p {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    line-height: 1.7;
+    font-weight: 300;
+  }
+
+  .term-extra {
+    margin-top: 0.65rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.66rem;
+    color: var(--text-muted);
+  }
+
+  .quote-box {
+    border-left: 2px solid var(--step-color, var(--accent-3));
+    padding: 1rem 1rem 1rem 1.1rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 0 8px 8px 0;
+    margin-top: 1.2rem;
+  }
+
+  .quote-box p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.2rem;
+    line-height: 1.45;
+    color: var(--text);
+  }
+
+  .quote-box cite {
+    display: block;
+    margin-top: 0.6rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .warning {
+    border: 1px solid rgba(255,107,74,0.28);
+    background: rgba(255,107,74,0.06);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    color: #ffd5ca;
+    font-size: 0.88rem;
+    line-height: 1.65;
+    margin-top: 1rem;
+  }
+
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+  }
+
+  .footer a { color: var(--accent-3); text-decoration: none; }
+
+  @media (max-width: 950px) {
+    .step-connector { display: none; }
+    .progress-inner { overflow-x: auto; scrollbar-width: thin; }
+  }
+
+  @media (max-width: 760px) {
+    .progress-bar,
+    .header,
+    .main,
+    .footer { padding-left: 1rem; padding-right: 1rem; }
+
+    .terms-grid { grid-template-columns: 1fr; }
+
+    .step-header {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .step-number-badge { font-size: 3rem; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#sample" class="step-pill active"><span class="step-dot"></span>Exemple</a>
+    <div class="step-connector"></div>
+    <a href="#core" class="step-pill"><span class="step-dot"></span>Core</a>
+    <div class="step-connector"></div>
+    <a href="#routing" class="step-pill"><span class="step-dot"></span>Routage</a>
+    <div class="step-connector"></div>
+    <a href="#behavior" class="step-pill"><span class="step-dot"></span>Comportement</a>
+    <div class="step-connector"></div>
+    <a href="#custom" class="step-pill"><span class="step-dot"></span>Webserv</a>
+    <div class="step-connector"></div>
+    <a href="#checklist" class="step-pill"><span class="step-dot"></span>Checklist</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Fichier de configuration</div>
+  <h1>Glossaire des <em>termes</em> à maîtriser</h1>
+  <p class="header-desc">
+    Cette page explique précisément les directives utilisées dans ton exemple de configuration.
+    Les définitions <code>server</code>, <code>listen</code>, <code>server_name</code>, <code>location</code>,
+    <code>root</code>, <code>index</code>, <code>client_max_body_size</code> et <code>error_page</code>
+    sont alignées avec la documentation officielle du module HTTP core de NGINX.
+  </p>
+</div>
+
+<div class="main">
+
+  <section class="step-section" id="sample" style="--step-color: var(--accent-3);">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">config sample</div>
+        <div class="step-subtitle">Le fichier qu’on utilise comme référence</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">webserv.conf</span>
+        </div>
+        <span class="code-tag">Extrait complet</span>
+      </div>
+      <pre><span class="cmt"># Site principal sur le port 8080</span>
+<span class="dir">server</span> {
+    <span class="dir">listen</span> <span class="num">8080</span>;
+    <span class="dir">server_name</span> localhost;
+    <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+
+    <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+    <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
+
+    <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/html;
+        <span class="dir">index</span>           index.html;
+        allowed_methods GET;
+        <span class="dir">autoindex</span>       off;
+    }
+
+    <span class="dir">location</span> /api {
+        <span class="dir">root</span>            /var/www/api;
+        allowed_methods GET POST DELETE;
+        <span class="dir">autoindex</span>       off;
+    }
+
+    <span class="dir">location</span> /upload {
+        <span class="dir">root</span>            /var/www;
+        allowed_methods POST;
+        upload_store    /tmp/uploads;
+    }
+
+    <span class="dir">location</span> /files {
+        <span class="dir">root</span>            /var/www/shared;
+        allowed_methods GET;
+        <span class="dir">autoindex</span>       on;
+    }
+
+    <span class="dir">location</span> /old-page {
+        <span class="dir">return</span> 301 /new-page;
+    }
+
+    <span class="dir">location</span> /cgi-bin {
+        <span class="dir">root</span>            /var/www/cgi-bin;
+        allowed_methods GET POST;
+        cgi_pass        .py /usr/bin/python3;
+        cgi_pass        .php /usr/bin/php-cgi;
+    }
+}
+
+<span class="cmt"># Deuxième serveur sur port 8081</span>
+<span class="dir">server</span> {
+    <span class="dir">listen</span> <span class="num">8081</span>;
+    <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+
+    <span class="dir">location</span> / {
+        <span class="dir">root</span>            /var/www/site2;
+        <span class="dir">index</span>           index.html;
+        allowed_methods GET;
+        <span class="dir">autoindex</span>       off;
+    }
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3);">
+      <div class="panel-label">Comment lire ce fichier</div>
+      <p>
+        Tu as 2 blocs <code>server</code> (deux serveurs virtuels), chacun écoute un port différent (<code>8080</code> et <code>8081</code>).
+        Dans chaque serveur, des blocs <code>location</code> définissent les règles par préfixe d’URI.
+      </p>
+      <p>
+        Les directives dites “core NGINX” viennent du module HTTP core. D’autres directives ici
+        (<code>allowed_methods</code>, <code>upload_store</code>, <code>cgi_pass</code>) sont des choix de conception côté webserv,
+        inspirés du sujet, pas des directives standard du module core officiel.
+      </p>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="core" style="--step-color: var(--accent-2);">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">directives core</div>
+        <div class="step-subtitle">Définitions exactes (manuel NGINX)</div>
+      </div>
+    </div>
+
+    <div class="terms-grid">
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">server { ... }</div>
+        <p>Définit un serveur virtuel HTTP. Le bloc rassemble les règles d’un “site” logique.</p>
+        <div class="term-extra">Contexte: http • Dans ton fichier: 2 serveurs (8080, 8081)</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">listen address:port;</div>
+        <p>Définit l’adresse/port sur lequel ce serveur accepte les connexions.</p>
+        <div class="term-extra">Contexte: server • Exemple: listen 8080; puis listen 8081;</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">server_name name ...;</div>
+        <p>Nomme le serveur virtuel pour le routage par en-tête Host quand plusieurs serveurs partagent un même port.</p>
+        <div class="term-extra">Contexte: server • Exemple: server_name localhost;</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">client_max_body_size size;</div>
+        <p>Taille maximale autorisée pour le corps de requête. Au-delà: réponse 413.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemples: 10m et 1m</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">error_page code ... uri;</div>
+        <p>Associe un code d’erreur à une URI interne ou à une redirection dédiée.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemples: 404 et 500</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">location [modificateur] uri { ... }</div>
+        <p>Applique une configuration en fonction de l’URI. Le matching se fait d’abord sur les préfixes, puis regex si présentes.</p>
+        <div class="term-extra">Contexte: server, location • Exemples: /, /api, /upload, /files, /old-page, /cgi-bin</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">root path;</div>
+        <p>Répertoire racine utilisé pour construire le chemin local du fichier à servir.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemple: /var/www/html</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">index file ...;</div>
+        <p>Fichier par défaut d’un répertoire (module index), typiquement index.html.</p>
+        <div class="term-extra">Contexte: http, server, location • Exemple: index index.html;</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">autoindex on | off;</div>
+        <p>Active ou non le listing d’un dossier lorsqu’aucun index n’est trouvé (module autoindex).</p>
+        <div class="term-extra">Contexte: http, server, location • Exemple: /files = on</div>
+      </article>
+
+      <article class="term-card" style="--step-color: var(--accent-2);">
+        <div class="term-name">return code [text|URL|URI];</div>
+        <p>Renvoie immédiatement un statut HTTP (souvent pour redirection ou sortie rapide).</p>
+        <div class="term-extra">Contexte: server, location, if • Exemple: return 301 /new-page;</div>
+      </article>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-2);">
+      <p>« Sets configuration depending on a request URI. » et « Sets the root directory for requests. »</p>
+      <cite>— ngx_http_core_module: location, root</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="routing" style="--step-color: var(--accent-4);">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">matching</div>
+        <div class="step-subtitle">Comment une requête choisit son bloc</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4);">
+      <div class="panel-label">Ordre concret sur ton config</div>
+      <p>
+        1) Le port d’arrivée sélectionne d’abord le bloc <code>server</code> (8080 ou 8081).<br>
+        2) Ensuite, dans ce serveur, la requête est comparée aux <code>location</code> par préfixe.<br>
+        3) La route retenue applique ses directives: fichiers statiques, redirection, upload, CGI.
+      </p>
+      <div class="chips">
+        <span class="chip">GET /files/report.txt → location /files</span>
+        <span class="chip">POST /upload → location /upload</span>
+        <span class="chip">GET /old-page → location /old-page</span>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">routing-trace.txt</span>
+        </div>
+        <span class="code-tag">Exemples rapides</span>
+      </div>
+      <pre>GET /api/users HTTP/1.1   -> match <span class="dir">location</span> /api
+                           -> <span class="dir">root</span> /var/www/api
+
+GET /files/ HTTP/1.1      -> match <span class="dir">location</span> /files
+                           -> <span class="dir">autoindex</span> on
+                           -> listing de dossier si pas d'index
+
+GET /old-page HTTP/1.1    -> match <span class="dir">location</span> /old-page
+                           -> <span class="dir">return</span> 301 /new-page
+
+POST /upload HTTP/1.1     -> match <span class="dir">location</span> /upload
+                           -> limite body (server)
+                           -> stockage upload /tmp/uploads</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="behavior" style="--step-color: var(--accent-5);">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">effets</div>
+        <div class="step-subtitle">Ce que chaque terme change réellement</div>
+      </div>
+    </div>
+
+    <div class="terms-grid">
+      <article class="term-card" style="--step-color: var(--accent-5);">
+        <div class="term-name">error_page 404 /errors/404.html;</div>
+        <p>Quand la ressource est introuvable, ton serveur doit produire cette page d’erreur dédiée au lieu d’un message brut.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-5);">
+        <div class="term-name">client_max_body_size 10m;</div>
+        <p>Sur le serveur 8080, un upload de 15 Mo doit être rejeté en 413 avant traitement applicatif.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-5);">
+        <div class="term-name">root + URI</div>
+        <p>Exemple: <code>location /api</code> + <code>root /var/www/api</code> + URI <code>/api/users.json</code> donne un chemin local résolu selon ta logique de mapping.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-5);">
+        <div class="term-name">index index.html;</div>
+        <p>Sur un répertoire, le serveur tente d’abord <code>index.html</code> avant d’envisager un listing ou un 404.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-5);">
+        <div class="term-name">autoindex on;</div>
+        <p>Pour <code>/files</code>, le serveur renvoie la liste des entrées du dossier si aucun index n’est présent.</p>
+      </article>
+      <article class="term-card" style="--step-color: var(--accent-5);">
+        <div class="term-name">return 301 /new-page;</div>
+        <p>Réponse immédiate de redirection permanente. Aucune résolution de fichier derrière cette route.</p>
+      </article>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="custom" style="--step-color: var(--accent-1);">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">webserv-only</div>
+        <div class="step-subtitle">Termes custom de ton projet</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1);">
+      <div class="panel-label">Directives non core NGINX</div>
+      <p>
+        <code>allowed_methods</code>, <code>upload_store</code> et <code>cgi_pass</code> ne sont pas des directives
+        du module core officiel NGINX. Elles sont utilisées ici pour répondre explicitement au sujet webserv.
+      </p>
+      <p>
+        En pratique: <code>allowed_methods</code> pilote 405, <code>upload_store</code> choisit la destination disque,
+        <code>cgi_pass</code> associe une extension à un interpréteur.
+      </p>
+      <div class="chips">
+        <span class="chip">allowed_methods GET POST DELETE</span>
+        <span class="chip">upload_store /tmp/uploads</span>
+        <span class="chip">cgi_pass .py /usr/bin/python3</span>
+      </div>
+      <div class="warning">
+        Point important: si tu veux un mode “strictement NGINX”, l’équivalent de limitation de méthodes est
+        classiquement géré avec <code>limit_except</code>. Mais pour webserv, ton format custom est totalement cohérent
+        si le parser et l’exécution respectent bien les règles du sujet.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <section class="step-section" id="checklist" style="--step-color: var(--accent-6);">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">ready-to-implement</div>
+        <div class="step-subtitle">Checklist de validation du vocabulaire</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-6);">
+      <div class="panel-label">Ce que ton implémentation doit prouver</div>
+      <p>
+        - Chaque terme du fichier a une structure C++ claire (server, location, erreurs, limites body, redirections).<br>
+        - Le matching <code>server</code> puis <code>location</code> est déterministe.<br>
+        - Les effets runtime sont visibles: 301, 404 custom, 413, autoindex, CGI, upload.<br>
+        - Les directives custom webserv sont validées tôt, avec messages d’erreur explicites si syntaxe invalide.
+      </p>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-6);">
+      <p>Référence principale utilisée: ngx_http_core_module (server, listen, server_name, location, root, error_page, client_max_body_size).</p>
+      <cite>— https://nginx.org/en/docs/http/ngx_http_core_module.html</cite>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — Glossaire configuration</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  function scrollToId(id) {
+    if (id === 'top') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (!href || href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sections = document.querySelectorAll('.step-section');
+  var navPills = document.querySelectorAll('.step-pill');
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        var id = entry.target.id;
+        navPills.forEach(function(pill) {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { observer.observe(s); });
+</script>
+</body>
+</html>

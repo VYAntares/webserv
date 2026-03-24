@@ -123,6 +123,15 @@
   .tshark-table td .tag-http { color: var(--accent-5); font-size: 0.6rem; }
   .tshark-table td .tag-fin { color: var(--accent-1); font-size: 0.6rem; }
 
+  /* ─── METHOD TABLE ─── */
+  .method-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+  .method-table th { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); text-align: left; padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); font-weight: 400; }
+  .method-table td { font-family: 'Space Mono', monospace; font-size: 0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid rgba(42,42,66,0.4); color: var(--text-dim); vertical-align: top; }
+  .method-table td:first-child { color: var(--accent-2); font-weight: 700; }
+  .method-table .yes { color: var(--accent-4); }
+  .method-table .no { color: var(--text-muted); opacity: 0.5; }
+  .method-table .who { color: var(--accent-5); font-size: 0.68rem; }
+
   /* ─── FLOW DIAGRAM ─── */
   .flow-diagram { display: flex; flex-direction: column; gap: 0; margin-bottom: 1.5rem; }
   .flow-col-labels { display: grid; grid-template-columns: 1fr 1fr 1fr; text-align: center; font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); padding: 0.8rem 0; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
@@ -167,6 +176,8 @@
     <a href="#tcp" class="step-pill" id="nav-tcp"><span class="step-dot"></span>TCP</a>
     <div class="step-connector"></div>
     <a href="#cgi" class="step-pill" id="nav-cgi"><span class="step-dot"></span>CGI</a>
+    <div class="step-connector"></div>
+    <a href="#mime" class="step-pill" id="nav-mime"><span class="step-dot"></span>MIME</a>
   </div>
 </div>
 
@@ -829,6 +840,118 @@ std::string <span class="var">body</span>;
     </div>
   </section>
 
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 8 : MIME & MÉTHODES HTTP      -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="mime" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">08</div>
+      <div>
+        <div class="ch-fn">MIME &amp; m&eacute;thodes HTTP</div>
+        <div class="ch-subtitle">Dans quel sens circule le Content-Type</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le Content-Type circule dans les deux sens</div>
+      <p>
+        Pour <strong>GET</strong>, c'est toi (le serveur) qui produis le <code>Content-Type</code> dans ta r&eacute;ponse.
+        Pour <strong>POST</strong>, c'est le client qui t'envoie un <code>Content-Type</code> dans sa requ&ecirc;te
+        &mdash; et tu dois le lire pour savoir comment parser le body.
+      </p>
+    </div>
+
+    <table class="method-table">
+      <thead>
+        <tr>
+          <th>M&eacute;thode</th>
+          <th>MIME dans la requ&ecirc;te (entrant)</th>
+          <th>MIME dans la r&eacute;ponse (sortant)</th>
+          <th>Qui d&eacute;cide</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GET</td>
+          <td class="no">non (pas de body)</td>
+          <td class="yes">oui &mdash; tu dis ce que tu sers</td>
+          <td class="who">toi, via l'extension du fichier</td>
+        </tr>
+        <tr>
+          <td>POST</td>
+          <td class="yes">oui &mdash; le client dit ce qu'il envoie</td>
+          <td class="yes">oui &mdash; tu dis ce que tu retournes</td>
+          <td class="who">client pour la req, toi pour la r&eacute;ponse</td>
+        </tr>
+        <tr>
+          <td>DELETE</td>
+          <td class="no">non (pas de body)</td>
+          <td class="no">rarement (souvent 204 sans body)</td>
+          <td class="no">&mdash;</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="two-col">
+      <div class="code-panel" style="--step-color: var(--accent-4)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">GET &mdash; serveur produit le MIME</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">GET</span>
+        </div>
+        <pre><span class="cmt">// Client demande :</span>
+<span class="macro">GET</span> <span class="str">/style.css</span> <span class="var">HTTP/1.1</span>
+
+<span class="cmt">// Serveur r&eacute;pond :</span>
+<span class="macro">HTTP/1.1</span> <span class="num">200</span> <span class="var">OK</span>
+<span class="highlight-new"><span class="kw">Content-Type:</span> <span class="str">text/css</span>     <span class="cmt">&larr; toi</span></span>
+
+<span class="var">body</span> { <span class="var">color</span>: <span class="var">red</span>; }</pre>
+      </div>
+
+      <div class="code-panel" style="--step-color: var(--accent-2)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">POST &mdash; client dit ce qu'il envoie</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">POST</span>
+        </div>
+        <pre><span class="cmt">// Client envoie :</span>
+<span class="macro">POST</span> <span class="str">/api</span> <span class="var">HTTP/1.1</span>
+<span class="highlight-new"><span class="kw">Content-Type:</span> <span class="str">application/json</span>  <span class="cmt">&larr; lui</span></span>
+
+{<span class="str">"action"</span>: <span class="str">"create"</span>}
+
+<span class="cmt">// Ton serveur lit ce header</span>
+<span class="cmt">// pour savoir comment parser le body</span></pre>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Les 3 Content-Type de POST que ton serveur doit reconna&icirc;tre</div>
+      <ul>
+        <li><code>application/x-www-form-urlencoded</code> &mdash; formulaires simples (<code>username=alice&amp;password=1234</code>)</li>
+        <li><code>multipart/form-data</code> &mdash; uploads de fichiers (parties s&eacute;par&eacute;es par un boundary)</li>
+        <li><code>application/json</code>, <code>text/plain</code>, etc. &mdash; pass&eacute; tel quel au CGI</li>
+      </ul>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Chunked + POST = les deux probl&egrave;mes combin&eacute;s.</strong>
+        Un POST peut arriver en <code>Transfer-Encoding: chunked</code> avec un
+        <code>Content-Type: multipart/form-data</code>. Tu dois d'abord d&eacute;coder les chunks
+        (<code>decode_chunked()</code>), puis parser le body selon son Content-Type.
+      </div>
+    </div>
+  </section>
+
   <!-- ══════════════════════════════════════ -->
   <!-- RÉSUMÉ                                 -->
   <!-- ══════════════════════════════════════ -->
@@ -892,7 +1015,7 @@ std::string <span class="var">body</span>;
     entries.forEach(function(e) { if (e.isIntersecting) e.target.classList.add('visible'); });
   }, { threshold: 0.05 });
   sections.forEach(function(s) { observer.observe(s); });
-  var navIds = ['normal','probleme','format','tshark','parser','tcp','cgi'];
+  var navIds = ['normal','probleme','format','tshark','parser','tcp','cgi','mime'];
   var sectionEls = navIds.map(function(id) { return document.getElementById(id); });
   var navEls = navIds.map(function(id) { return document.getElementById('nav-' + id); });
   var navObserver = new IntersectionObserver(function(entries) {

@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Upload de fichiers &mdash; multipart/form-data d&eacute;crypt&eacute;</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #222236;
+    --border: #2a2a42;
+    --border-glow: #3a3a5c;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --text-muted: #5c5a72;
+    --accent-1: #ff6b4a;
+    --accent-2: #4ae0ff;
+    --accent-3: #c084fc;
+    --accent-4: #4ade80;
+    --accent-5: #facc15;
+    --accent-6: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  body::after { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; }
+
+  .bg-glow { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; filter: blur(80px); }
+  .bg-glow-1 { width: 700px; height: 700px; top: -200px; left: -150px; background: radial-gradient(ellipse, rgba(74,222,128,0.05) 0%, transparent 70%); }
+  .bg-glow-2 { width: 600px; height: 600px; top: 40vh; right: -200px; background: radial-gradient(ellipse, rgba(74,224,255,0.05) 0%, transparent 70%); }
+  .bg-glow-3 { width: 500px; height: 500px; bottom: 10vh; left: 20%; background: radial-gradient(ellipse, rgba(250,204,21,0.04) 0%, transparent 70%); }
+
+  .progress-bar { position: sticky; top: 0; z-index: 100; background: rgba(10,10,15,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; }
+  .progress-inner { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 0; justify-content: center; }
+  .back-link { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.5rem; border-radius: 6px; white-space: nowrap; flex-shrink: 0; transition: color 0.2s, background 0.2s; }
+  .back-link:hover { color: var(--accent-4); background: rgba(74,222,128,0.07); }
+  .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
+  .step-pill { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.8rem; border-radius: 100px; font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); cursor: pointer; transition: all 0.3s; text-decoration: none; white-space: nowrap; }
+  .step-pill:hover { color: var(--text); }
+  .step-pill.active { background: rgba(74,222,128,0.1); color: var(--accent-4); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .step-connector { flex: 1; height: 1px; background: var(--border); min-width: 6px; }
+
+  .header { padding: 3rem 2rem 2rem; max-width: 900px; margin: 0 auto; border-bottom: 1px solid var(--border); position: relative; z-index: 1; }
+  .header-tag { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent-4); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 0.3rem 0.8rem; border-radius: 100px; display: inline-block; margin-bottom: 1.2rem; }
+  .header h1 { font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 1rem; }
+  .header h1 em { font-style: italic; color: var(--accent-4); }
+  .header-desc { font-size: 1rem; color: var(--text-dim); font-weight: 300; max-width: 600px; line-height: 1.7; }
+  .header-desc code { font-family: 'Space Mono', monospace; color: var(--accent-4); }
+
+  .main { max-width: 900px; margin: 0 auto; padding: 0 2rem 6rem; position: relative; z-index: 1; }
+
+  .chapter { padding: 4rem 0 2rem; opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; position: relative; z-index: 1; }
+  .chapter.visible { opacity: 1; transform: translateY(0); }
+  .ch-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2.5rem; }
+  .ch-number { font-family: 'Instrument Serif', serif; font-size: 4rem; line-height: 1; opacity: 0.15; flex-shrink: 0; color: var(--step-color, var(--accent-4)); }
+  .ch-fn { font-family: 'Space Mono', monospace; font-size: 1.4rem; font-weight: 700; color: var(--step-color, var(--accent-4)); margin-bottom: 0.3rem; }
+  .ch-subtitle { font-family: 'Instrument Serif', serif; font-size: 1.8rem; font-weight: 400; color: var(--text); }
+  .ch-divider { height: 1px; background: linear-gradient(90deg, var(--border), transparent); margin: 2rem 0; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-top: 2px solid var(--step-color, var(--accent-4)); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .panel-label { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--step-color, var(--accent-4)); margin-bottom: 0.8rem; }
+  .panel p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; margin-bottom: 0.6rem; }
+  .panel p:last-child { margin-bottom: 0; }
+  .panel ul { color: var(--text-dim); font-size: 0.88rem; line-height: 1.8; padding-left: 1.2rem; margin-top: 0.5rem; }
+  .panel li { margin-bottom: 0.4rem; }
+  .panel code { font-family: 'Space Mono', monospace; font-size: 0.78rem; color: var(--accent-4); background: rgba(74,222,128,0.06); padding: 0.15rem 0.4rem; border-radius: 4px; }
+  .panel strong { color: var(--text); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  .code-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem; }
+  .code-header { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  .code-header-left { display: flex; align-items: center; gap: 0.6rem; }
+  .code-dots { display: flex; gap: 5px; }
+  .code-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .code-dots .code-dot:nth-child(1) { background: #ff5f57; }
+  .code-dots .code-dot:nth-child(2) { background: #ffbd2e; }
+  .code-dots .code-dot:nth-child(3) { background: #28c840; }
+  .code-filename { font-family: 'Space Mono', monospace; font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .code-tag { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.2rem 0.5rem; border-radius: 4px; }
+  .code-panel pre { padding: 1.2rem 1.5rem; overflow-x: auto; font-family: 'Space Mono', monospace; font-size: 0.78rem; line-height: 1.8; color: var(--text-dim); tab-size: 4; }
+  .kw { color: var(--accent-3); } .fn-name { color: var(--accent-2); } .str { color: var(--accent-4); }
+  .num { color: var(--accent-1); } .cmt { color: var(--text-muted); font-style: italic; }
+  .macro { color: var(--accent-5); } .var { color: var(--text); } .type { color: var(--accent-6); }
+  .highlight-line { background: rgba(74,222,128,0.06); display: block; margin: 0 -1.5rem; padding: 0 1.5rem; border-left: 2px solid var(--accent-4); }
+  .highlight-new { background: rgba(74,224,255,0.06); display: block; margin: 0 -1.5rem; padding: 0 1.5rem; border-left: 2px solid var(--accent-2); }
+  .highlight-bad { background: rgba(255,107,74,0.05); display: block; margin: 0 -1.5rem; padding: 0 1.5rem; border-left: 2px solid rgba(255,107,74,0.3); text-decoration: line-through; opacity: 0.5; }
+
+  .warning { background: rgba(255,107,74,0.06); border: 1px solid rgba(255,107,74,0.2); border-radius: 10px; padding: 1.2rem 1.5rem; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .warning strong { color: var(--accent-1); } .warning code { font-family: 'Space Mono', monospace; font-size: 0.78rem; color: var(--accent-1); }
+  .info-box { background: rgba(74,222,128,0.04); border: 1px solid rgba(74,222,128,0.15); border-radius: 10px; padding: 1.2rem 1.5rem; margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; }
+  .info-box strong { color: var(--accent-4); } .info-box code { font-family: 'Space Mono', monospace; font-size: 0.78rem; color: var(--accent-4); }
+  .quote-box { border-left: 3px solid var(--accent-4); padding: 1.2rem 1.5rem; margin: 0 0 1.5rem 0; background: rgba(74,222,128,0.03); border-radius: 0 8px 8px 0; }
+  .quote-box p { font-family: 'Space Mono', monospace; font-size: 0.75rem; font-style: italic; color: var(--text-dim); line-height: 1.8; margin-bottom: 0.3rem; }
+  .quote-box cite { font-family: 'Space Mono', monospace; font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.05em; }
+
+  /* ─── WIRE DIAGRAM ─── */
+  .wire-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; overflow-x: auto; }
+  .wire-title { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); margin-bottom: 1rem; text-align: center; }
+  .wire-row { display: flex; align-items: stretch; margin-bottom: 0.3rem; font-family: 'Space Mono', monospace; font-size: 0.75rem; line-height: 1.6; }
+  .wire-bytes { flex: 1; padding: 0.5rem 0.8rem; border-radius: 6px; color: var(--text); }
+  .wire-annotation { flex: 1; padding: 0.5rem 0.8rem; color: var(--text-muted); font-size: 0.72rem; display: flex; align-items: center; }
+  .wire-arrow { color: var(--text-muted); padding: 0 0.5rem; display: flex; align-items: center; font-size: 0.7rem; }
+  .wire-boundary { background: rgba(255,107,74,0.08); border: 1px solid rgba(255,107,74,0.2); }
+  .wire-header { background: rgba(192,132,252,0.08); border: 1px solid rgba(192,132,252,0.15); }
+  .wire-data { background: rgba(74,224,255,0.06); border: 1px solid rgba(74,224,255,0.12); }
+  .wire-crlf { background: rgba(250,204,21,0.06); border: 1px solid rgba(250,204,21,0.12); }
+  .wire-end { background: rgba(74,222,128,0.06); border: 1px solid rgba(74,222,128,0.15); }
+
+  /* ─── COMPARE TABLE ─── */
+  .compare-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+  .compare-table th { font-family: 'Space Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); text-align: left; padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); font-weight: 400; }
+  .compare-table td { font-size: 0.8rem; padding: 0.65rem 1rem; border-bottom: 1px solid rgba(42,42,66,0.4); color: var(--text-dim); vertical-align: top; line-height: 1.6; }
+  .compare-table td:first-child { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--accent-4); font-weight: 700; white-space: nowrap; }
+  .compare-table code { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--accent-3); background: rgba(192,132,252,0.06); padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .compare-table tr:hover td { background: rgba(74,222,128,0.02); }
+  .compare-table .yes { color: var(--accent-4); } .compare-table .no { color: var(--text-muted); opacity: 0.5; }
+
+  /* ─── SUMMARY ─── */
+  .summary-section { margin-top: 4rem; padding: 3rem; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; position: relative; overflow: hidden; }
+  .summary-section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, var(--accent-4), var(--accent-2), var(--accent-3), var(--accent-1)); }
+  .summary-title { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; margin-bottom: 0.5rem; }
+  .summary-title em { font-style: italic; color: var(--accent-4); }
+  .summary-subtitle { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; margin-bottom: 2rem; }
+
+  .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); margin-top: 4rem; position: relative; z-index: 1; }
+  .footer p { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
+  .footer a { color: var(--accent-4); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour</a>
+    <div class="progress-back-divider"></div>
+    <a href="#contexte" class="step-pill active" id="nav-contexte"><span class="step-dot"></span>Contexte</a>
+    <div class="step-connector"></div>
+    <a href="#formats" class="step-pill" id="nav-formats"><span class="step-dot"></span>3 formats</a>
+    <div class="step-connector"></div>
+    <a href="#boundary" class="step-pill" id="nav-boundary"><span class="step-dot"></span>Boundary</a>
+    <div class="step-connector"></div>
+    <a href="#anatomie" class="step-pill" id="nav-anatomie"><span class="step-dot"></span>Anatomie</a>
+    <div class="step-connector"></div>
+    <a href="#binaire" class="step-pill" id="nav-binaire"><span class="step-dot"></span>Binaire</a>
+    <div class="step-connector"></div>
+    <a href="#parser" class="step-pill" id="nav-parser"><span class="step-dot"></span>Parser</a>
+    <div class="step-connector"></div>
+    <a href="#pieges" class="step-pill" id="nav-pieges"><span class="step-dot"></span>Pi&egrave;ges</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">03 &mdash; HTTP Protocol &mdash; Upload</div>
+  <h1>Upload de fichiers<br><em>multipart/form-data</em> d&eacute;crypt&eacute;</h1>
+  <p class="header-desc">
+    Le sujet dit &laquo; clients must be able to upload files &raquo;.
+    Les uploads passent par un <code>POST</code> avec un <code>Content-Type</code>
+    sp&eacute;cial : <code>multipart/form-data</code>. Le body contient des &laquo; parts &raquo;
+    s&eacute;par&eacute;es par un boundary. Chaque part a ses propres headers et son contenu binaire.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : CONTEXTE — POST & CONTENT-TYPE -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="contexte" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">01</div>
+      <div>
+        <div class="ch-fn">POST &amp; Content-Type</div>
+        <div class="ch-subtitle">Le client dit ce qu'il envoie</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; Clients must be able to upload files. &raquo;</p>
+      <cite>&mdash; webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3)">
+      <div class="panel-label">Rappel : le sens du Content-Type</div>
+      <p>
+        On a vu dans la page MIME que le <code>Content-Type</code> circule dans <strong>les deux sens</strong>.
+        Pour <strong>GET</strong>, c'est toi (le serveur) qui produis le <code>Content-Type</code> dans ta r&eacute;ponse
+        &mdash; tu dis &laquo; je te sers du <code>text/css</code> &raquo;.
+      </p>
+      <p>
+        Pour <strong>POST</strong>, c'est <strong>le client</strong> qui t'envoie un <code>Content-Type</code>
+        dans sa <strong>requ&ecirc;te</strong>. Il te dit &laquo; je t'envoie du <code>application/json</code> &raquo;
+        ou &laquo; je t'envoie du <code>multipart/form-data</code> &raquo;. Et toi, tu lis ce header
+        pour savoir <strong>comment parser le body</strong>.
+      </p>
+    </div>
+
+    <div class="wire-box">
+      <div class="wire-title">GET vs POST &mdash; qui produit le Content-Type</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-header" style="flex:0.5; font-size:0.7rem;"><span style="color:var(--accent-2)">GET</span></div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-data" style="flex:1.5; font-size:0.68rem;">
+          Client demande <code>/style.css</code>
+        </div>
+        <div class="wire-arrow">&larr;</div>
+        <div class="wire-bytes wire-end" style="flex:1.2; font-size:0.68rem;">
+          <span style="color:var(--accent-4)">Content-Type: text/css</span> &larr; <strong>toi</strong>
+        </div>
+      </div>
+
+      <div style="height:0.6rem;"></div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-header" style="flex:0.5; font-size:0.7rem;"><span style="color:var(--accent-1)">POST</span></div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-boundary" style="flex:1.5; font-size:0.68rem;">
+          <span style="color:var(--accent-1)">Content-Type: multipart/form-data</span> &larr; <strong>lui</strong>
+        </div>
+        <div class="wire-arrow">&larr;</div>
+        <div class="wire-bytes wire-end" style="flex:1.2; font-size:0.68rem;">
+          <span style="color:var(--accent-4)">201 Created</span> &larr; <strong>toi</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le Content-Type du POST te dit comment parser.</strong>
+        Sans lire ce header, tu ne peux pas savoir si le body contient
+        <code>username=alice</code> ou des octets binaires d'une image JPEG
+        s&eacute;par&eacute;s par des boundaries.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LES 3 FORMATS POST       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="formats" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">02</div>
+      <div>
+        <div class="ch-fn">Les 3 formats POST</div>
+        <div class="ch-subtitle">Formulaire, upload, JSON</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Quand un client fait POST, il choisit l'un de ces 3 formats</div>
+      <p>
+        C'est <strong>le client qui d&eacute;cide</strong> du format. Le navigateur choisit automatiquement
+        selon le type de <code>&lt;form&gt;</code>. Une API JavaScript peut envoyer du JSON.
+        Ton serveur doit <strong>lire le <code>Content-Type</code></strong> pour savoir lequel il re&ccedil;oit.
+      </p>
+    </div>
+
+    <!-- FORMAT 1 : URL-ENCODED -->
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Format 1 &mdash; Formulaire simple</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">url-encoded</span>
+      </div>
+      <pre><span class="cmt">// Le HTML :</span>
+<span class="var">&lt;form</span> <span class="kw">action</span>=<span class="str">"/login"</span> <span class="kw">method</span>=<span class="str">"POST"</span><span class="var">&gt;</span>
+  <span class="var">&lt;input</span> <span class="kw">name</span>=<span class="str">"username"</span><span class="var">&gt;</span>
+  <span class="var">&lt;input</span> <span class="kw">name</span>=<span class="str">"password"</span> <span class="kw">type</span>=<span class="str">"password"</span><span class="var">&gt;</span>
+<span class="var">&lt;/form&gt;</span>
+
+<span class="cmt">// Ce que recv() te donne :</span>
+<span class="str">POST /login HTTP/1.1</span>
+<span class="highlight-line"><span class="str">Content-Type: application/x-www-form-urlencoded</span></span>
+<span class="str">Content-Length: 31</span>
+
+<span class="macro">username=alice&amp;password=1234&amp;age=25</span>
+<span class="cmt">//       ^^^^^^^^^^^^^^^^^^^^^^^^^^^</span>
+<span class="cmt">//       cl&eacute;=valeur s&eacute;par&eacute;s par &amp;</span>
+<span class="cmt">//       m&ecirc;me format qu'une URL query string</span></pre>
+    </div>
+
+    <!-- FORMAT 2 : MULTIPART -->
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Format 2 &mdash; Upload de fichier</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">multipart</span>
+      </div>
+      <pre><span class="cmt">// Le HTML :</span>
+<span class="var">&lt;form</span> <span class="kw">action</span>=<span class="str">"/upload"</span> <span class="kw">method</span>=<span class="str">"POST"</span> <span class="macro">enctype</span>=<span class="str">"multipart/form-data"</span><span class="var">&gt;</span>
+  <span class="var">&lt;input</span> <span class="kw">name</span>=<span class="str">"avatar"</span> <span class="kw">type</span>=<span class="str">"file"</span><span class="var">&gt;</span>
+<span class="var">&lt;/form&gt;</span>
+<span class="cmt">//                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^</span>
+<span class="cmt">//                        c'est le enctype qui d&eacute;clenche multipart</span>
+
+<span class="cmt">// Ce que recv() te donne :</span>
+<span class="str">POST /upload HTTP/1.1</span>
+<span class="highlight-line"><span class="str">Content-Type: multipart/form-data; boundary=----abc123</span></span>
+<span class="str">Content-Length: 248</span>
+
+<span class="num">------abc123</span>
+<span class="kw">Content-Disposition: form-data; name="avatar"; filename="photo.jpg"</span>
+<span class="kw">Content-Type: image/jpeg</span>
+
+<span class="cmt">[octets binaires JPEG]</span>
+<span class="num">------abc123--</span></pre>
+    </div>
+
+    <!-- FORMAT 3 : JSON -->
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Format 3 &mdash; JSON (APIs)</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">json</span>
+      </div>
+      <pre><span class="cmt">// Envoy&eacute; par JavaScript (fetch / XMLHttpRequest) :</span>
+<span class="str">POST /api/users HTTP/1.1</span>
+<span class="highlight-new"><span class="str">Content-Type: application/json</span></span>
+<span class="str">Content-Length: 42</span>
+
+<span class="var">{"username": "alice", "password": "1234"}</span>
+
+<span class="cmt">// Pour webserv : tu passes le body tel quel au CGI.</span>
+<span class="cmt">// C'est le CGI (Python, PHP) qui parse le JSON.</span></pre>
+    </div>
+
+    <!-- TABLEAU COMPARATIF -->
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Format</th>
+          <th>Content-Type</th>
+          <th>Fichiers binaires</th>
+          <th>Parsing</th>
+          <th>Utilis&eacute; pour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>url-encoded</td>
+          <td><code>application/x-www-form-urlencoded</code></td>
+          <td class="no">non</td>
+          <td>simple &mdash; <code>split('&amp;')</code></td>
+          <td>formulaires texte</td>
+        </tr>
+        <tr>
+          <td>multipart</td>
+          <td><code>multipart/form-data</code></td>
+          <td class="yes">oui</td>
+          <td>complexe &mdash; boundaries</td>
+          <td><strong>uploads</strong></td>
+        </tr>
+        <tr>
+          <td>json</td>
+          <td><code>application/json</code></td>
+          <td class="no">non</td>
+          <td>pass&eacute; au CGI</td>
+          <td>APIs JavaScript</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Pour webserv, tu DOIS impl&eacute;menter multipart/form-data</strong> &mdash;
+        c'est le seul format qui permet les uploads de fichiers.
+        <code>url-encoded</code> et <code>json</code> sont g&eacute;n&eacute;ralement pass&eacute;s tels quels au CGI.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : LE BOUNDARY               -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="boundary" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">03</div>
+      <div>
+        <div class="ch-fn">Le boundary</div>
+        <div class="ch-subtitle">Le s&eacute;parateur invent&eacute; par le client</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1)">
+      <div class="panel-label">Pourquoi un boundary ?</div>
+      <p>
+        Un formulaire peut envoyer <strong>plusieurs choses</strong> en m&ecirc;me temps &mdash;
+        un fichier image, un nom d'utilisateur, un commentaire. Comment mettre tout &ccedil;a
+        dans un seul body HTTP ?
+      </p>
+      <p>
+        La solution : on d&eacute;coupe le body en <strong>&laquo; parts &raquo;</strong> s&eacute;par&eacute;es par un
+        <strong>boundary</strong> &mdash; une cha&icirc;ne de caract&egrave;res unique invent&eacute;e par le client.
+        C'est comme un s&eacute;parateur de colonne dans un CSV, mais pour des donn&eacute;es binaires.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Le client te dit son boundary dans le header</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Header</span>
+      </div>
+      <pre><span class="str">Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4</span>
+<span class="cmt">//                                  ^^^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^</span>
+<span class="cmt">//                                  mot-cl&eacute;   la cha&icirc;ne choisie par le client</span></pre>
+    </div>
+
+    <div class="wire-box">
+      <div class="wire-title">R&egrave;gles du boundary dans le body</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-header" style="flex:1.2; font-size:0.7rem;">
+          Dans le header Content-Type
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-data" style="flex:1.5;">
+          <span style="color:var(--accent-5)">----abc123</span>
+        </div>
+        <div class="wire-annotation" style="flex:0.8; font-size:0.65rem;">valeur brute</div>
+      </div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-header" style="flex:1.2; font-size:0.7rem;">
+          Dans le body (s&eacute;parateur)
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-boundary" style="flex:1.5;">
+          <span style="color:var(--accent-1)">--</span><span style="color:var(--accent-5)">----abc123</span>
+        </div>
+        <div class="wire-annotation" style="flex:0.8; font-size:0.65rem;"><span style="color:var(--accent-1)">--</span> ajout&eacute; devant</div>
+      </div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-header" style="flex:1.2; font-size:0.7rem;">
+          Dans le body (fin / dernier)
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-end" style="flex:1.5;">
+          <span style="color:var(--accent-1)">--</span><span style="color:var(--accent-5)">----abc123</span><span style="color:var(--accent-4)">--</span>
+        </div>
+        <div class="wire-annotation" style="flex:0.8; font-size:0.65rem;"><span style="color:var(--accent-1)">--</span> devant <span style="color:var(--accent-4)">+ --</span> apr&egrave;s</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le <code>--</code> devant est une r&egrave;gle fixe du standard.</strong>
+        Le boundary dans le <code>Content-Type</code> c'est <code>----abc123</code>,
+        mais dans le body chaque occurrence commence par <code>------abc123</code>
+        (deux tirets ajout&eacute;s). Et le tout dernier a aussi <code>--</code> &agrave; la fin.
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5)">
+      <div class="panel-label">Extraire le boundary en C++98</div>
+      <p>
+        Tu cherches <code>boundary=</code> dans le header <code>Content-Type</code> et tu prends tout ce qui suit.
+        Le boundary peut &ecirc;tre avec ou sans guillemets.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">extract_boundary()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">C++98</span>
+      </div>
+      <pre>std::string <span class="fn-name">extract_boundary</span>(<span class="kw">const</span> std::string&amp; <span class="var">content_type</span>) {
+    <span class="cmt">// Chercher "boundary="</span>
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="var">content_type</span>.<span class="fn-name">find</span>(<span class="str">"boundary="</span>);
+    <span class="kw">if</span> (<span class="var">pos</span> == std::string::<span class="var">npos</span>)
+        <span class="kw">return</span> <span class="str">""</span>;
+    <span class="var">pos</span> += <span class="num">9</span>;  <span class="cmt">// strlen("boundary=")</span>
+
+    <span class="cmt">// Retirer les guillemets si pr&eacute;sents</span>
+    std::string <span class="var">b</span> = <span class="var">content_type</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>);
+    <span class="kw">if</span> (<span class="var">b</span>.<span class="fn-name">size</span>() &gt;= <span class="num">2</span> &amp;&amp; <span class="var">b</span>[<span class="num">0</span>] == <span class="str">'"'</span>)
+        <span class="var">b</span> = <span class="var">b</span>.<span class="fn-name">substr</span>(<span class="num">1</span>, <span class="var">b</span>.<span class="fn-name">size</span>() - <span class="num">2</span>);
+<span class="highlight-line">    <span class="kw">return</span> <span class="str">"--"</span> + <span class="var">b</span>;  <span class="cmt">// &larr; on ajoute -- tout de suite !</span></span>
+}</pre>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : ANATOMIE D'UNE REQUÊTE   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="anatomie" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">04</div>
+      <div>
+        <div class="ch-fn">Anatomie compl&egrave;te</div>
+        <div class="ch-subtitle">Chaque octet d&eacute;crypt&eacute; sur le wire</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Un formulaire avec un champ texte + un fichier image</div>
+      <p>
+        Voici <strong>exactement</strong> ce que <code>recv()</code> te donne pour un formulaire
+        HTML qui envoie un nom d'utilisateur et un avatar :
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Requ&ecirc;te multipart compl&egrave;te (annot&eacute;e)</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Wire</span>
+      </div>
+      <pre><span class="cmt">// ─── HEADERS HTTP ───────────────────────</span>
+<span class="str">POST /upload HTTP/1.1</span>
+<span class="str">Host: localhost:8080</span>
+<span class="str">Content-Type: multipart/form-data; boundary=----abc123</span>
+<span class="str">Content-Length: 348</span>
+                                        <span class="cmt">&larr; \r\n\r\n = fin des headers HTTP</span>
+<span class="cmt">// ─── PART 1 : champ texte ───────────────</span>
+<span class="num">------abc123</span>\r\n                        <span class="cmt">&larr; boundary (s&eacute;parateur)</span>
+<span class="kw">Content-Disposition: form-data; name="username"</span>\r\n
+\r\n                                    <span class="cmt">&larr; fin des headers de la part</span>
+<span class="var">alice</span>\r\n                               <span class="cmt">&larr; contenu de la part</span>
+
+<span class="cmt">// ─── PART 2 : fichier ───────────────────</span>
+<span class="num">------abc123</span>\r\n                        <span class="cmt">&larr; boundary (nouvelle part)</span>
+<span class="kw">Content-Disposition: form-data; name="avatar"; filename="photo.jpg"</span>\r\n
+<span class="kw">Content-Type: image/jpeg</span>\r\n             <span class="cmt">&larr; MIME du fichier upload&eacute;</span>
+\r\n                                    <span class="cmt">&larr; fin des headers de la part</span>
+<span class="macro">[octets binaires de la photo JPEG]</span>\r\n   <span class="cmt">&larr; contenu binaire</span>
+
+<span class="cmt">// ─── FIN ────────────────────────────────</span>
+<span class="num">------abc123</span><span class="str">--</span>\r\n                     <span class="cmt">&larr; boundary final (-- apr&egrave;s)</span></pre>
+    </div>
+
+    <div class="wire-box">
+      <div class="wire-title">Structure d'une part &mdash; toujours le m&ecirc;me pattern</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-boundary" style="flex:1.5; font-size:0.7rem;">
+          <span style="color:var(--accent-1)">--</span><span style="color:var(--accent-5)">boundary</span>\r\n
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation" style="flex:1.5;">D&eacute;but de la part</div>
+      </div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-header" style="flex:1.5; font-size:0.7rem;">
+          <span style="color:var(--accent-3)">Content-Disposition</span>: form-data; name="<span style="color:var(--accent-2)">champ</span>"
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation" style="flex:1.5;">Nom du champ (+ <span style="color:var(--accent-6)">filename</span> si fichier)</div>
+      </div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-header" style="flex:1.5; font-size:0.7rem;">
+          <span style="color:var(--accent-3)">Content-Type</span>: <span style="color:var(--accent-6)">image/jpeg</span>
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation" style="flex:1.5;">MIME du fichier (<strong>absent</strong> pour les champs texte)</div>
+      </div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-crlf" style="flex:1.5; font-size:0.7rem;">
+          \r\n
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation" style="flex:1.5;">Ligne vide = fin des headers, d&eacute;but du contenu</div>
+      </div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-data" style="flex:1.5; font-size:0.7rem;">
+          <span style="color:var(--accent-2)">[contenu : texte ou bytes binaires]</span>
+        </div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation" style="flex:1.5;">Les donn&eacute;es de cette part</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Content-Disposition</div>
+        <p>
+          Ce header est <strong>toujours pr&eacute;sent</strong> dans chaque part. Il contient :
+        </p>
+        <ul>
+          <li><code>name="..."</code> &mdash; le nom du champ du formulaire HTML</li>
+          <li><code>filename="..."</code> &mdash; le nom original du fichier (seulement si c'est un fichier)</li>
+        </ul>
+        <p>
+          <strong>Si <code>filename</code> est pr&eacute;sent</strong> &rarr; c'est un fichier &agrave; sauvegarder.
+          Sinon &rarr; c'est un champ texte simple.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-6)">
+        <div class="panel-label">Content-Type de la part</div>
+        <p>
+          Chaque part peut avoir son propre <code>Content-Type</code>. C'est le
+          <strong>MIME type du fichier upload&eacute;</strong>.
+        </p>
+        <ul>
+          <li>Photo JPEG &rarr; <code>image/jpeg</code></li>
+          <li>Document PDF &rarr; <code>application/pdf</code></li>
+          <li>Champ texte &rarr; <strong>pas de Content-Type</strong> (implicitement <code>text/plain</code>)</li>
+        </ul>
+        <p>
+          C'est le <strong>navigateur</strong> qui d&eacute;tecte le type du fichier et l'&eacute;crit ici.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : LE PIÈGE BINAIRE         -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="binaire" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">05</div>
+      <div>
+        <div class="ch-fn">Le pi&egrave;ge binaire</div>
+        <div class="ch-subtitle">Les bytes d'une image ne respectent rien</div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Le contenu d'un fichier upload&eacute; c'est des bytes bruts.</strong>
+        Une photo JPEG contient des octets avec <strong>toutes les valeurs possibles</strong>,
+        y compris des <code>\0</code>, des <code>\r\n</code>, des <code>--</code> qui ne signifient rien.
+        Tu ne peux pas utiliser <code>std::string::find("\r\n")</code> na&iuml;vement pour chercher
+        la fin du contenu.
+      </div>
+    </div>
+
+    <div class="wire-box">
+      <div class="wire-title">Pourquoi chercher \r\n seul ne marche pas</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-boundary" style="flex:0.4; font-size:0.65rem;">Part 2</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-data" style="flex:2; font-size:0.68rem;">
+          <span style="color:var(--accent-1)">\xFF\xD8\xFF\xE0</span>...<span style="color:var(--accent-1)">\r\n</span>...<span style="color:var(--accent-1)">\x00\x00</span>...<span style="color:var(--accent-1)">--</span>...<span style="color:var(--accent-1)">\r\n</span>...<span style="color:var(--accent-2)">\xFF\xD9</span>
+        </div>
+        <div class="wire-annotation" style="flex:1; font-size:0.62rem;">
+          bytes JPEG : contient des \r\n et -- par <strong>hasard</strong>
+        </div>
+      </div>
+
+      <div style="height:0.3rem;"></div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-end" style="flex:0.4; font-size:0.65rem;">Fin</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-boundary" style="flex:2; font-size:0.68rem;">
+          <span style="color:var(--accent-5)">\r\n------abc123</span>
+        </div>
+        <div class="wire-annotation" style="flex:1; font-size:0.62rem;">
+          <strong style="color:var(--accent-4)">seul vrai s&eacute;parateur</strong> = \r\n + boundary complet
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4)">
+      <div class="panel-label">La bonne approche</div>
+      <p>
+        Pour trouver la fin du contenu d'une part, tu cherches
+        <code>"\r\n--" + boundary</code> dans le buffer &mdash; pas juste <code>\r\n</code>.
+        Le boundary complet est la <strong>seule s&eacute;quence garantie de ne pas appara&icirc;tre</strong>
+        dans les donn&eacute;es (c'est pour &ccedil;a qu'il est long et al&eacute;atoire).
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Trouver la fin du contenu d'une part</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">C++98</span>
+      </div>
+      <pre><span class="cmt">// boundary = "------abc123" (d&eacute;j&agrave; avec le -- devant)</span>
+
+<span class="cmt">// FAUX : s'arr&ecirc;te sur un \r\n dans les bytes JPEG</span>
+<span class="highlight-bad"><span class="type">size_t</span> <span class="var">end</span> = <span class="var">body</span>.<span class="fn-name">find</span>(<span class="str">"\r\n"</span>, <span class="var">start</span>);</span>
+
+<span class="cmt">// CORRECT : cherche le boundary complet</span>
+<span class="highlight-line"><span class="type">size_t</span> <span class="var">end</span> = <span class="var">body</span>.<span class="fn-name">find</span>(<span class="str">"\r\n"</span> + <span class="var">boundary</span>, <span class="var">start</span>);</span>
+
+<span class="cmt">// Le contenu de la part = tout entre start et end</span>
+std::string <span class="var">content</span> = <span class="var">body</span>.<span class="fn-name">substr</span>(<span class="var">start</span>, <span class="var">end</span> - <span class="var">start</span>);</pre>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 6 : PARSER COMPLET           -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="parser" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">06</div>
+      <div>
+        <div class="ch-fn">parse_multipart()</div>
+        <div class="ch-subtitle">Impl&eacute;mentation compl&egrave;te en C++98</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Les &eacute;tapes du parsing</div>
+      <ul>
+        <li><strong>1.</strong> Extraire le boundary du header <code>Content-Type</code></li>
+        <li><strong>2.</strong> Splitter le body sur <code>"--" + boundary</code></li>
+        <li><strong>3.</strong> Pour chaque part : s&eacute;parer headers / contenu au <code>\r\n\r\n</code></li>
+        <li><strong>4.</strong> Parser <code>Content-Disposition</code> &rarr; extraire <code>name</code> et <code>filename</code></li>
+        <li><strong>5.</strong> Si <code>filename</code> existe &rarr; sauvegarder le contenu dans le dossier d'upload</li>
+        <li><strong>6.</strong> R&eacute;pondre <code>201 Created</code></li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Structure Part</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">C++98</span>
+      </div>
+      <pre><span class="kw">struct</span> <span class="type">Part</span> {
+    std::string <span class="var">name</span>;       <span class="cmt">// name="username"</span>
+    std::string <span class="var">filename</span>;   <span class="cmt">// filename="photo.jpg" (vide si champ texte)</span>
+    std::string <span class="var">mime_type</span>;  <span class="cmt">// Content-Type de la part</span>
+    std::string <span class="var">content</span>;    <span class="cmt">// contenu brut (bytes)</span>
+};</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Extraire une valeur d'un header de part</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Helper</span>
+      </div>
+      <pre><span class="cmt">// Extraire la valeur entre guillemets apr&egrave;s un mot-cl&eacute;</span>
+<span class="cmt">// ex: extract_value("name=\"avatar\"; filename=\"photo.jpg\"", "filename")</span>
+<span class="cmt">//  &rarr; "photo.jpg"</span>
+std::string <span class="fn-name">extract_value</span>(<span class="kw">const</span> std::string&amp; <span class="var">header</span>,
+                           <span class="kw">const</span> std::string&amp; <span class="var">key</span>) {
+    std::string <span class="var">search</span> = <span class="var">key</span> + <span class="str">"=\""</span>;
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="var">header</span>.<span class="fn-name">find</span>(<span class="var">search</span>);
+    <span class="kw">if</span> (<span class="var">pos</span> == std::string::<span class="var">npos</span>)
+        <span class="kw">return</span> <span class="str">""</span>;
+    <span class="var">pos</span> += <span class="var">search</span>.<span class="fn-name">size</span>();
+    <span class="type">size_t</span> <span class="var">end</span> = <span class="var">header</span>.<span class="fn-name">find</span>(<span class="str">'"'</span>, <span class="var">pos</span>);
+    <span class="kw">if</span> (<span class="var">end</span> == std::string::<span class="var">npos</span>)
+        <span class="kw">return</span> <span class="str">""</span>;
+    <span class="kw">return</span> <span class="var">header</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>, <span class="var">end</span> - <span class="var">pos</span>);
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">parse_multipart() &mdash; le parser complet</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Parser</span>
+      </div>
+      <pre>std::vector&lt;<span class="type">Part</span>&gt; <span class="fn-name">parse_multipart</span>(<span class="kw">const</span> std::string&amp; <span class="var">body</span>,
+                                     <span class="kw">const</span> std::string&amp; <span class="var">boundary</span>) {
+    std::vector&lt;<span class="type">Part</span>&gt; <span class="var">parts</span>;
+    std::string <span class="var">delim</span> = <span class="var">boundary</span>;        <span class="cmt">// "------abc123"</span>
+    std::string <span class="var">end_delim</span> = <span class="var">boundary</span> + <span class="str">"--"</span>; <span class="cmt">// "------abc123--"</span>
+
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="var">body</span>.<span class="fn-name">find</span>(<span class="var">delim</span>);
+    <span class="kw">if</span> (<span class="var">pos</span> == std::string::<span class="var">npos</span>)
+        <span class="kw">return</span> <span class="var">parts</span>;
+    <span class="var">pos</span> += <span class="var">delim</span>.<span class="fn-name">size</span>() + <span class="num">2</span>;  <span class="cmt">// sauter boundary + \r\n</span>
+
+    <span class="kw">while</span> (<span class="var">pos</span> &lt; <span class="var">body</span>.<span class="fn-name">size</span>()) {
+<span class="highlight-line">        <span class="cmt">// 1. Trouver la fin de la part (prochain boundary)</span></span>
+        <span class="type">size_t</span> <span class="var">next</span> = <span class="var">body</span>.<span class="fn-name">find</span>(<span class="str">"\r\n"</span> + <span class="var">delim</span>, <span class="var">pos</span>);
+        <span class="kw">if</span> (<span class="var">next</span> == std::string::<span class="var">npos</span>)
+            <span class="kw">break</span>;
+
+<span class="highlight-new">        <span class="cmt">// 2. S&eacute;parer headers / contenu au \r\n\r\n</span></span>
+        <span class="type">size_t</span> <span class="var">header_end</span> = <span class="var">body</span>.<span class="fn-name">find</span>(<span class="str">"\r\n\r\n"</span>, <span class="var">pos</span>);
+        <span class="kw">if</span> (<span class="var">header_end</span> == std::string::<span class="var">npos</span> || <span class="var">header_end</span> &gt; <span class="var">next</span>)
+            <span class="kw">break</span>;
+
+        std::string <span class="var">headers</span> = <span class="var">body</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>, <span class="var">header_end</span> - <span class="var">pos</span>);
+        <span class="type">size_t</span> <span class="var">content_start</span> = <span class="var">header_end</span> + <span class="num">4</span>;  <span class="cmt">// apr&egrave;s \r\n\r\n</span>
+
+        <span class="cmt">// 3. Construire la Part</span>
+        <span class="type">Part</span> <span class="var">part</span>;
+        <span class="var">part</span>.<span class="var">name</span>     = <span class="fn-name">extract_value</span>(<span class="var">headers</span>, <span class="str">"name"</span>);
+        <span class="var">part</span>.<span class="var">filename</span> = <span class="fn-name">extract_value</span>(<span class="var">headers</span>, <span class="str">"filename"</span>);
+        <span class="var">part</span>.<span class="var">content</span>  = <span class="var">body</span>.<span class="fn-name">substr</span>(<span class="var">content_start</span>,
+                                        <span class="var">next</span> - <span class="var">content_start</span>);
+
+        <span class="cmt">// 4. Content-Type de la part (optionnel)</span>
+        <span class="type">size_t</span> <span class="var">ct</span> = <span class="var">headers</span>.<span class="fn-name">find</span>(<span class="str">"Content-Type: "</span>);
+        <span class="kw">if</span> (<span class="var">ct</span> != std::string::<span class="var">npos</span>) {
+            <span class="var">ct</span> += <span class="num">14</span>;
+            <span class="type">size_t</span> <span class="var">ct_end</span> = <span class="var">headers</span>.<span class="fn-name">find</span>(<span class="str">"\r\n"</span>, <span class="var">ct</span>);
+            <span class="var">part</span>.<span class="var">mime_type</span> = <span class="var">headers</span>.<span class="fn-name">substr</span>(<span class="var">ct</span>,
+                <span class="var">ct_end</span> == std::string::<span class="var">npos</span> ? std::string::<span class="var">npos</span> : <span class="var">ct_end</span> - <span class="var">ct</span>);
+        }
+
+        <span class="var">parts</span>.<span class="fn-name">push_back</span>(<span class="var">part</span>);
+
+        <span class="cmt">// 5. Avancer au-del&agrave; du boundary</span>
+        <span class="var">pos</span> = <span class="var">next</span> + <span class="num">2</span> + <span class="var">delim</span>.<span class="fn-name">size</span>();  <span class="cmt">// \r\n + boundary</span>
+        <span class="cmt">// V&eacute;rifier si c'est le boundary final (--)</span>
+        <span class="kw">if</span> (<span class="var">body</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>, <span class="num">2</span>) == <span class="str">"--"</span>)
+            <span class="kw">break</span>;
+        <span class="var">pos</span> += <span class="num">2</span>;  <span class="cmt">// sauter \r\n apr&egrave;s le boundary</span>
+    }
+    <span class="kw">return</span> <span class="var">parts</span>;
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Sauvegarder les fichiers upload&eacute;s</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Concret</span>
+      </div>
+      <pre><span class="cmt">// Apr&egrave;s parsing, traiter chaque part :</span>
+<span class="kw">for</span> (<span class="type">size_t</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">parts</span>.<span class="fn-name">size</span>(); <span class="var">i</span>++) {
+    <span class="kw">if</span> (<span class="var">parts</span>[<span class="var">i</span>].<span class="var">filename</span>.<span class="fn-name">empty</span>()) {
+        <span class="cmt">// Champ texte : parts[i].name = "username"</span>
+        <span class="cmt">//               parts[i].content = "alice"</span>
+        <span class="kw">continue</span>;
+    }
+
+<span class="highlight-line">    <span class="cmt">// Fichier : sauvegarder dans le dossier d'upload</span></span>
+    std::string <span class="var">path</span> = <span class="var">upload_dir</span> + <span class="str">"/"</span> + <span class="var">parts</span>[<span class="var">i</span>].<span class="var">filename</span>;
+    std::ofstream <span class="var">ofs</span>(<span class="var">path</span>.<span class="fn-name">c_str</span>(),
+                      std::ios::<span class="var">binary</span>);  <span class="cmt">// &larr; BINARY !</span>
+    <span class="var">ofs</span>.<span class="fn-name">write</span>(<span class="var">parts</span>[<span class="var">i</span>].<span class="var">content</span>.<span class="fn-name">c_str</span>(),
+              <span class="var">parts</span>[<span class="var">i</span>].<span class="var">content</span>.<span class="fn-name">size</span>());
+    <span class="var">ofs</span>.<span class="fn-name">close</span>();
+}
+
+<span class="cmt">// R&eacute;pondre 201 Created</span></pre>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 7 : PIÈGES WEBSERV           -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="pieges" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">07</div>
+      <div>
+        <div class="ch-fn">Pi&egrave;ges webserv</div>
+        <div class="ch-subtitle">Ce qui va casser si tu ne fais pas attention</div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Ouvrir le fichier en mode binaire.</strong>
+        <code>std::ofstream ofs(path.c_str(), std::ios::binary)</code>.
+        Sans <code>std::ios::binary</code>, le syst&egrave;me peut transformer des <code>\n</code> en <code>\r\n</code>
+        (ou l'inverse) et <strong>corrompre</strong> l'image. Une photo JPEG qui passe par une conversion
+        de retour &agrave; la ligne est cass&eacute;e.
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Ne pas utiliser <code>strlen()</code> ou <code>c_str()</code> comme taille.</strong>
+        Un fichier binaire peut contenir des <code>\0</code>.
+        <code>strlen()</code> s'arr&ecirc;te au premier <code>\0</code> et tu perds la fin du fichier.
+        Utilise <code>.size()</code> sur le <code>std::string</code> qui, lui, stocke les <code>\0</code> sans probl&egrave;me.
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Multipart + chunked = les deux probl&egrave;mes combin&eacute;s.</strong>
+        Un POST peut arriver avec <code>Transfer-Encoding: chunked</code> ET
+        <code>Content-Type: multipart/form-data</code>. Tu dois d'abord
+        <strong>d&eacute;coder les chunks</strong> (<code>decode_chunked()</code>), puis parser le multipart
+        sur le body reconstitu&eacute;. Deux couches de parsing.
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Limiter la taille de l'upload.</strong>
+        Le sujet webserv permet de configurer <code>client_max_body_size</code> dans le fichier de config.
+        Si le <code>Content-Length</code> d&eacute;passe cette limite, r&eacute;pondre <code>413 Payload Too Large</code>
+        <strong>avant</strong> de lire tout le body &mdash; sinon tu risques de remplir la RAM.
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Filename = danger</div>
+        <p>
+          Le <code>filename</code> vient du client. Il peut contenir <code>../../../etc/passwd</code>
+          ou d'autres chemins malicieux. <strong>Toujours</strong> nettoyer le filename :
+          ne garder que le nom de base (apr&egrave;s le dernier <code>/</code> ou <code>\</code>),
+          interdire les <code>..</code>.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">TCP fragmente tout</div>
+        <p>
+          Comme pour le chunked, <code>recv()</code> peut te donner les donn&eacute;es
+          <strong>en morceaux</strong>. Le boundary peut &ecirc;tre coup&eacute; entre deux <code>recv()</code>.
+          Tu dois <strong>accumuler</strong> dans un buffer et parser seulement quand tu as
+          tout le body (guid&eacute; par <code>Content-Length</code>).
+        </p>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>CGI et multipart.</strong>
+        Si l'upload est destin&eacute; &agrave; un CGI (ex: un script PHP qui traite le formulaire),
+        tu passes le body <strong>tel quel</strong> au CGI via son stdin. C'est le CGI qui parse
+        le multipart. Tu n'as pas besoin de parser toi-m&ecirc;me dans ce cas &mdash;
+        mais tu dois quand m&ecirc;me v&eacute;rifier <code>client_max_body_size</code>.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; <em>Upload en une page</em></div>
+    <div class="summary-subtitle">Tout ce qu'il faut retenir pour impl&eacute;menter l'upload dans webserv.</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128230;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">3 formats POST</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-5);">url-encoded</code> (formulaires), <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">multipart</code> (uploads), <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">json</code> (APIs). Le <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-3);">Content-Type</code> du client te dit lequel.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#127991;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Boundary</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">S&eacute;parateur unique invent&eacute; par le client. Dans le body : <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">--</code> devant. Dernier : <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">--</code> devant et apr&egrave;s.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128269;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-3); margin-bottom:0.2rem;">Content-Disposition</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-3);">name</code> = champ du formulaire. <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-6);">filename</code> = c'est un fichier &agrave; sauvegarder.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9888;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">Fin du contenu</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Chercher <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">\r\n--boundary</code>, pas juste <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">\r\n</code>. Les bytes binaires contiennent de faux \r\n.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Upload de fichiers (multipart/form-data). eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
+  });
+  var sections = document.querySelectorAll('.chapter');
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(function(s) { observer.observe(s); });
+  var navIds = ['contexte','formats','boundary','anatomie','binaire','parser','pieges'];
+  var sectionEls = navIds.map(function(id) { return document.getElementById(id); });
+  var navEls = navIds.map(function(id) { return document.getElementById('nav-' + id); });
+  var navObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        navEls.forEach(function(n) { if (n) n.classList.remove('active'); });
+        var idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(function(s) { if (s) navObserver.observe(s); });
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      var t = document.querySelector(a.getAttribute('href'));
+      if (t) {
+        var navH = document.querySelector('.progress-bar').offsetHeight;
+        var top = t.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+      }
+    });
+  });
+</script>
+</body>
+</html>
