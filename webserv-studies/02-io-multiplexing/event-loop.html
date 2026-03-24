@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>La boucle événementielle — Intégrer epoll dans le serveur</title>
+<title>La boucle événementielle — Gérer les I/O sans errno</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -37,11 +37,11 @@
   .back-link { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.5rem; border-radius: 6px; white-space: nowrap; transition: color 0.2s, background 0.2s; }
   .back-link:hover { color: var(--accent-4); background: rgba(74,222,128,0.07); }
   .progress-back-divider { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 0.75rem; }
-  .header-tag { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent-4); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 0.3rem 0.8rem; border-radius: 100px; display: inline-block; margin-bottom: 1.2rem; }
+  .header-tag { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent-1); background: rgba(255,107,74,0.08); border: 1px solid rgba(255,107,74,0.2); padding: 0.3rem 0.8rem; border-radius: 100px; display: inline-block; margin-bottom: 1.2rem; }
   .header h1 { font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 400; line-height: 1.1; margin-bottom: 1rem; }
-  .header h1 em { font-style: italic; color: var(--accent-4); }
+  .header h1 em { font-style: italic; color: var(--accent-1); }
   .header-desc { font-size: 1rem; color: var(--text-dim); font-weight: 300; max-width: 650px; line-height: 1.7; }
-  .header-desc code { font-family: 'Space Mono', monospace; color: var(--accent-4); }
+  .header-desc code { font-family: 'Space Mono', monospace; color: var(--accent-1); }
 
   .progress-bar { position: sticky; top: 0; z-index: 100; background: rgba(10,10,15,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; }
   .progress-inner { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 0; overflow-x: auto; }
@@ -97,7 +97,7 @@
   .macro { color: #f472b6; } .var { color: #e8e6f0; } .punct { color: #5c5a72; }
   .highlight-line { display: block; background: rgba(74,222,128,0.06); border-left: 2px solid var(--accent-4); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; }
   .highlight-new { display: block; background: rgba(74,224,255,0.06); border-left: 2px solid var(--accent-2); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; }
-  .highlight-old { display: block; background: rgba(255,107,74,0.05); border-left: 2px solid rgba(255,107,74,0.3); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; text-decoration: line-through; opacity: 0.5; }
+  .highlight-bad { display: block; background: rgba(255,107,74,0.05); border-left: 2px solid rgba(255,107,74,0.3); margin: 0 -1.5rem; padding: 0 1.5rem 0 1.3rem; text-decoration: line-through; opacity: 0.5; }
 
   .key-points { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; margin-top: 1.5rem; }
   .key-point { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
@@ -111,11 +111,28 @@
   .info-box strong { color: var(--accent-4); }
   .info-box code { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--accent-4); }
 
-  .quote-box { border-left: 3px solid var(--accent-4); padding: 1.2rem 1.5rem; margin: 1.5rem 0; background: rgba(74,222,128,0.03); border-radius: 0 8px 8px 0; }
+  .quote-box { border-left: 3px solid var(--accent-1); padding: 1.2rem 1.5rem; margin: 1.5rem 0; background: rgba(255,107,74,0.03); border-radius: 0 8px 8px 0; }
   .quote-box p { font-family: 'Space Mono', monospace; font-size: 0.75rem; font-style: italic; color: var(--text-dim); line-height: 1.8; margin-bottom: 0.3rem; }
   .quote-box cite { font-family: 'Space Mono', monospace; font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.05em; }
 
   .step-divider { height: 1px; background: linear-gradient(to right, transparent, var(--border), transparent); margin: 1rem 0; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.82rem; }
+  .compare-table th { font-family: 'Space Mono', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-muted); text-align: left; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); }
+  .compare-table td { padding: 0.8rem 1rem; border-bottom: 1px solid rgba(42,42,66,0.5); color: var(--text-dim); line-height: 1.6; vertical-align: top; }
+  .compare-table td:first-child { font-weight: 500; color: var(--text); white-space: nowrap; }
+  .compare-table td code { font-family: 'Space Mono', monospace; font-size: 0.75rem; padding: 0.1em 0.3em; border-radius: 3px; }
+  .compare-table tr.bad td { background: rgba(255,107,74,0.04); }
+  .compare-table tr.bad td code { color: var(--accent-1); background: rgba(255,107,74,0.08); }
+  .compare-table tr.good td { background: rgba(74,222,128,0.04); }
+  .compare-table tr.good td code { color: var(--accent-4); background: rgba(74,222,128,0.08); }
+
+  .flow-steps { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+  .flow-step { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.82rem; color: var(--text-dim); }
+  .flow-step-num { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--text-muted); background: var(--surface-2); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .flow-step code { font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--accent-4); background: rgba(74,222,128,0.06); padding: 0.1em 0.3em; border-radius: 3px; }
+  .flow-step strong { color: var(--text); font-weight: 500; }
+  .flow-arrow { text-align: center; color: var(--text-muted); font-size: 0.7rem; }
 
   .summary-section { margin-top: 4rem; padding: 3rem; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; position: relative; overflow: hidden; }
   .summary-section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, var(--accent-4), var(--accent-2), var(--accent-3), var(--accent-1)); }
@@ -135,596 +152,558 @@
 
 <div class="progress-bar">
   <div class="progress-inner">
-    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
     <div class="progress-back-divider"></div>
-    <a href="#avant" class="step-pill active" id="nav-avant"><span class="step-dot"></span>Avant</a>
+    <a href="#contrainte" class="step-pill active" id="nav-contrainte"><span class="step-dot"></span>Contrainte</a>
     <div class="step-connector"></div>
-    <a href="#main" class="step-pill" id="nav-main"><span class="step-dot"></span>main()</a>
+    <a href="#piege" class="step-pill" id="nav-piege"><span class="step-dot"></span>Pi&egrave;ge</a>
     <div class="step-connector"></div>
-    <a href="#accept" class="step-pill" id="nav-accept"><span class="step-dot"></span>accept</a>
+    <a href="#architecture" class="step-pill" id="nav-architecture"><span class="step-dot"></span>Architecture</a>
     <div class="step-connector"></div>
-    <a href="#handle" class="step-pill" id="nav-handle"><span class="step-dot"></span>handle</a>
+    <a href="#read" class="step-pill" id="nav-read"><span class="step-dot"></span>Read</a>
     <div class="step-connector"></div>
-    <a href="#cgi" class="step-pill" id="nav-cgi"><span class="step-dot"></span>CGI</a>
+    <a href="#write" class="step-pill" id="nav-write"><span class="step-dot"></span>Write</a>
+    <div class="step-connector"></div>
+    <a href="#mecanique" class="step-pill" id="nav-mecanique"><span class="step-dot"></span>M&eacute;canique</a>
     <div class="step-connector"></div>
     <a href="#final" class="step-pill" id="nav-final"><span class="step-dot"></span>Code final</a>
   </div>
 </div>
 
 <div class="header">
-  <div class="header-tag">Concept — I/O Multiplexing</div>
-  <h1>La boucle <em>événementielle</em><br>Intégrer epoll dans le serveur</h1>
+  <div class="header-tag">Concept critique &mdash; I/O sans errno</div>
+  <h1>La boucle <em>&eacute;v&eacute;nementielle</em><br>sans jamais checker <em>errno</em></h1>
   <p class="header-desc">
-    On part du code <code>main.cpp</code> actuel — un serveur busy-wait qui brûle du CPU —
-    et on le transforme fonction par fonction en un serveur <strong>event-driven</strong> avec <code>epoll</code>.
-    Chaque étape montre l'avant, explique le pourquoi, puis montre l'après.
+    Le sujet interdit de v&eacute;rifier <code>errno</code> apr&egrave;s <code>read</code>/<code>write</code>.
+    Pourtant, le pattern classique edge-triggered repose enti&egrave;rement sur <code>EAGAIN</code>.
+    Voici comment architecturer un serveur event-driven qui respecte cette contrainte
+    &mdash; en laissant <strong>epoll orchestrer tout le flux</strong>.
   </p>
 </div>
 
 <div class="main">
 
-  <!-- ══════════════════════════════ -->
-  <!-- SECTION 1 : L'ÉTAT ACTUEL     -->
-  <!-- ══════════════════════════════ -->
-  <section class="step-section" id="avant" style="--step-color: var(--accent-1)">
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : LA CONTRAINTE DU SUJET   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="contrainte" style="--step-color: var(--accent-1)">
     <div class="step-header">
       <div class="step-number-badge">01</div>
       <div>
-        <div class="step-fn">Le code actuel</div>
-        <div class="step-subtitle">Ce qui ne va pas — et pourquoi</div>
+        <div class="step-fn">La contrainte</div>
+        <div class="step-subtitle">Ce que le sujet interdit exactement</div>
       </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; Interdiction de v&eacute;rifier errno pour ajuster le comportement du serveur apr&egrave;s une op&eacute;ration read ou write. &raquo;</p>
+      <cite>&mdash; webserv subject</cite>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Ce qui est interdit</div>
+        <p>
+          Utiliser la valeur de <code>errno</code> pour <strong>d&eacute;cider quoi faire</strong> apr&egrave;s un
+          <code>recv()</code> ou <code>send()</code>. Le cas typique :
+        </p>
+        <ul>
+          <li>Tester <code>errno == EAGAIN</code> pour savoir si le buffer est vide/plein</li>
+          <li>Tester <code>errno == EWOULDBLOCK</code> pour re-arm un fd</li>
+          <li>Boucler &laquo; tant que <code>EAGAIN</code> &raquo; pour drainer un buffer</li>
+        </ul>
+        <p>
+          Tout pattern qui utilise <code>errno</code> comme <strong>signal de contr&ocirc;le</strong> pour piloter
+          la machine &agrave; &eacute;tats du serveur est interdit.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Ce qui est autoris&eacute;</div>
+        <p>
+          Le <strong>retour de la fonction</strong> lui-m&ecirc;me (<code>n</code>) reste utilisable :
+        </p>
+        <ul>
+          <li><code>n &gt; 0</code> &mdash; des octets ont &eacute;t&eacute; lus/&eacute;crits</li>
+          <li><code>n == 0</code> &mdash; le client a ferm&eacute; la connexion (recv)</li>
+          <li><code>n &lt;= 0</code> &mdash; erreur r&eacute;elle &rarr; fermer proprement</li>
+        </ul>
+        <p>
+          On d&eacute;cide uniquement sur <strong>la valeur de retour</strong>, jamais sur <code>errno</code>.
+          C'est <code>epoll</code> qui nous dit quand un fd est pr&ecirc;t &mdash; pas <code>errno</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LE PIÈGE CLASSIQUE       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="piege" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">Le pi&egrave;ge classique</div>
+        <div class="step-subtitle">Pourquoi la plupart des tutos ne marchent pas pour nous</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le probl&egrave;me</div>
+      <p>
+        Tous les tutos epoll montrent le m&ecirc;me pattern edge-triggered :
+        <strong>boucler sur recv/send jusqu'&agrave; EAGAIN</strong>. C'est le pattern &laquo; drain loop &raquo;.
+        Il fonctionne parfaitement &mdash; mais il viole la r&egrave;gle du sujet.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Pattern classique ET</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Interdit par le sujet</span>
+      </div>
+      <pre><span class="cmt">// ❌ Le "drain loop" classique — INTERDIT</span>
+<span class="cmt">// On boucle jusqu'à EAGAIN pour vider le buffer kernel</span>
+
+<span class="type">void</span> <span class="fn-name">handle_read_INTERDIT</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="kw">while</span> (<span class="num">true</span>) {
+        <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);
+        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {
+<span class="highlight-bad">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>)  <span class="cmt">// ← INTERDIT</span></span>
+<span class="highlight-bad">                <span class="kw">break</span>;   <span class="cmt">// "buffer vide, on sort"</span></span>
+            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;
+        }
+        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">0</span>) { <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>; }
+        <span class="var">request</span> += <span class="var">buf</span>;
+    }
+}
+
+<span class="type">void</span> <span class="fn-name">handle_write_INTERDIT</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="kw">while</span> (<span class="var">sent</span> &lt; <span class="var">total</span>) {
+        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">data</span> + <span class="var">sent</span>, <span class="var">total</span> - <span class="var">sent</span>, <span class="num">0</span>);
+        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {
+<span class="highlight-bad">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>)  <span class="cmt">// ← INTERDIT</span></span>
+<span class="highlight-bad">                <span class="kw">break</span>;   <span class="cmt">// "buffer plein, on attend"</span></span>
+            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;
+        }
+        <span class="var">sent</span> += <span class="var">n</span>;
+    }
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Pourquoi c'est tent&amp;ant ?</strong> En Edge Triggered classique, epoll ne te notifie qu'<strong>une fois</strong>
+        par changement d'&eacute;tat. Donc le r&eacute;flexe est de boucler jusqu'&agrave; <code>EAGAIN</code> pour tout drainer.
+        Mais le sujet dit non. On doit trouver une autre architecture.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : L'ARCHITECTURE CORRECTE  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="architecture" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">L'architecture correcte</div>
+        <div class="step-subtitle">Laisser epoll orchestrer &mdash; un seul appel par &eacute;v&eacute;nement</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le principe fondamental</div>
+      <p>
+        Au lieu de boucler jusqu'&agrave; <code>EAGAIN</code>, on fait <strong>un seul <code>recv()</code> ou
+        <code>send()</code> par &eacute;v&eacute;nement epoll</strong>. On met &agrave; jour l'&eacute;tat de la connexion.
+        Si ce n'est pas fini, on ne boucle pas &mdash; on laisse <strong>epoll nous re-notifier</strong> quand le fd
+        est &agrave; nouveau pr&ecirc;t.
+      </p>
+      <p>
+        C'est epoll qui pilote le flux, pas nous. On ne d&eacute;cide jamais &laquo; est-ce que le buffer est vide ? &raquo;
+        (ce serait checker <code>errno</code>). On dit simplement : &laquo; epoll, rappelle-moi quand il y a quelque chose &raquo;.
+      </p>
     </div>
 
     <div class="two-col">
       <div class="panel" style="--step-color: var(--accent-1)">
-        <div class="panel-label">Le problème</div>
-        <p>
-          Le serveur actuel est <strong>non-bloquant</strong> (on a mis <code>O_NONBLOCK</code>),
-          mais il n'utilise pas <code>epoll</code>. Il tourne dans une boucle <code>while(true)</code>
-          qui appelle <code>accept()</code> en continu.
-        </p>
-        <p>
-          Quand personne ne se connecte, <code>accept()</code> retourne <code>EAGAIN</code>
-          et on re-boucle immédiatement. Le CPU tourne à <strong>100%</strong> pour rien.
-          C'est du <strong>busy-waiting</strong>.
-        </p>
-        <p>
-          De plus, <code>handle_client()</code> fait un <code>do/while</code> avec <code>recv()</code>
-          qui boucle sur <code>EAGAIN</code> — encore du busy-wait. Et on ne gère qu'<strong>un seul client à la fois</strong>.
-        </p>
+        <div class="panel-label">Avant &mdash; le drain loop</div>
+        <table class="compare-table">
+          <tr class="bad"><td>Qui d&eacute;cide ?</td><td><code>errno</code> &mdash; je boucle tant que pas <code>EAGAIN</code></td></tr>
+          <tr class="bad"><td>Combien d'appels ?</td><td>Autant que n&eacute;cessaire en une seule passe</td></tr>
+          <tr class="bad"><td>Quand je sors ?</td><td>Quand <code>errno == EAGAIN</code></td></tr>
+        </table>
       </div>
-      <div class="panel" style="--step-color: var(--accent-1)">
-        <div class="panel-label">Ce qu'on veut</div>
-        <ul>
-          <li><strong>0% CPU au repos</strong> — <code>epoll_wait()</code> dort quand rien ne se passe</li>
-          <li><strong>Plusieurs clients simultanés</strong> — pas de traitement séquentiel</li>
-          <li><strong>Jamais de recv/send sans epoll</strong> — respecter la règle du sujet</li>
-          <li><strong>Transition EPOLLIN → EPOLLOUT</strong> — lire la requête, puis envoyer la réponse</li>
-          <li><strong>Un seul point de blocage</strong> — <code>epoll_wait()</code> dans le main</li>
-        </ul>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Apr&egrave;s &mdash; epoll orchestre</div>
+        <table class="compare-table">
+          <tr class="good"><td>Qui d&eacute;cide ?</td><td><code>epoll_wait()</code> &mdash; il me r&eacute;veille quand c'est pr&ecirc;t</td></tr>
+          <tr class="good"><td>Combien d'appels ?</td><td><strong>Un seul</strong> <code>recv()</code>/<code>send()</code> par &eacute;v&eacute;nement</td></tr>
+          <tr class="good"><td>Quand je sors ?</td><td>Imm&eacute;diatement apr&egrave;s le <code>recv()</code>/<code>send()</code></td></tr>
+        </table>
       </div>
     </div>
 
-    <div class="code-panel" style="--step-color: var(--accent-1)">
-      <div class="code-header">
-        <div class="code-header-left">
-          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp</span>
-        </div>
-        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant — busy-wait</span>
-      </div>
-      <pre><span class="cmt">// La boucle actuelle — le problème est ici</span>
-
-<span class="kw">while</span> (<span class="num">true</span>) {
-<span class="highlight-old">    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>);  <span class="cmt">// ← EAGAIN en boucle = CPU 100%</span></span>
-<span class="highlight-old">    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span> || <span class="var">client_fd</span> == -<span class="num">2</span>)</span>
-<span class="highlight-old">        <span class="kw">continue</span>;                                 <span class="cmt">// ← on re-boucle immédiatement</span></span>
-<span class="highlight-old">    <span class="fn-name">handle_client</span>(<span class="var">client_fd</span>);                     <span class="cmt">// ← un seul client à la fois</span></span>
-}
-
-<span class="cmt">// Et dans handle_client() :</span>
-<span class="kw">do</span> {
-<span class="highlight-old">    <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">client_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
-<span class="highlight-old">} <span class="kw">while</span> (<span class="var">n</span> == -<span class="num">1</span> &amp;&amp; <span class="var">errno</span> == <span class="macro">EAGAIN</span>);   <span class="cmt">// ← busy-wait sur recv aussi !</span></span></pre>
-    </div>
-
-    <div class="quote-box">
-      <p>« It must be non-blocking and use only 1 poll() (or equivalent) for all the I/O operations between the clients and the server (listen included). »</p>
-      <cite>— webserv.pdf, IV.1 Requirements</cite>
-    </div>
-  </section>
-
-  <div class="step-divider"></div>
-
-  <!-- ══════════════════════════════ -->
-  <!-- SECTION 2 : MODIFIER main()   -->
-  <!-- ══════════════════════════════ -->
-  <section class="step-section" id="main" style="--step-color: var(--accent-2)">
-    <div class="step-header">
-      <div class="step-number-badge">02</div>
-      <div>
-        <div class="step-fn">main()</div>
-        <div class="step-subtitle">Créer epoll et construire la boucle</div>
-      </div>
-    </div>
-
-    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
-      <div class="panel-label">Ce qu'on va modifier</div>
+    <div class="panel" style="--step-color: var(--accent-2); margin-top: 1.5rem;">
+      <div class="panel-label">&Eacute;tat par connexion &mdash; la struct Connection</div>
       <p>
-        Le <code>main()</code> doit faire 3 choses nouvelles :
+        Pour que &ccedil;a marche, chaque connexion doit garder son <strong>&eacute;tat en m&eacute;moire</strong> entre deux &eacute;v&eacute;nements.
+        On ne peut plus tout faire d'un coup dans une seule fonction &mdash; il faut un objet qui survit entre les appels.
       </p>
-      <ul>
-        <li><strong>Créer l'instance epoll</strong> — <code>epoll_create1(0)</code>, une seule fois au démarrage</li>
-        <li><strong>Enregistrer le listen_fd</strong> — <code>epoll_ctl(ADD)</code> avec <code>EPOLLIN</code> pour détecter les connexions entrantes</li>
-        <li><strong>Remplacer la boucle</strong> — <code>epoll_wait()</code> au lieu du <code>while(true)</code> + <code>accept()</code> direct</li>
-      </ul>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-1)">
-      <div class="code-header">
-        <div class="code-header-left">
-          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — main()</span>
-        </div>
-        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant</span>
-      </div>
-      <pre><span class="type">int</span> <span class="fn-name">main</span>() {
-    <span class="type">int</span> <span class="var">server_fd</span> = <span class="fn-name">create_server_socket</span>();
-    <span class="kw">if</span> (<span class="var">server_fd</span> == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
-
-    <span class="kw">if</span> (<span class="fn-name">bind_address</span>(<span class="var">server_fd</span>, <span class="macro">PORT</span>) == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
-
-    <span class="kw">if</span> (<span class="fn-name">listen</span>(<span class="var">server_fd</span>, <span class="macro">BACKLOG</span>) == -<span class="num">1</span>)
-        { <span class="fn-name">perror</span>(<span class="str">"listen"</span>); <span class="kw">return</span> <span class="num">1</span>; }
-
-    <span class="cmt">// Boucle busy-wait :</span>
-    <span class="kw">while</span> (<span class="num">true</span>) {
-        <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>);
-        <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span> || <span class="var">client_fd</span> == -<span class="num">2</span>) <span class="kw">continue</span>;
-        <span class="fn-name">handle_client</span>(<span class="var">client_fd</span>);
-    }
-}</pre>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-4)">
-      <div class="code-header">
-        <div class="code-header-left">
-          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — main()</span>
-        </div>
-        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — avec epoll</span>
-      </div>
-      <pre><span class="macro">#include</span> <span class="str">&lt;sys/epoll.h&gt;</span>
-<span class="macro">#include</span> <span class="str">&lt;csignal&gt;</span>
-
-<span class="kw">static const</span> <span class="type">int</span> <span class="macro">MAX_EVENTS</span> = <span class="num">64</span>;
-
-<span class="type">int</span> <span class="fn-name">main</span>() {
-<span class="highlight-new">    <span class="fn-name">signal</span>(<span class="macro">SIGPIPE</span>, <span class="macro">SIG_IGN</span>);  <span class="cmt">// ignorer SIGPIPE — send() sur socket fermé ne crash plus</span></span>
-
-    <span class="type">int</span> <span class="var">server_fd</span> = <span class="fn-name">create_server_socket</span>();
-    <span class="kw">if</span> (<span class="var">server_fd</span> == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
-    <span class="kw">if</span> (<span class="fn-name">bind_address</span>(<span class="var">server_fd</span>, <span class="macro">PORT</span>) == -<span class="num">1</span>) <span class="kw">return</span> <span class="num">1</span>;
-    <span class="kw">if</span> (<span class="fn-name">listen</span>(<span class="var">server_fd</span>, <span class="macro">BACKLOG</span>) == -<span class="num">1</span>)
-        { <span class="fn-name">perror</span>(<span class="str">"listen"</span>); <span class="kw">return</span> <span class="num">1</span>; }
-
-    <span class="cmt">// ── NOUVEAU : créer l'instance epoll ──────────────────</span>
-<span class="highlight-new">    <span class="type">int</span> <span class="var">epfd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);</span>
-<span class="highlight-new">    <span class="kw">if</span> (<span class="var">epfd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"epoll_create1"</span>); <span class="kw">return</span> <span class="num">1</span>; }</span>
-
-    <span class="cmt">// ── NOUVEAU : enregistrer le listen_fd dans epoll ────</span>
-    <span class="cmt">// On veut être notifié quand un client se connecte (EPOLLIN)</span>
-<span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
-<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;</span>
-<span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">server_fd</span>;</span>
-<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">server_fd</span>, &amp;<span class="var">ev</span>);</span>
-
-    <span class="cmt">// ── NOUVEAU : la boucle événementielle ───────────────</span>
-    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="macro">MAX_EVENTS</span>];
-
-    <span class="kw">while</span> (<span class="num">true</span>) {
-        <span class="cmt">// LE seul point de blocage — dort quand rien ne se passe</span>
-<span class="highlight-new">        <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, -<span class="num">1</span>);</span>
-
-        <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
-            <span class="type">int</span> <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;
-
-            <span class="kw">if</span> (<span class="var">fd</span> == <span class="var">server_fd</span>) {
-                <span class="cmt">// Connexion entrante → accept</span>
-                <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>, <span class="var">epfd</span>);
-            }
-            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>) {
-                <span class="cmt">// Client prêt en lecture → recv</span>
-                <span class="fn-name">handle_read</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
-            }
-            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>) {
-                <span class="cmt">// Client prêt en écriture → send</span>
-                <span class="fn-name">handle_write</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
-            }
-
-            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
-                <span class="cmt">// Erreur ou déconnexion → nettoyer</span>
-                <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
-                <span class="fn-name">close</span>(<span class="var">fd</span>);
-            }
-        }
-    }
-}</pre>
-    </div>
-
-    <div class="key-points">
-      <div class="key-point">
-        <span class="key-point-icon">💤</span>
-        <span><strong>epoll_wait(-1)</strong> dort indéfiniment s'il n'y a rien. 0% CPU au repos. Le kernel te réveille uniquement quand un fd est prêt.</span>
-      </div>
-      <div class="key-point">
-        <span class="key-point-icon">🔀</span>
-        <span><strong>Un seul point de blocage.</strong> Avant, le blocage était dispersé (accept, recv). Maintenant tout passe par epoll_wait().</span>
-      </div>
-      <div class="key-point">
-        <span class="key-point-icon">👥</span>
-        <span><strong>Plusieurs clients.</strong> epoll_wait() peut retourner plusieurs événements. On les traite tous dans la boucle for.</span>
-      </div>
-    </div>
-  </section>
-
-  <div class="step-divider"></div>
-
-  <!-- ══════════════════════════════ -->
-  <!-- SECTION 3 : MODIFIER accept   -->
-  <!-- ══════════════════════════════ -->
-  <section class="step-section" id="accept" style="--step-color: var(--accent-3)">
-    <div class="step-header">
-      <div class="step-number-badge">03</div>
-      <div>
-        <div class="step-fn">accept_next_client()</div>
-        <div class="step-subtitle">Enregistrer le nouveau client dans epoll</div>
-      </div>
-    </div>
-
-    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
-      <div class="panel-label">Ce qu'on va modifier</div>
-      <p>
-        L'ancienne fonction acceptait un client et le retournait. La nouvelle doit en plus :
-      </p>
-      <ul>
-        <li><strong>Enregistrer le client_fd dans epoll</strong> — <code>epoll_ctl(ADD, client_fd, EPOLLIN)</code></li>
-        <li><strong>Ne plus retourner le fd au main</strong> — c'est epoll qui le gérera désormais</li>
-        <li><strong>Supprimer le test EAGAIN</strong> — epoll garantit que accept() va réussir (il nous a dit EPOLLIN)</li>
-      </ul>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-1)">
-      <div class="code-header">
-        <div class="code-header-left">
-          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — accept_next_client()</span>
-        </div>
-        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant</span>
-      </div>
-      <pre><span class="type">int</span> <span class="fn-name">accept_next_client</span>(<span class="type">int</span> <span class="var">server_fd</span>) {
-    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
-    <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
-    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">server_fd</span>,
-                           (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
-    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span>) {
-        <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span>) <span class="kw">return</span> -<span class="num">2</span>;  <span class="cmt">// ← plus besoin de ça</span>
-        <span class="fn-name">perror</span>(<span class="str">"accept"</span>); <span class="kw">return</span> -<span class="num">1</span>;
-    }
-
-    <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>);
-    <span class="kw">return</span> <span class="var">client_fd</span>;  <span class="cmt">// ← retournait le fd au main</span>
-}</pre>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-4)">
-      <div class="code-header">
-        <div class="code-header-left">
-          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — accept_next_client()</span>
-        </div>
-        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — avec epoll</span>
-      </div>
-      <pre><span class="cmt">// Nouvelle signature : on reçoit epfd pour enregistrer le client</span>
-<span class="type">void</span> <span class="fn-name">accept_next_client</span>(<span class="type">int</span> <span class="var">server_fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
-    <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
-    <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
-    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">server_fd</span>,
-                           (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
-
-    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"accept"</span>); <span class="kw">return</span>; }
-
-    <span class="cmt">// Mettre en non-bloquant (identique à avant)</span>
-    <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>);
-
-    <span class="cmt">// ── NOUVEAU : enregistrer le client dans epoll ──────</span>
-    <span class="cmt">// On veut savoir quand le client envoie des données (EPOLLIN)</span>
-    <span class="cmt">// PAS de recv() ici ! On attend le prochain epoll_wait()</span>
-<span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
-<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;       <span class="cmt">// surveiller en lecture</span></span>
-<span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;    <span class="cmt">// stocker le fd pour le retrouver</span></span>
-<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);</span>
-
-    std::cout &lt;&lt; <span class="str">"[+] client fd="</span> &lt;&lt; <span class="var">client_fd</span>
-              &lt;&lt; <span class="str">" from "</span> &lt;&lt; <span class="fn-name">inet_ntoa</span>(<span class="var">client_addr</span>.<span class="var">sin_addr</span>) &lt;&lt; <span class="str">"\n"</span>;
-}</pre>
-    </div>
-
-    <div class="info-box">
-      <span>💡</span>
-      <div>
-        <strong>Pourquoi pas de recv() ici ?</strong> Le client vient de se connecter (TCP handshake OK),
-        mais il n'a <strong>peut-être pas encore envoyé sa requête HTTP</strong>. On l'enregistre dans epoll
-        et on retourne dans la boucle. Quand le client enverra ses données, <code>epoll_wait()</code>
-        nous réveillera avec <code>EPOLLIN</code> sur ce fd.
-      </div>
-    </div>
-  </section>
-
-  <div class="step-divider"></div>
-
-  <!-- ══════════════════════════════ -->
-  <!-- SECTION 4 : handle_client     -->
-  <!-- ══════════════════════════════ -->
-  <section class="step-section" id="handle" style="--step-color: var(--accent-5)">
-    <div class="step-header">
-      <div class="step-number-badge">04</div>
-      <div>
-        <div class="step-fn">handle_recv() / handle_send()</div>
-        <div class="step-subtitle">Séparer lecture et écriture — en mode Edge Triggered</div>
-      </div>
-    </div>
-
-    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
-      <div class="panel-label">Le changement fondamental</div>
-      <p>
-        L'ancienne <code>handle_client()</code> faisait <strong>tout d'un coup</strong> :
-        recv + parse + send + close. C'est impossible avec epoll car on ne peut pas savoir
-        si <code>send()</code> va réussir immédiatement.
-      </p>
-      <p>
-        On doit <strong>séparer en deux fonctions</strong> :
-      </p>
-      <ul>
-        <li><strong><code>handle_recv(fd, epfd)</code></strong> — appelée quand <code>EPOLLIN</code> arrive. Draine toutes les données disponibles, puis passe le fd en <code>EPOLLOUT | EPOLLET</code></li>
-        <li><strong><code>handle_send(fd, epfd)</code></strong> — appelée quand <code>EPOLLOUT</code> arrive. Envoie la réponse entière en boucle, puis ferme le fd</li>
-      </ul>
-    </div>
-
-    <!-- LT vs ET -->
-    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
-      <div class="panel-label">Choix : Level Triggered (LT) ou Edge Triggered (ET) ?</div>
-      <p>
-        epoll supporte deux modes de déclenchement. Ce choix change radicalement comment on écrit le code.
-      </p>
-      <div class="two-col" style="margin-top: 1rem;">
-        <div class="analogy-panel" style="border-color: rgba(139,137,160,0.2);">
-          <div class="analogy-icon">🔔</div>
-          <div class="analogy-text">
-            <div class="analogy-label" style="color: var(--text-dim);">LT — Level Triggered (défaut)</div>
-            <p>
-              epoll te réveille <strong>tant que</strong> des données sont disponibles dans le buffer.
-              Un seul <code>recv()</code> suffit : si tu n'as pas tout lu, epoll te renotifiera au prochain tour.
-              Plus simple à écrire, mais moins efficace.
-            </p>
-          </div>
-        </div>
-        <div class="analogy-panel" style="border-color: rgba(192,132,252,0.3);">
-          <div class="analogy-icon">⚡</div>
-          <div class="analogy-text">
-            <div class="analogy-label" style="color: var(--accent-3);">ET — Edge Triggered (EPOLLET)</div>
-            <p>
-              epoll te réveille <strong>une seule fois</strong> lors du changement d'état (nouvelles données arrivées).
-              Si tu ne lis pas <em>tout</em> le buffer en une fois, tu ne seras plus notifié.
-              Oblige à boucler jusqu'à <code>EAGAIN</code> — mais une seule interruption noyau par événement.
-            </p>
-          </div>
-        </div>
-      </div>
-      <p style="margin-top: 1rem;">
-        <strong>Choix retenu : ET pour EPOLLOUT, drain complet pour EPOLLIN.</strong>
-        Pour <code>handle_recv</code>, on boucle jusqu'à <code>EAGAIN</code> pour vider tout le buffer d'un coup.
-        Pour <code>handle_send</code>, on enregistre <code>EPOLLOUT | EPOLLET</code> et on boucle jusqu'à envoyer tout
-        — si <code>EAGAIN</code> survient, on se ré-enregistre et on reprend au prochain tour.
-      </p>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-1)">
-      <div class="code-header">
-        <div class="code-header-left">
-          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — handle_client()</span>
-        </div>
-        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Avant — tout d'un bloc</span>
-      </div>
-      <pre><span class="type">void</span> <span class="fn-name">handle_client</span>(<span class="type">int</span> <span class="var">client_fd</span>) {
-    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
-    <span class="type">int</span> <span class="var">n</span>;
-
-    <span class="kw">do</span> {
-        <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">client_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);
-    } <span class="kw">while</span> (<span class="var">n</span> == -<span class="num">1</span> &amp;&amp; <span class="var">errno</span> == <span class="macro">EAGAIN</span>);  <span class="cmt">// busy-wait !</span>
-
-    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) { <span class="fn-name">close</span>(<span class="var">client_fd</span>); <span class="kw">return</span>; }
-    <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
-
-    <span class="kw">const char</span>* <span class="var">response</span> = <span class="str">"HTTP/1.1 200 OK\r\n..."</span>;
-    <span class="fn-name">send</span>(<span class="var">client_fd</span>, <span class="var">response</span>, <span class="fn-name">strlen</span>(<span class="var">response</span>), <span class="num">0</span>);  <span class="cmt">// sans vérifier EPOLLOUT !</span>
-    <span class="fn-name">close</span>(<span class="var">client_fd</span>);
-}</pre>
-    </div>
-
-    <div class="code-panel" style="--step-color: var(--accent-4)">
-      <div class="code-header">
-        <div class="code-header-left">
-          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — handle_recv()</span>
-        </div>
-        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Après — lecture ET (drain jusqu'à EAGAIN)</span>
-      </div>
-      <pre><span class="type">void</span> <span class="fn-name">handle_recv</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
-    std::string <span class="var">request</span>;
-
-    <span class="cmt">// Boucle ET : on vide TOUT le buffer d'un coup.</span>
-    <span class="cmt">// En LT un seul recv() suffirait — ici on doit aller jusqu'à EAGAIN.</span>
-<span class="highlight-new">    <span class="kw">while</span> (<span class="kw">true</span>) {</span>
-<span class="highlight-new">        <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];</span>
-<span class="highlight-new">        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
-
-<span class="highlight-new">        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {</span>
-<span class="highlight-new">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>)</span>
-<span class="highlight-new">                <span class="kw">break</span>;  <span class="cmt">// buffer kernel vide → on a tout lu, on sort</span></span>
-<span class="highlight-new">            <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);</span>
-<span class="highlight-new">            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;</span>
-<span class="highlight-new">        }</span>
-<span class="highlight-new">        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">0</span>) {  <span class="cmt">// client déconnecté</span></span>
-<span class="highlight-new">            <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);</span>
-<span class="highlight-new">            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;</span>
-<span class="highlight-new">        }</span>
-<span class="highlight-new">        <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;</span>
-<span class="highlight-new">        <span class="var">request</span> += <span class="var">buf</span>;</span>
-<span class="highlight-new">    }</span>
-    std::cout &lt;&lt; <span class="var">request</span>;  <span class="cmt">// afficher la requête (debug)</span>
-
-    <span class="cmt">// Requête lue — passer en EPOLLOUT | EPOLLET pour l'envoi</span>
-<span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
-<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span> | <span class="macro">EPOLLET</span>;  <span class="cmt">// ET : une seule notif quand le buffer se libère</span></span>
-<span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;</span>
-<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);  <span class="cmt">// MOD : fd déjà enregistré</span></span>
-}</pre>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-2)">
       <div class="code-header">
         <div class="code-header-left">
           <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp — handle_send()</span>
+          <span class="code-filename">Connection.hpp</span>
         </div>
-        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Après — écriture ET (boucle jusqu'à complet)</span>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">&Eacute;tat par connexion</span>
       </div>
-      <pre><span class="kw">static const char</span>* <span class="var">response</span> =
-    <span class="str">"HTTP/1.1 200 OK\r\n"</span>
-    <span class="str">"Content-Type: text/html\r\n"</span>
-    <span class="str">"Content-Length: 22\r\n"</span>
-    <span class="str">"Connection: close\r\n"</span>
-    <span class="str">"\r\n"</span>
-    <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span>;
+      <pre><span class="kw">struct</span> <span class="type">Connection</span> {
+    <span class="type">int</span>         <span class="var">fd</span>;           <span class="cmt">// le file descriptor du client</span>
+    std::string <span class="var">request</span>;      <span class="cmt">// la requête HTTP accumul&eacute;e</span>
+    std::string <span class="var">response</span>;     <span class="cmt">// la r&eacute;ponse HTTP &agrave; envoyer</span>
+    <span class="type">size_t</span>      <span class="var">sent</span>;         <span class="cmt">// combien d'octets d&eacute;j&agrave; envoy&eacute;s</span>
+};
 
-<span class="type">void</span> <span class="fn-name">handle_send</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
-    <span class="type">size_t</span> <span class="var">total</span> = <span class="fn-name">strlen</span>(<span class="var">response</span>);
-    <span class="type">size_t</span> <span class="var">sent</span>  = <span class="num">0</span>;
-
-    <span class="cmt">// Boucle ET : envoyer TOUT d'un coup.</span>
-    <span class="cmt">// Si send() retourne EAGAIN, le buffer noyau est plein →</span>
-    <span class="cmt">// on reste en EPOLLOUT | EPOLLET et on reprendra au prochain tour.</span>
-<span class="highlight-new">    <span class="kw">while</span> (<span class="var">sent</span> &lt; <span class="var">total</span>) {</span>
-<span class="highlight-new">        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">response</span> + <span class="var">sent</span>, <span class="var">total</span> - <span class="var">sent</span>, <span class="num">0</span>);</span>
-<span class="highlight-new">        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {</span>
-<span class="highlight-new">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>) {</span>
-<span class="highlight-new">                <span class="cmt">// buffer plein : se ré-enregistrer, attendre le prochain EPOLLOUT</span></span>
-<span class="highlight-new">                <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
-<span class="highlight-new">                <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span> | <span class="macro">EPOLLET</span>;</span>
-<span class="highlight-new">                <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;</span>
-<span class="highlight-new">                <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);</span>
-<span class="highlight-new">                <span class="kw">return</span>;  <span class="cmt">// reprendre au prochain EPOLLOUT</span></span>
-<span class="highlight-new">            }</span>
-<span class="highlight-new">            <span class="kw">break</span>;  <span class="cmt">// erreur réelle</span></span>
-<span class="highlight-new">        }</span>
-<span class="highlight-new">        <span class="var">sent</span> += <span class="var">n</span>;</span>
-<span class="highlight-new">    }</span>
-    <span class="cmt">// Tout envoyé — nettoyer</span>
-<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);</span>
-<span class="highlight-new">    <span class="fn-name">close</span>(<span class="var">fd</span>);</span>
-}</pre>
-    </div>
-
-    <div class="warning">
-      <span>⚠️</span>
-      <div>
-        <strong>EPOLL_CTL_MOD, pas ADD !</strong> Le client_fd est <strong>déjà</strong> dans epoll (ajouté lors de l'accept).
-        On utilise <code>EPOLL_CTL_MOD</code> pour <strong>changer</strong> les événements surveillés
-        (de EPOLLIN à EPOLLOUT | EPOLLET). <code>EPOLL_CTL_ADD</code> sur un fd déjà enregistré retournerait
-        <code>EEXIST</code>.
-      </div>
-    </div>
-  </section>
-
-  <div class="step-divider"></div>
-
-  <!-- ══════════════════════════════ -->
-  <!-- SECTION 5 : CGI APERÇU        -->
-  <!-- ══════════════════════════════ -->
-  <section class="step-section" id="cgi" style="--step-color: var(--accent-3)">
-    <div class="step-header">
-      <div class="step-number-badge">05</div>
-      <div>
-        <div class="step-fn">Et le CGI ?</div>
-        <div class="step-subtitle">Comment ça s'intègre — aperçu</div>
-      </div>
-    </div>
-
-    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
-      <div class="panel-label">On verra les détails plus tard — voici le principe</div>
-      <p>
-        Quand une requête déclenche un CGI (<code>fork()</code> + <code>execve()</code> d'un script Python/PHP),
-        le processus fils écrit sa sortie dans un <strong>pipe</strong>. Ce pipe est un fd comme un autre.
-      </p>
-      <p>
-        Le principe est identique aux sockets clients :
-      </p>
-      <ul>
-        <li><strong>Enregistrer le pipe dans epoll</strong> — <code>epoll_ctl(ADD, pipe_fd, EPOLLIN)</code></li>
-        <li><strong>Attendre EPOLLIN</strong> — quand le CGI produit de la sortie, epoll nous réveille</li>
-        <li><strong>Lire le pipe</strong> — <code>read(pipe_fd)</code> uniquement après EPOLLIN</li>
-        <li><strong>Transmettre au client</strong> — une fois la réponse CGI complète, passer le client_fd en EPOLLOUT</li>
-      </ul>
-      <p>
-        Le pipe du CGI est aussi en <strong>mode non-bloquant</strong>. Jamais de <code>read()</code>
-        sur un pipe sans que <code>epoll_wait()</code> l'ait confirmé. Même règle que pour les sockets.
-      </p>
-    </div>
-
-    <div class="info-box" style="border-color: rgba(192,132,252,0.15); background: rgba(192,132,252,0.04);">
-      <span>📌</span>
-      <div>
-        <strong style="color:var(--accent-3)">Le CGI aura son propre chapitre.</strong>
-        Pour l'instant, retiens juste : un pipe CGI se gère <strong>exactement comme un socket client</strong>
-        dans la boucle événementielle — enregistrer dans epoll, lire/écrire après notification, nettoyer à la fin.
-        La seule différence est <code>fork()</code> + <code>waitpid(WNOHANG)</code> pour le processus fils.
-      </div>
-    </div>
-  </section>
-
-  <div class="step-divider"></div>
-
-  <!-- ══════════════════════════════ -->
-  <!-- SECTION 6 : CODE FINAL        -->
-  <!-- ══════════════════════════════ -->
-  <section class="step-section" id="final" style="--step-color: var(--accent-4)">
-    <div class="step-header">
-      <div class="step-number-badge">06</div>
-      <div>
-        <div class="step-fn">Code final</div>
-        <div class="step-subtitle">Le serveur complet avec epoll</div>
-      </div>
-    </div>
-
-    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
-      <div class="panel-label">Ce qui a changé en résumé</div>
-      <ul>
-        <li><strong><code>create_server_socket()</code></strong> — inchangée (socket + SO_REUSEADDR + O_NONBLOCK)</li>
-        <li><strong><code>bind_address()</code></strong> — inchangée</li>
-        <li><strong><code>accept_next_client()</code></strong> — reçoit epfd, enregistre le client dans epoll avec EPOLLIN</li>
-        <li><strong><code>handle_client()</code></strong> — supprimée, remplacée par <code>handle_read()</code> et <code>handle_write()</code></li>
-        <li><strong><code>main()</code></strong> — crée epoll, enregistre listen_fd, boucle sur epoll_wait()</li>
-      </ul>
+<span class="cmt">// On stocke toutes les connexions actives</span>
+std::map&lt;<span class="type">int</span>, <span class="type">Connection</span>*&gt; <span class="var">connections</span>;</pre>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-4)">
       <div class="code-header">
         <div class="code-header-left">
           <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <span class="code-filename">main.cpp</span>
+          <span class="code-filename">La boucle &eacute;v&eacute;nementielle</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Dispatch par &eacute;v&eacute;nement</span>
+      </div>
+      <pre><span class="kw">while</span> (<span class="num">true</span>) {
+    <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, -<span class="num">1</span>);
+
+    <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
+<span class="highlight-line">        <span class="type">Connection</span>* <span class="var">conn</span> = (<span class="type">Connection</span>*)<span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">ptr</span>;  <span class="cmt">// &larr; on retrouve la connexion</span></span>
+
+        <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>))
+            <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);
+
+        <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>)
+            <span class="fn-name">handle_read</span>(<span class="var">conn</span>, <span class="var">epfd</span>);     <span class="cmt">// &larr; UN seul recv()</span>
+
+        <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>)
+            <span class="fn-name">handle_write</span>(<span class="var">conn</span>, <span class="var">epfd</span>);    <span class="cmt">// &larr; UN seul send()</span>
+    }
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong><code>ev.data.ptr</code> au lieu de <code>ev.data.fd</code>.</strong>
+        On stocke un <strong>pointeur vers la Connection</strong> directement dans l'&eacute;v&eacute;nement epoll.
+        Comme &ccedil;a, quand <code>epoll_wait()</code> nous r&eacute;veille, on retrouve imm&eacute;diatement l'&eacute;tat
+        de la connexion (requ&ecirc;te en cours, r&eacute;ponse, octets envoy&eacute;s) sans chercher dans une map.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : HANDLE_READ SANS ERRNO   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="read" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">handle_read()</div>
+        <div class="step-subtitle">Lire sans jamais checker errno</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le principe</div>
+      <p>
+        <code>epoll_wait()</code> nous a dit <code>EPOLLIN</code> sur ce fd &rarr; il y a des donn&eacute;es.
+        On fait <strong>un seul <code>recv()</code></strong>. Trois cas possibles, tous d&eacute;cid&eacute;s
+        sur la <strong>valeur de retour <code>n</code></strong> :
+      </p>
+      <ul>
+        <li><code>n &gt; 0</code> &mdash; on a re&ccedil;u des donn&eacute;es, on les accumule dans <code>conn-&gt;request</code></li>
+        <li><code>n == 0</code> &mdash; le client a ferm&eacute; la connexion (EOF) &rarr; on ferme</li>
+        <li><code>n &lt; 0</code> &mdash; erreur r&eacute;elle &rarr; on ferme</li>
+      </ul>
+      <p>
+        Si la requ&ecirc;te n'est pas compl&egrave;te, on ne boucle pas. On sort.
+        epoll nous rappellera quand il y aura <strong>plus de donn&eacute;es</strong> &agrave; lire.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">handle_read() &mdash; conforme au sujet</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Z&eacute;ro errno</span>
+      </div>
+      <pre><span class="type">void</span> <span class="fn-name">handle_read</span>(<span class="type">Connection</span>* <span class="var">conn</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+
+    <span class="cmt">// UN SEUL recv() — epoll nous a dit que le fd est pr&ecirc;t</span>
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">conn</span>-&gt;<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
+
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
+        <span class="cmt">// n == 0 : client d&eacute;connect&eacute;</span>
+        <span class="cmt">// n &lt; 0  : erreur r&eacute;elle</span>
+        <span class="cmt">// Dans les deux cas : fermer proprement</span>
+<span class="highlight-new">        <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);</span>
+        <span class="kw">return</span>;
+    }
+
+    <span class="cmt">// Accumuler les donn&eacute;es re&ccedil;ues</span>
+    <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
+    <span class="var">conn</span>-&gt;<span class="var">request</span> += <span class="var">buf</span>;
+
+    <span class="cmt">// Est-ce que la requ&ecirc;te HTTP est compl&egrave;te ? (\r\n\r\n)</span>
+    <span class="kw">if</span> (<span class="var">conn</span>-&gt;<span class="var">request</span>.<span class="fn-name">find</span>(<span class="str">"\r\n\r\n"</span>) != std::string::<span class="var">npos</span>) {
+        <span class="cmt">// Requ&ecirc;te compl&egrave;te &rarr; pr&eacute;parer la r&eacute;ponse</span>
+        <span class="var">conn</span>-&gt;<span class="var">response</span> = <span class="fn-name">build_response</span>(<span class="var">conn</span>-&gt;<span class="var">request</span>);
+        <span class="var">conn</span>-&gt;<span class="var">sent</span> = <span class="num">0</span>;
+
+        <span class="cmt">// Basculer le fd de EPOLLIN &rarr; EPOLLOUT</span>
+<span class="highlight-new">        <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-new">        <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span>;</span>
+<span class="highlight-new">        <span class="var">ev</span>.<span class="var">data</span>.<span class="var">ptr</span> = <span class="var">conn</span>;</span>
+<span class="highlight-new">        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">conn</span>-&gt;<span class="var">fd</span>, &amp;<span class="var">ev</span>);</span>
+    }
+    <span class="cmt">// Sinon : requ&ecirc;te pas finie, on ne fait rien.</span>
+    <span class="cmt">// epoll nous re-notifiera EPOLLIN quand le client enverra la suite.</span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pas de boucle, pas d'errno.</strong> Si le client envoie une grosse requ&ecirc;te en plusieurs paquets TCP,
+        on re&ccedil;oit un <code>EPOLLIN</code> par paquet. Chaque appel fait <strong>un seul <code>recv()</code></strong>,
+        accumule dans <code>conn-&gt;request</code>, et v&eacute;rifie si on a le <code>\r\n\r\n</code> final.
+        C'est epoll qui &laquo; boucle &raquo; pour nous en nous rappelant.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : HANDLE_WRITE SANS ERRNO  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="write" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">handle_write()</div>
+        <div class="step-subtitle">&Eacute;crire sans jamais checker errno</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le principe</div>
+      <p>
+        <code>epoll_wait()</code> nous a dit <code>EPOLLOUT</code> &rarr; le buffer kernel a de la place.
+        On fait <strong>un seul <code>send()</code></strong>. Il envoie <strong>ce qu'il peut</strong>
+        (peut-&ecirc;tre tout, peut-&ecirc;tre une partie).
+      </p>
+      <ul>
+        <li><code>n &gt; 0</code> &mdash; on met &agrave; jour <code>conn-&gt;sent += n</code></li>
+        <li>Si <code>sent &gt;= total</code> &mdash; tout est parti &rarr; basculer sur <code>EPOLLIN</code> (keep-alive) ou fermer</li>
+        <li>Si <code>sent &lt; total</code> &mdash; pas tout parti &rarr; <strong>ne rien faire</strong>. epoll nous rappellera avec <code>EPOLLOUT</code></li>
+        <li><code>n &lt;= 0</code> &mdash; erreur r&eacute;elle &rarr; fermer</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">handle_write() &mdash; conforme au sujet</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Z&eacute;ro errno</span>
+      </div>
+      <pre><span class="type">void</span> <span class="fn-name">handle_write</span>(<span class="type">Connection</span>* <span class="var">conn</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="cmt">// epoll nous a dit que le fd est pr&ecirc;t &rarr; on envoie ce qu'on peut</span>
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">conn</span>-&gt;<span class="var">fd</span>,</span>
+<span class="highlight-line">                     <span class="var">conn</span>-&gt;<span class="var">response</span>.<span class="fn-name">c_str</span>() + <span class="var">conn</span>-&gt;<span class="var">sent</span>,</span>
+<span class="highlight-line">                     <span class="var">conn</span>-&gt;<span class="var">response</span>.<span class="fn-name">size</span>() - <span class="var">conn</span>-&gt;<span class="var">sent</span>,</span>
+<span class="highlight-line">                     <span class="num">0</span>);</span>
+
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
+        <span class="cmt">// Erreur r&eacute;elle &rarr; fermer proprement</span>
+<span class="highlight-new">        <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);</span>
+        <span class="kw">return</span>;
+    }
+
+    <span class="var">conn</span>-&gt;<span class="var">sent</span> += <span class="var">n</span>;
+
+    <span class="kw">if</span> (<span class="var">conn</span>-&gt;<span class="var">sent</span> &gt;= <span class="var">conn</span>-&gt;<span class="var">response</span>.<span class="fn-name">size</span>()) {
+        <span class="cmt">// Tout est envoy&eacute; &rarr; fermer ou keep-alive</span>
+<span class="highlight-new">        <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);</span>
+
+        <span class="cmt">// Ou, pour keep-alive : rebasculer sur EPOLLIN</span>
+        <span class="cmt">// conn-&gt;request.clear();</span>
+        <span class="cmt">// conn-&gt;response.clear();</span>
+        <span class="cmt">// conn-&gt;sent = 0;</span>
+        <span class="cmt">// epoll_event ev;</span>
+        <span class="cmt">// ev.events  = EPOLLIN;</span>
+        <span class="cmt">// ev.data.ptr = conn;</span>
+        <span class="cmt">// epoll_ctl(epfd, EPOLL_CTL_MOD, conn-&gt;fd, &amp;ev);</span>
+    }
+
+    <span class="cmt">// Si sent &lt; total : on ne fait RIEN.</span>
+    <span class="cmt">// On ne boucle pas. On ne teste pas errno.</span>
+    <span class="cmt">// epoll nous rappellera avec EPOLLOUT quand le buffer</span>
+    <span class="cmt">// kernel aura de la place pour la suite.</span>
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong><code>EPOLL_CTL_MOD</code>, pas <code>ADD</code> !</strong> Le client_fd est <strong>d&eacute;j&agrave;</strong> dans epoll
+        (ajout&eacute; lors de l'accept). On utilise <code>MOD</code> pour <strong>changer</strong> les &eacute;v&eacute;nements surveill&eacute;s
+        (de <code>EPOLLIN</code> &agrave; <code>EPOLLOUT</code>). <code>EPOLL_CTL_ADD</code> sur un fd d&eacute;j&agrave; enregistr&eacute; retournerait <code>EEXIST</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SECTION 6 : COMMENT ÇA MARCHE DERRIÈRE   -->
+  <!-- ══════════════════════════════════════════ -->
+  <section class="step-section" id="mecanique" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">La m&eacute;canique derri&egrave;re</div>
+        <div class="step-subtitle">Pourquoi &ccedil;a fonctionne sans errno</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le buffer kernel &mdash; la cl&eacute; de tout</div>
+      <p>
+        Chaque socket a <strong>deux buffers dans le kernel</strong> : un pour la lecture (recv), un pour l'&eacute;criture (send).
+        <code>epoll</code> surveille l'&eacute;tat de ces buffers et te pr&eacute;vient :
+      </p>
+      <ul>
+        <li><code>EPOLLIN</code> &mdash; le buffer de lecture contient des donn&eacute;es &rarr; <code>recv()</code> ne bloquera pas</li>
+        <li><code>EPOLLOUT</code> &mdash; le buffer d'&eacute;criture a de la place &rarr; <code>send()</code> ne bloquera pas</li>
+      </ul>
+      <p>
+        Quand on fait un <code>recv()</code>/<code>send()</code> apr&egrave;s une notification epoll, on a la
+        <strong>garantie</strong> que l'appel va fonctionner &mdash; au moins partiellement.
+        Pas besoin de <code>errno</code> pour v&eacute;rifier.
+      </p>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le cycle de vie d'une requ&ecirc;te &mdash; en d&eacute;tail</div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-step-num">1</div>
+          <div>Client se connecte &rarr; <code>EPOLLIN</code> sur <code>server_fd</code> &rarr; on fait <code>accept()</code> &rarr; on cr&eacute;e une <code>Connection</code> &rarr; on enregistre <code>client_fd</code> avec <code>EPOLLIN</code></div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">2</div>
+          <div>Client envoie des donn&eacute;es &rarr; <code>EPOLLIN</code> sur <code>client_fd</code> &rarr; <strong>un</strong> <code>recv()</code> &rarr; accumule dans <code>conn-&gt;request</code></div>
+        </div>
+        <div class="flow-arrow">&darr; (r&eacute;p&eacute;t&eacute; si la requ&ecirc;te arrive en plusieurs paquets)</div>
+        <div class="flow-step">
+          <div class="flow-step-num">3</div>
+          <div>Requ&ecirc;te compl&egrave;te (<code>\r\n\r\n</code> trouv&eacute;) &rarr; on pr&eacute;pare <code>conn-&gt;response</code> &rarr; <code>EPOLL_CTL_MOD</code> vers <code>EPOLLOUT</code></div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">4</div>
+          <div>Buffer d'&eacute;criture a de la place &rarr; <code>EPOLLOUT</code> &rarr; <strong>un</strong> <code>send()</code> &rarr; met &agrave; jour <code>conn-&gt;sent</code></div>
+        </div>
+        <div class="flow-arrow">&darr; (r&eacute;p&eacute;t&eacute; si la r&eacute;ponse est grande)</div>
+        <div class="flow-step">
+          <div class="flow-step-num">5</div>
+          <div><code>sent &gt;= total</code> &rarr; tout est envoy&eacute; &rarr; <code>close()</code> ou bascule vers <code>EPOLLIN</code> (keep-alive)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="analogy-panel" style="border-color: rgba(192,132,252,0.3);">
+        <div class="analogy-icon">&#128230;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-3);">Analogie &mdash; le facteur</div>
+          <p>
+            Imagine que tu envoies un colis trop gros pour la bo&icirc;te aux lettres. Au lieu de forcer (&laquo; boucler &raquo;),
+            tu mets ce qui rentre, et tu laisses <strong>le facteur te pr&eacute;venir</strong> quand la bo&icirc;te est vid&eacute;e.
+            Le facteur, c'est <code>epoll</code>. Tu ne regardes jamais toi-m&ecirc;me si la bo&icirc;te est pleine (<code>errno</code>).
+          </p>
+        </div>
+      </div>
+      <div class="analogy-panel" style="border-color: rgba(74,224,255,0.3);">
+        <div class="analogy-icon">&#128260;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-2);">Analogie &mdash; LT re-notifications</div>
+          <p>
+            En Level Triggered (pas de <code>EPOLLET</code>), epoll te rappelle <strong>tant que</strong> la condition
+            est vraie. S'il reste des donn&eacute;es &agrave; lire ou de la place pour &eacute;crire, tu seras re-notifi&eacute;
+            au prochain <code>epoll_wait()</code>. C'est &ccedil;a qui remplace la boucle <code>EAGAIN</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-top: 1.5rem;">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pourquoi Level Triggered est notre alli&eacute;.</strong>
+        En Level Triggered (le mode par d&eacute;faut, sans <code>EPOLLET</code>), epoll re-notifie
+        <strong>tant que</strong> des donn&eacute;es sont disponibles ou que le buffer a de la place.
+        C'est exactement ce qu'il nous faut : un seul <code>recv()</code>/<code>send()</code> par &eacute;v&eacute;nement,
+        et epoll fait le reste. En Edge Triggered, on serait oblig&eacute; de drainer jusqu'&agrave; <code>EAGAIN</code>
+        &mdash; ce qui est interdit. <strong>LT + un appel par &eacute;v&eacute;nement = la solution parfaite.</strong>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 7 : CODE FINAL COMPLET       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="final" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">07</div>
+      <div>
+        <div class="step-fn">Code final</div>
+        <div class="step-subtitle">Le serveur complet &mdash; z&eacute;ro errno</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp &mdash; serveur event-driven conforme au sujet</span>
         </div>
         <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Code final complet</span>
       </div>
@@ -735,22 +714,45 @@
 <span class="macro">#include</span> <span class="str">&lt;fcntl.h&gt;</span>
 <span class="macro">#include</span> <span class="str">&lt;csignal&gt;</span>
 <span class="macro">#include</span> <span class="str">&lt;cstring&gt;</span>
-<span class="macro">#include</span> <span class="str">&lt;cerrno&gt;</span>
 <span class="macro">#include</span> <span class="str">&lt;iostream&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;map&gt;</span>
+<span class="macro">#include</span> <span class="str">&lt;string&gt;</span>
 
 <span class="kw">static const</span> <span class="type">int</span> <span class="macro">PORT</span>       = <span class="num">8080</span>;
 <span class="kw">static const</span> <span class="type">int</span> <span class="macro">BACKLOG</span>    = <span class="num">10</span>;
 <span class="kw">static const</span> <span class="type">int</span> <span class="macro">MAX_EVENTS</span> = <span class="num">64</span>;
 
-<span class="kw">static const char</span>* <span class="macro">RESPONSE</span> =
-    <span class="str">"HTTP/1.1 200 OK\r\n"</span>
-    <span class="str">"Content-Type: text/html\r\n"</span>
-    <span class="str">"Content-Length: 22\r\n"</span>
-    <span class="str">"Connection: close\r\n"</span>
-    <span class="str">"\r\n"</span>
-    <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span>;
+<span class="cmt">// ── &Eacute;tat par connexion ─────────────────────────────────</span>
+<span class="kw">struct</span> <span class="type">Connection</span> {
+    <span class="type">int</span>         <span class="var">fd</span>;
+    std::string <span class="var">request</span>;
+    std::string <span class="var">response</span>;
+    <span class="type">size_t</span>      <span class="var">sent</span>;
+};
 
-<span class="cmt">// ── Crée le socket serveur (inchangé) ─────────────────</span>
+std::map&lt;<span class="type">int</span>, <span class="type">Connection</span>*&gt; <span class="var">connections</span>;
+
+<span class="cmt">// ── Fermer proprement ─────────────────────────────────</span>
+<span class="type">void</span> <span class="fn-name">close_connection</span>(<span class="type">Connection</span>* <span class="var">conn</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">conn</span>-&gt;<span class="var">fd</span>, <span class="macro">NULL</span>);
+    <span class="fn-name">close</span>(<span class="var">conn</span>-&gt;<span class="var">fd</span>);
+    <span class="var">connections</span>.<span class="fn-name">erase</span>(<span class="var">conn</span>-&gt;<span class="var">fd</span>);
+    <span class="kw">delete</span> <span class="var">conn</span>;
+}
+
+<span class="cmt">// ── Construire une r&eacute;ponse HTTP simple ───────────────</span>
+std::string <span class="fn-name">build_response</span>(<span class="kw">const</span> std::string&amp; <span class="var">request</span>) {
+    std::string <span class="var">body</span> = <span class="str">"&lt;h1&gt;Hello World!&lt;/h1&gt;\n"</span>;
+    std::string <span class="var">resp</span> =
+        <span class="str">"HTTP/1.1 200 OK\r\n"</span>
+        <span class="str">"Content-Type: text/html\r\n"</span>
+        <span class="str">"Content-Length: "</span> + std::<span class="fn-name">to_string</span>(<span class="var">body</span>.<span class="fn-name">size</span>()) + <span class="str">"\r\n"</span>
+        <span class="str">"Connection: close\r\n"</span>
+        <span class="str">"\r\n"</span> + <span class="var">body</span>;
+    <span class="kw">return</span> <span class="var">resp</span>;
+}
+
+<span class="cmt">// ── Cr&eacute;e le socket serveur ────────────────────────────</span>
 <span class="type">int</span> <span class="fn-name">create_server_socket</span>() {
     <span class="type">int</span> <span class="var">fd</span> = <span class="fn-name">socket</span>(<span class="macro">AF_INET</span>, <span class="macro">SOCK_STREAM</span>, <span class="num">0</span>);
     <span class="kw">if</span> (<span class="var">fd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"socket"</span>); <span class="kw">return</span> -<span class="num">1</span>; }
@@ -761,7 +763,7 @@
     <span class="kw">return</span> <span class="var">fd</span>;
 }
 
-<span class="cmt">// ── Bind IP:port (inchangé) ───────────────────────────</span>
+<span class="cmt">// ── Bind IP:port ──────────────────────────────────────</span>
 <span class="type">int</span> <span class="fn-name">bind_address</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">port</span>) {
     <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">addr</span>;
     <span class="fn-name">memset</span>(&amp;<span class="var">addr</span>, <span class="num">0</span>, <span class="kw">sizeof</span>(<span class="var">addr</span>));
@@ -774,7 +776,7 @@
     <span class="kw">return</span> <span class="num">0</span>;
 }
 
-<span class="cmt">// ── Accept : enregistre le client dans epoll ─────────</span>
+<span class="cmt">// ── Accept : cr&eacute;e une Connection, enregistre dans epoll ─</span>
 <span class="type">void</span> <span class="fn-name">accept_next_client</span>(<span class="type">int</span> <span class="var">server_fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
     <span class="kw">struct</span> <span class="type">sockaddr_in</span> <span class="var">client_addr</span>;
     <span class="type">socklen_t</span> <span class="var">len</span> = <span class="kw">sizeof</span>(<span class="var">client_addr</span>);
@@ -784,45 +786,69 @@
 
     <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>);
 
-    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
-    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;
-    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">client_fd</span>;
-    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);
+    <span class="cmt">// Cr&eacute;er l'&eacute;tat de la connexion</span>
+<span class="highlight-new">    <span class="type">Connection</span>* <span class="var">conn</span> = <span class="kw">new</span> <span class="type">Connection</span>();</span>
+<span class="highlight-new">    <span class="var">conn</span>-&gt;<span class="var">fd</span>   = <span class="var">client_fd</span>;</span>
+<span class="highlight-new">    <span class="var">conn</span>-&gt;<span class="var">sent</span> = <span class="num">0</span>;</span>
+<span class="highlight-new">    <span class="var">connections</span>[<span class="var">client_fd</span>] = <span class="var">conn</span>;</span>
+
+    <span class="cmt">// Enregistrer dans epoll avec EPOLLIN</span>
+    <span class="cmt">// data.ptr pointe vers notre Connection</span>
+<span class="highlight-new">    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;         <span class="cmt">// pas de EPOLLET → Level Triggered</span></span>
+<span class="highlight-new">    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">ptr</span> = <span class="var">conn</span>;           <span class="cmt">// stocker le pointeur, pas le fd</span></span>
+<span class="highlight-new">    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">client_fd</span>, &amp;<span class="var">ev</span>);</span>
 
     std::cout &lt;&lt; <span class="str">"[+] client fd="</span> &lt;&lt; <span class="var">client_fd</span>
               &lt;&lt; <span class="str">" from "</span> &lt;&lt; <span class="fn-name">inet_ntoa</span>(<span class="var">client_addr</span>.<span class="var">sin_addr</span>) &lt;&lt; <span class="str">"\n"</span>;
 }
 
-<span class="cmt">// ── Lecture : EPOLLIN → recv, puis passe en EPOLLOUT ──</span>
-<span class="type">void</span> <span class="fn-name">handle_read</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+<span class="cmt">// ── Lecture : UN recv(), accumule, bascule si complet ──</span>
+<span class="type">void</span> <span class="fn-name">handle_read</span>(<span class="type">Connection</span>* <span class="var">conn</span>, <span class="type">int</span> <span class="var">epfd</span>) {
     <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
-    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">conn</span>-&gt;<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);</span>
 
     <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
-        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
-        <span class="fn-name">close</span>(<span class="var">fd</span>);
+        <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);
         <span class="kw">return</span>;
     }
 
     <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
-    std::cout &lt;&lt; <span class="var">buf</span>;
+    <span class="var">conn</span>-&gt;<span class="var">request</span> += <span class="var">buf</span>;
 
-    <span class="cmt">// Passer de lecture → écriture</span>
-    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
-    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span>;
-    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">fd</span>;
-    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">fd</span>, &amp;<span class="var">ev</span>);
+    <span class="kw">if</span> (<span class="var">conn</span>-&gt;<span class="var">request</span>.<span class="fn-name">find</span>(<span class="str">"\r\n\r\n"</span>) != std::string::<span class="var">npos</span>) {
+        <span class="var">conn</span>-&gt;<span class="var">response</span> = <span class="fn-name">build_response</span>(<span class="var">conn</span>-&gt;<span class="var">request</span>);
+        <span class="var">conn</span>-&gt;<span class="var">sent</span> = <span class="num">0</span>;
+
+<span class="highlight-new">        <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;</span>
+<span class="highlight-new">        <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span>;       <span class="cmt">// bascule lecture → &eacute;criture</span></span>
+<span class="highlight-new">        <span class="var">ev</span>.<span class="var">data</span>.<span class="var">ptr</span> = <span class="var">conn</span>;</span>
+<span class="highlight-new">        <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">conn</span>-&gt;<span class="var">fd</span>, &amp;<span class="var">ev</span>);</span>
+    }
 }
 
-<span class="cmt">// ── Écriture : EPOLLOUT → send, puis close ───────────</span>
-<span class="type">void</span> <span class="fn-name">handle_write</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
-    <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="macro">RESPONSE</span>, <span class="fn-name">strlen</span>(<span class="macro">RESPONSE</span>), <span class="num">0</span>);
+<span class="cmt">// ── &Eacute;criture : UN send(), met &agrave; jour sent, ferme si fini ─</span>
+<span class="type">void</span> <span class="fn-name">handle_write</span>(<span class="type">Connection</span>* <span class="var">conn</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">conn</span>-&gt;<span class="var">fd</span>,</span>
+<span class="highlight-line">                     <span class="var">conn</span>-&gt;<span class="var">response</span>.<span class="fn-name">c_str</span>() + <span class="var">conn</span>-&gt;<span class="var">sent</span>,</span>
+<span class="highlight-line">                     <span class="var">conn</span>-&gt;<span class="var">response</span>.<span class="fn-name">size</span>() - <span class="var">conn</span>-&gt;<span class="var">sent</span>,</span>
+<span class="highlight-line">                     <span class="num">0</span>);</span>
 
-    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
-    <span class="fn-name">close</span>(<span class="var">fd</span>);
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) {
+        <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);
+        <span class="kw">return</span>;
+    }
+
+    <span class="var">conn</span>-&gt;<span class="var">sent</span> += <span class="var">n</span>;
+
+    <span class="kw">if</span> (<span class="var">conn</span>-&gt;<span class="var">sent</span> &gt;= <span class="var">conn</span>-&gt;<span class="var">response</span>.<span class="fn-name">size</span>())
+        <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);
+
+    <span class="cmt">// Si pas tout envoy&eacute; : on ne fait rien.</span>
+    <span class="cmt">// EPOLLOUT (Level Triggered) nous re-notifiera.</span>
 }
 
-<span class="cmt">// ── La boucle événementielle ─────────────────────────</span>
+<span class="cmt">// ── La boucle &eacute;v&eacute;nementielle ────────────────────────────</span>
 <span class="type">int</span> <span class="fn-name">main</span>() {
     <span class="fn-name">signal</span>(<span class="macro">SIGPIPE</span>, <span class="macro">SIG_IGN</span>);
 
@@ -832,38 +858,43 @@
     <span class="kw">if</span> (<span class="fn-name">listen</span>(<span class="var">server_fd</span>, <span class="macro">BACKLOG</span>) == -<span class="num">1</span>)
         { <span class="fn-name">perror</span>(<span class="str">"listen"</span>); <span class="kw">return</span> <span class="num">1</span>; }
 
-    <span class="cmt">// Créer epoll + enregistrer le listen socket</span>
     <span class="type">int</span> <span class="var">epfd</span> = <span class="fn-name">epoll_create1</span>(<span class="num">0</span>);
     <span class="kw">if</span> (<span class="var">epfd</span> == -<span class="num">1</span>) { <span class="fn-name">perror</span>(<span class="str">"epoll_create1"</span>); <span class="kw">return</span> <span class="num">1</span>; }
 
+    <span class="cmt">// Enregistrer le listen socket</span>
     <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
     <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLIN</span>;
-    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">server_fd</span>;
+    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">server_fd</span>;   <span class="cmt">// pour le listen, on utilise data.fd</span>
     <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_ADD</span>, <span class="var">server_fd</span>, &amp;<span class="var">ev</span>);
 
     std::cout &lt;&lt; <span class="str">"Serveur sur http://localhost:"</span> &lt;&lt; <span class="macro">PORT</span> &lt;&lt; <span class="str">"\n"</span>;
 
-    <span class="cmt">// Boucle événementielle</span>
     <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">events</span>[<span class="macro">MAX_EVENTS</span>];
 
     <span class="kw">while</span> (<span class="num">true</span>) {
-<span class="highlight-line">        <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, -<span class="num">1</span>);</span>
+<span class="highlight-line">        <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, -<span class="num">1</span>);  <span class="cmt">// dort quand rien</span></span>
 
         <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
-            <span class="type">int</span> <span class="var">fd</span> = <span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span>;
 
-            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
-                <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_DEL</span>, <span class="var">fd</span>, <span class="macro">NULL</span>);
-                <span class="fn-name">close</span>(<span class="var">fd</span>);
+            <span class="cmt">// Cas sp&eacute;cial : le listen socket (on a mis data.fd)</span>
+            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">fd</span> == <span class="var">server_fd</span>
+                &amp;&amp; (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>)) {
+                <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>, <span class="var">epfd</span>);
                 <span class="kw">continue</span>;
             }
 
-            <span class="kw">if</span> (<span class="var">fd</span> == <span class="var">server_fd</span>)
-                <span class="fn-name">accept_next_client</span>(<span class="var">server_fd</span>, <span class="var">epfd</span>);
-            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>)
-                <span class="fn-name">handle_read</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
-            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>)
-                <span class="fn-name">handle_write</span>(<span class="var">fd</span>, <span class="var">epfd</span>);
+            <span class="cmt">// Tous les autres fd : on a mis data.ptr</span>
+            <span class="type">Connection</span>* <span class="var">conn</span> = (<span class="type">Connection</span>*)<span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">ptr</span>;
+
+            <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLERR</span> | <span class="macro">EPOLLHUP</span>)) {
+                <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>);
+            }
+            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLIN</span>) {
+                <span class="fn-name">handle_read</span>(<span class="var">conn</span>, <span class="var">epfd</span>);
+            }
+            <span class="kw">else if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>) {
+                <span class="fn-name">handle_write</span>(<span class="var">conn</span>, <span class="var">epfd</span>);
+            }
         }
     }
 
@@ -875,50 +906,57 @@
 
     <div class="key-points">
       <div class="key-point">
-        <span class="key-point-icon">💤</span>
-        <span><strong>0% CPU au repos.</strong> epoll_wait(-1) dort. Plus de busy-wait.</span>
+        <span class="key-point-icon">&#9989;</span>
+        <span><strong>Z&eacute;ro errno.</strong> Aucun <code>errno</code> n'est test&eacute;. Toute la logique repose sur la valeur de retour de <code>recv()</code>/<code>send()</code> et les notifications <code>epoll</code>.</span>
       </div>
       <div class="key-point">
-        <span class="key-point-icon">👥</span>
-        <span><strong>Multi-clients.</strong> Chaque client est un fd dans epoll. Ils sont tous gérés en parallèle dans la même boucle.</span>
+        <span class="key-point-icon">&#128260;</span>
+        <span><strong>Un appel par &eacute;v&eacute;nement.</strong> Un seul <code>recv()</code> par <code>EPOLLIN</code>, un seul <code>send()</code> par <code>EPOLLOUT</code>. C'est epoll qui &laquo; boucle &raquo; pour nous via ses re-notifications LT.</span>
       </div>
       <div class="key-point">
-        <span class="key-point-icon">✅</span>
-        <span><strong>Règle respectée.</strong> Aucun recv/send sans epoll_wait() avant. Aucun errno vérifié après.</span>
+        <span class="key-point-icon">&#128203;</span>
+        <span><strong>Connection struct.</strong> L'&eacute;tat de chaque client survit entre les &eacute;v&eacute;nements. <code>request</code> s'accumule, <code>sent</code> progresse.</span>
       </div>
       <div class="key-point">
-        <span class="key-point-icon">🔀</span>
-        <span><strong>Transition claire.</strong> EPOLLIN → recv → EPOLL_CTL_MOD(EPOLLOUT) → send → close. Le cycle de vie d'une requête.</span>
+        <span class="key-point-icon">&#128164;</span>
+        <span><strong>0% CPU au repos.</strong> <code>epoll_wait(-1)</code> dort. Plus de busy-wait, plus de boucle EAGAIN.</span>
       </div>
     </div>
   </section>
 
-  <!-- ══════════════════════════════ -->
-  <!-- RÉSUMÉ                         -->
-  <!-- ══════════════════════════════ -->
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
   <div class="summary-section">
-    <div class="summary-title">Résumé — La boucle <em>événementielle</em></div>
-    <div class="summary-subtitle">Le busy-wait est mort. Vive epoll.</div>
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; Le pattern <em>conforme au sujet</em></div>
+    <div class="summary-subtitle">Ni errno, ni boucle EAGAIN. epoll orchestre tout.</div>
     <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
       <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
-        <div style="font-size:1.5rem; flex-shrink:0;">🏗️</div>
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128683;</div>
         <div>
-          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">epoll_create1() + epoll_ctl(ADD, listen_fd)</div>
-          <div style="font-size:0.8rem; color:var(--text-muted);">Au démarrage : créer l'instance epoll et enregistrer le socket d'écoute.</div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Ce qui est interdit</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Tester <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">errno == EAGAIN</code> ou <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">errno == EWOULDBLOCK</code> apr&egrave;s recv/send. Boucler jusqu'&agrave; EAGAIN. Utiliser errno comme signal de contr&ocirc;le.</div>
         </div>
       </div>
       <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
-        <div style="font-size:1.5rem; flex-shrink:0;">🔁</div>
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9989;</div>
         <div>
-          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">epoll_wait() → dispatch par type d'événement</div>
-          <div style="font-size:0.8rem; color:var(--text-muted);">La boucle : dormir → réveillé par un événement → accept/recv/send selon le fd et l'événement.</div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">Le pattern correct</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Un seul <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">recv()</code>/<code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">send()</code> par &eacute;v&eacute;nement. D&eacute;cider sur <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">n</code> (valeur de retour), pas sur <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">errno</code>. Laisser epoll re-notifier en Level Triggered.</div>
         </div>
       </div>
       <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
-        <div style="font-size:1.5rem; flex-shrink:0;">🔀</div>
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128260;</div>
         <div>
-          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">EPOLLIN → recv → EPOLL_CTL_MOD(EPOLLOUT) → send → close</div>
-          <div style="font-size:0.8rem; color:var(--text-muted);">Le cycle de vie d'une requête : lire, changer de mode, écrire, fermer.</div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Le cycle de vie</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">accept &rarr; EPOLLIN &rarr; recv (x N) &rarr; EPOLL_CTL_MOD(EPOLLOUT) &rarr; send (x N) &rarr; close</code></div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128203;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-3); margin-bottom:0.2rem;">La cl&eacute; : Connection struct + data.ptr</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Chaque connexion garde son &eacute;tat (request, response, sent) entre les &eacute;v&eacute;nements. Le pointeur est stock&eacute; dans <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-3);">ev.data.ptr</code> pour le retrouver instantan&eacute;ment.</div>
         </div>
       </div>
     </div>
@@ -927,8 +965,8 @@
 </div>
 
 <footer class="footer">
-  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
-  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — La boucle événementielle. eahmeti</p>
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; I/O sans errno. eahmeti</p>
 </footer>
 
 <script>
@@ -949,7 +987,7 @@
     entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
   }, { threshold: 0.05 });
   sections.forEach(s => observer.observe(s));
-  const navIds = ['avant','main','accept','handle','cgi','final'];
+  const navIds = ['contrainte','piege','architecture','read','write','mecanique','final'];
   const sectionEls = navIds.map(id => document.getElementById(id));
   const navEls = navIds.map(id => document.getElementById('nav-' + id));
   const navObserver = new IntersectionObserver(entries => {

@@ -1080,15 +1080,18 @@
         </div>
       </div>
 
-      <div class="card" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+      <div class="card" data-page="03-http-protocol/chunked-encoding.html" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim); cursor: pointer;">
         <span class="card-tag">Parsing avancé</span>
-        <h3>Chunked Transfer-Encoding</h3>
+        <h3><a href="03-http-protocol/chunked-encoding.html" style="text-decoration: none;">Chunked Transfer-Encoding</a></h3>
         <p>
-          Quand le client envoie des données en mode "chunked", il n'y a pas de Content-Length. 
-          Les données arrivent en morceaux, chacun précédé de sa taille en hexadécimal. 
-          Un chunk de taille 0 marque la fin. Le serveur doit recombiner ces morceaux 
+          Quand le client envoie des données en mode "chunked", il n'y a pas de Content-Length.
+          Les données arrivent en morceaux, chacun précédé de sa taille en hexadécimal.
+          Un chunk de taille 0 marque la fin. Le serveur doit recombiner ces morceaux
           avant de les passer au CGI (qui attend un flux continu terminé par EOF).
         </p>
+        <div class="card-links">
+          <a class="card-link" href="03-http-protocol/chunked-encoding.html">Voir le cours →</a>
+        </div>
         <div class="card-quote">
           « For chunked requests, your server needs to un-chunk them, the CGI will expect EOF as the end of the body. »
           — webserv.pdf, IV.3
