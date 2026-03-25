@@ -1,6 +1,15 @@
 #include <sys/socket.h>
-#include <stdio.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <cstring>
+#include <cerrno>
+#include <iostream>
 #include <fcntl.h>
+#include <stdio.h>
+#include <signal.h>
+#include <sys/epoll.h>
+
 
 static const int PORT = 8080;
 static const int BACKLOGS = 64;
@@ -18,6 +27,9 @@ int create_server_socket() {
 }
 
 int bind_ports_addr(int server_fd, int PORT) {
+	struct sockaddr_in addr;
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_addr.s_addr	= INADDR_ANY;
 
 }
 
