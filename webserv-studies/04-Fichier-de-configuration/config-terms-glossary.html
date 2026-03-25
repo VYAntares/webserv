@@ -210,7 +210,7 @@
 
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name">index file ...;</div>
-        <p>Fichier servi automatiquement quand l'URI pointe sur un répertoire. Le serveur vérifie l'index <strong>avant</strong> d'envisager <code>autoindex</code>. Si l'index n'existe pas et <code>autoindex off</code> : <code>403 Forbidden</code>.</p>
+        <p>Fichier servi automatiquement quand l'URI pointe sur un répertoire. Le serveur vérifie l'index <strong>avant</strong> d'envisager <code>autoindex</code>. Si l'index est absent et <code>autoindex off</code> : <code>403 Forbidden</code> (répertoire inaccessible). Si le chemin lui-même n'existe pas : <code>404 Not Found</code>.</p>
         <div class="term-extra">Contexte: http, server, location • Exemple: index index.html;</div>
       </article>
 
@@ -403,7 +403,7 @@ POST /cgi-bin/script.py HTTP/1.1
 
       <article class="term-card" style="--step-color: var(--accent-5);">
         <div class="term-name">index index.html</div>
-        <p>Requête sur <code>GET /</code> → URI est un répertoire → le serveur tente <code>/var/www/html/index.html</code>. Si absent et <code>autoindex off</code> : <code>403 Forbidden</code>.</p>
+        <p>Requête sur <code>GET /</code> → URI est un répertoire → le serveur tente <code>/var/www/html/index.html</code>. Si absent et <code>autoindex off</code> : <code>403</code> (répertoire existe mais inaccessible). Si le répertoire lui-même n'existe pas : <code>404</code>.</p>
       </article>
 
       <article class="term-card" style="--step-color: var(--accent-5);">
@@ -418,7 +418,7 @@ POST /cgi-bin/script.py HTTP/1.1
     </div>
 
     <div class="key-points">
-      <div class="key-point"><span class="key-point-icon">🗂️</span><span>Ordre de résolution d'un répertoire : 1) tenter l'index → 2) si <code>autoindex on</code> générer le listing → 3) sinon <code>403</code>. Ne jamais envoyer un <code>404</code> pour un dossier qui existe.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗂️</span><span>Ordre de résolution : chemin absent → <code>404</code>. Chemin est un fichier → <code>200</code>. Chemin est un répertoire : index présent → <code>200</code> ; index absent + <code>autoindex on</code> → listing <code>200</code> ; index absent + <code>autoindex off</code> → <code>403</code>. Le <code>403</code> ne s'applique qu'aux répertoires qui <em>existent</em> — jamais à un chemin manquant.</span></div>
       <div class="key-point"><span class="key-point-icon">🔁</span><span>La page <code>error_page</code> doit être résolvable par tes propres règles <code>root/location</code>. Une page d'erreur introuvable → fallback body inline obligatoire (jamais de réponse vide).</span></div>
       <div class="key-point"><span class="key-point-icon">🧮</span><span>Toutes ces décisions — 413, 301, listing, index, 403 — sont prises à runtime sur chaque requête, à partir des structures C++ chargées une fois au démarrage.</span></div>
     </div>

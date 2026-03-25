@@ -486,7 +486,8 @@
 
   <span class="kw">for</span> (std::vector&lt;LocationConfig&gt;::const_iterator it = srv.locations.begin(); it != srv.locations.end(); ++it) {
     <span class="kw">const</span> std::string&amp; p = it-&gt;path;
-    <span class="kw">if</span> (uri.compare(<span class="num">0</span>, p.size(), p) == <span class="num">0</span>) {
+    <span class="kw">if</span> (uri.compare(<span class="num">0</span>, p.size(), p) == <span class="num">0</span> &&
+        (uri.size() == p.size() || uri[p.size()] == <span class="str">'/'</span>)) {
       <span class="kw">if</span> (p.size() &gt; bestLen) {
         best = &amp;(*it);
         bestLen = p.size();
@@ -512,10 +513,8 @@
     <div class="panel">
       <div class="panel-label">Point critique root</div>
       <p>
-        Beaucoup d'équipes se trompent ici. En NGINX, <code>root</code> concatène son chemin avec l'URI complète.
-        Mais l'exemple du sujet webserv montre une stratégie différente : <strong>Cas 2 — root + suffix</strong>
-        (on retire le préfixe de la location avant de concaténer avec root).
-        L'important est de choisir une stratégie, de la documenter, et de rester cohérent.
+        La seule formule correcte (confirmée par l'exemple du sujet) : <strong>root + URI résiduelle</strong> — on retire le préfixe de la location gagnante, puis on colle le résidu au <code>root</code>.
+        Résultat : <code>/kapouet/pouic/toto/pouet</code> avec location <code>/kapouet</code> et root <code>/tmp/www</code> → <code>/tmp/www/pouic/toto/pouet</code>. Le préfixe <code>/kapouet</code> disparaît.
       </p>
     </div>
 
@@ -527,14 +526,10 @@
         </div>
         <span class="code-tag">Exemple concret</span>
       </div>
-      <pre><span class="cmt"># Cas 1 — stratégie "root + uri"</span>
+      <pre><span class="cmt"># Seule formule correcte — root + URI résiduelle (préfixe retiré)</span>
 URI      = /kapouet/pouic/toto/pouet
-root     = /tmp/www
-résultat = /tmp/www/kapouet/pouic/toto/pouet
-
-<span class="cmt"># Cas 2 — stratégie "root + suffix" (souvent choisie en webserv custom)</span>
-location = /kapouet
-suffix   = /pouic/toto/pouet
+location = /kapouet        <span class="cmt"># préfixe → retiré</span>
+résidu   = /pouic/toto/pouet
 root     = /tmp/www
 résultat = /tmp/www/pouic/toto/pouet</pre>
     </div>

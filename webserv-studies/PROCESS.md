@@ -317,6 +317,13 @@ Le code de recv/send utilise **ET (Edge Triggered)**, pas LT :
 | 03 HTTP | Structure d'une requête HTTP | `03-http-protocol/http-requete.html` |
 | 03 HTTP | GET, POST, DELETE — Les méthodes HTTP | `03-http-protocol/http-methods.html` |
 | 03 HTTP | Status Codes & Headers — La réponse HTTP | `03-http-protocol/http-response.html` |
+| 04 Configuration | C'est quoi NGINX, concrètement ? | `04-Fichier-de-configuration/nginx-config-foundations.html` |
+| 04 Configuration | Pourquoi un fichier de configuration ? | `04-Fichier-de-configuration/config-file-complete-guide.html` |
+| 04 Configuration | Les termes à maîtriser | `04-Fichier-de-configuration/config-terms-glossary.html` |
+| 04 Configuration | Ce que la config doit absolument couvrir | `04-Fichier-de-configuration/config-required-minimum.html` |
+| 04 Configuration | Sélection de route : préfixe le plus long | `04-Fichier-de-configuration/routing-longest-prefix.html` |
+| 04 Configuration | Lexer + Parser + Validation | `04-Fichier-de-configuration/lexer-parser-validation.html` |
+| 04 Configuration | Du root au fichier final | `04-Fichier-de-configuration/root-to-file.html` |
 | 07 Architecture | Le parcours d'une requête | `07-architecture/full-architecture.html` |
 
 ---

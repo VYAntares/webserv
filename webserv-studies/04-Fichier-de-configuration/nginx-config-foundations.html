@@ -337,7 +337,7 @@
 
     <div class="key-points">
       <div class="key-point"><span class="key-point-icon">🏆</span><span><strong>Longest prefix wins</strong> — pas le premier match. Entre <code>/</code> et <code>/images/</code>, une URI <code>/images/logo.png</code> matche <code>/images/</code>. Webserv doit implémenter exactement cette logique.</span></div>
-      <div class="key-point"><span class="key-point-icon">📁</span><span>Résolution : <code>root</code> + URI complète. Exemple du sujet : route <code>/kapouet</code> + root <code>/tmp/www</code> → <code>/kapouet/pouic/toto/pouet</code> devient <code>/tmp/www/pouic/toto/pouet</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">📁</span><span>Résolution : <code>root</code> + URI <strong>résiduelle</strong> (URI moins le préfixe de la location). Exemple du sujet : route <code>/kapouet</code> + root <code>/tmp/www</code> → <code>/kapouet/pouic/toto/pouet</code> devient <code>/tmp/www/pouic/toto/pouet</code> — le préfixe <code>/kapouet</code> disparaît.</span></div>
       <div class="key-point"><span class="key-point-icon">❓</span><span>Si le fichier résolu n'existe pas → 404. Si c'est un répertoire sans index → 403 ou listing selon <code>autoindex on/off</code>. Ces trois cas doivent tous être gérés.</span></div>
     </div>
   </section>

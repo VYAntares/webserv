@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Du root au fichier final (Webserv)</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+<style>
+
+/* ══════════════════════════════════════════
+   DIAGRAMME — SUBSTITUTION ROOT
+   ══════════════════════════════════════════ */
+.diag-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
+  margin: 1.5rem 0;
+  overflow: visible;
+}
+.diag-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  opacity: 0.7;
+}
+
+/* --- ligne de substitution --- */
+.subst-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.subst-chip {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.chip-prefix {
+  background: rgba(240,153,123,0.12);
+  border: 1px solid rgba(240,153,123,0.35);
+  color: #f0997b;
+}
+.chip-residual {
+  background: rgba(93,202,165,0.12);
+  border: 1px solid rgba(93,202,165,0.35);
+  color: #5dcaa5;
+}
+.chip-root {
+  background: rgba(175,169,236,0.12);
+  border: 1px solid rgba(175,169,236,0.35);
+  color: #afa9ec;
+}
+.chip-result {
+  background: rgba(93,202,165,0.12);
+  border: 1px solid rgba(93,202,165,0.5);
+  color: #5dcaa5;
+  font-weight: 700;
+}
+.chip-op {
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 300;
+  padding: 0 0.1rem;
+}
+.subst-annotation {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: 'DM Sans', sans-serif;
+  margin-top: 0.2rem;
+  padding-left: 0.2rem;
+  display: flex;
+  gap: 2.4rem;
+  flex-wrap: wrap;
+}
+.subst-annotation span { opacity: 0.7; }
+.subst-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.2rem 0;
+  opacity: 0.4;
+}
+.subst-case-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  margin-bottom: 0.8rem;
+  opacity: 0.6;
+}
+
+/* --- flèche verticale --- */
+.arrow-down {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-left: 1rem;
+  margin: 0.4rem 0;
+  gap: 0;
+}
+.arrow-down-line {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin-left: 7px;
+}
+.arrow-down-head {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  opacity: 0.5;
+  line-height: 1;
+}
+
+/* ── bloc config gagnante ── */
+.diag-config-block {
+  position: relative;
+  background: rgba(15,15,20,0.7);
+  border: 1px solid rgba(93,202,165,0.25);
+  border-left: 3px solid rgba(93,202,165,0.6);
+  border-radius: 8px;
+  padding: 0.9rem 1.2rem;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.82rem;
+  line-height: 1.8;
+  margin-bottom: 1.4rem;
+}
+.dcb-kw    { color: #afa9ec; }
+.dcb-prefix{ color: #f0997b; font-weight: 700; }
+.dcb-brace { color: var(--text-muted); }
+.dcb-dir   { color: #4ae0ff; }
+.dcb-root  { color: #afa9ec; font-weight: 700; }
+.dcb-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.8rem;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #5dcaa5;
+  background: rgba(93,202,165,0.1);
+  border: 1px solid rgba(93,202,165,0.25);
+  border-radius: 100px;
+  padding: 0.15rem 0.6rem;
+}
+
+/* ── barre URI colorée ── */
+.diag-uri-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+.diag-uri-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  opacity: 0.6;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.diag-uri-bar {
+  display: flex;
+  align-items: stretch;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.diag-uri-seg {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.8rem;
+  white-space: nowrap;
+}
+.seg-prefix {
+  background: rgba(240,153,123,0.15);
+  color: #f0997b;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  text-decoration: line-through;
+  text-decoration-color: rgba(240,153,123,0.5);
+}
+.seg-residual {
+  background: rgba(93,202,165,0.12);
+  color: #5dcaa5;
+}
+.diag-uri-legend {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  margin-top: 0.3rem;
+  padding-left: 0.2rem;
+}
+.leg-prefix, .leg-residual {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.7rem;
+  opacity: 0.55;
+}
+.leg-prefix  { color: #f0997b; }
+.leg-residual{ color: #5dcaa5; }
+
+/* ── flèche centrale ── */
+.diag-arrow-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-left: 1rem;
+  margin: 0 0 0.8rem;
+}
+.diag-arrow-line {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin-left: 5px;
+  opacity: 0.5;
+}
+.diag-arrow-tip {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  opacity: 0.45;
+  line-height: 1;
+}
+
+/* ── ligne résultat ── */
+.diag-result-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.diag-result-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin-top: 0.3rem;
+}
+
+/* ══════════════════════════════════════════
+   DIAGRAMME — LOGIQUE stat()
+   ══════════════════════════════════════════ */
+.stat-tree {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 1rem 0;
+}
+.stat-node-entry {
+  background: rgba(68,68,65,0.5);
+  border: 1px solid rgba(180,178,169,0.3);
+  border-radius: 8px;
+  padding: 0.6rem 1.4rem;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.8rem;
+  color: #d3d1c7;
+  text-align: center;
+}
+.stat-node-entry span {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 0.2rem;
+}
+.stat-connector-v {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  opacity: 0.5;
+}
+.stat-branch-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+  text-align: center;
+}
+.stat-branches {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  justify-content: center;
+}
+.stat-branch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  max-width: 220px;
+  min-width: 0;
+}
+.stat-h-line {
+  height: 1px;
+  background: var(--border);
+  opacity: 0.4;
+  width: 50%;
+  align-self: flex-start;
+  margin-top: 12px;
+}
+.stat-h-line.right {
+  align-self: flex-end;
+}
+.stat-branch-header {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+.stat-node {
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.78rem;
+  text-align: center;
+  white-space: nowrap;
+  width: 100%;
+}
+.stat-node-green {
+  background: rgba(8,80,65,0.5);
+  border: 1px solid rgba(93,202,165,0.4);
+  color: #9fe1cb;
+}
+.stat-node-green strong { color: #5dcaa5; }
+.stat-node-orange {
+  background: rgba(99,56,6,0.5);
+  border: 1px solid rgba(239,159,39,0.4);
+  color: #fac775;
+}
+.stat-node-orange strong { color: #ef9f27; }
+.stat-node-red {
+  background: rgba(113,43,19,0.5);
+  border: 1px solid rgba(240,153,123,0.4);
+  color: #f5c4b3;
+}
+.stat-node-red strong { color: #f09977b;
+color: #f0997b; }
+.stat-node-sub {
+  font-size: 0.65rem;
+  opacity: 0.7;
+  display: block;
+  margin-top: 0.2rem;
+}
+.stat-connector-v-short {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  opacity: 0.4;
+}
+.stat-subnode {
+  border-radius: 8px;
+  padding: 0.4rem 0.9rem;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.75rem;
+  text-align: center;
+  width: 100%;
+}
+.stat-footnotes {
+  border-top: 1px solid var(--border);
+  margin-top: 1.8rem;
+  padding-top: 1.2rem;
+  opacity: 0.6;
+}
+.stat-footnotes p {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0.3rem 0;
+}
+.stat-footnotes code {
+  font-size: 0.72rem;
+  background: rgba(255,255,255,0.06);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* ══════════════════════════════════════════
+   DIAGRAMME — PIPELINE MENTAL
+   ══════════════════════════════════════════ */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  margin: 1.5rem 0;
+  justify-content: center;
+}
+.pipeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  min-width: 110px;
+  text-align: center;
+  flex: 1;
+  max-width: 160px;
+}
+.pipeline-step-num {
+  font-family: 'Instrument Serif', serif;
+  font-size: 1.6rem;
+  line-height: 1;
+  opacity: 0.2;
+}
+.pipeline-step-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+.pipeline-step-desc {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.pipeline-arrow {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  opacity: 0.4;
+  padding: 0 0.3rem;
+  flex-shrink: 0;
+}
+.pipeline-step-1 { background: rgba(175,169,236,0.08); border: 1px solid rgba(175,169,236,0.25); }
+.pipeline-step-1 .pipeline-step-num, .pipeline-step-1 .pipeline-step-label { color: #afa9ec; }
+.pipeline-step-2 { background: rgba(93,202,165,0.08); border: 1px solid rgba(93,202,165,0.25); }
+.pipeline-step-2 .pipeline-step-num, .pipeline-step-2 .pipeline-step-label { color: #5dcaa5; }
+.pipeline-step-3 { background: rgba(240,153,123,0.08); border: 1px solid rgba(240,153,123,0.25); }
+.pipeline-step-3 .pipeline-step-num, .pipeline-step-3 .pipeline-step-label { color: #f0997b; }
+
+/* ══════════════════════════════════════════
+   RÉUTILISÉ depuis webserv-shared.css
+   (step-section, two-col, panel, code-panel…)
+   ══════════════════════════════════════════ */
+.trap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.trap-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.2rem 1.4rem;
+}
+.trap-card-num {
+  font-family: 'Instrument Serif', serif;
+  font-size: 2.2rem;
+  line-height: 1;
+  opacity: 0.15;
+  margin-bottom: 0.3rem;
+}
+.trap-card-title {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.6rem;
+}
+.trap-card-body {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+</style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#pipeline" class="step-pill active" id="nav-pipeline"><span class="step-dot"></span>Pipeline</a>
+    <div class="step-connector"></div>
+    <a href="#construction" class="step-pill" id="nav-construction"><span class="step-dot"></span>Construction</a>
+    <div class="step-connector"></div>
+    <a href="#stat" class="step-pill" id="nav-stat"><span class="step-dot"></span>stat()</a>
+    <div class="step-connector"></div>
+    <a href="#pieges" class="step-pill" id="nav-pieges"><span class="step-dot"></span>Pièges C++</a>
+    <div class="step-connector"></div>
+    <a href="#tests" class="step-pill" id="nav-tests"><span class="step-dot"></span>Tests</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Configuration — Résolution de chemin</div>
+  <h1>Du <code>root</code> <em>au fichier final</em></h1>
+  <p class="header-desc">
+    Une fois la location choisie, le serveur construit le chemin disque par substitution :
+    <code>root + (URI − préfixe)</code>. Puis <code>stat()</code> décide si c'est un fichier,
+    un répertoire, ou rien du tout.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- 01 — PIPELINE MENTAL          -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="pipeline" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">vue d'ensemble</div>
+        <div class="step-subtitle">Le pipeline complet en 3 étapes</div>
+      </div>
+    </div>
+
+    <p class="prose">
+      Quand une requête arrive, le routing a déjà sélectionné la <code>location</code> gagnante.
+      Ce qui suit est la traduction de l'URI en chemin réel sur le disque,
+      puis la décision de ce qu'on fait de ce chemin.
+    </p>
+
+    <div class="pipeline">
+      <div class="pipeline-step pipeline-step-1">
+        <div class="pipeline-step-num">1</div>
+        <div class="pipeline-step-label">Longest match</div>
+        <div class="pipeline-step-desc">location gagnante sélectionnée par routing</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step pipeline-step-2">
+        <div class="pipeline-step-num">2</div>
+        <div class="pipeline-step-label">Construction</div>
+        <div class="pipeline-step-desc">root + (URI − préfixe) = chemin disque</div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step pipeline-step-3">
+        <div class="pipeline-step-num">3</div>
+        <div class="pipeline-step-label">stat()</div>
+        <div class="pipeline-step-desc">fichier / répertoire / absent → réponse HTTP</div>
+      </div>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-6);">
+      <p>« ...if URL /kapouet is rooted to /tmp/www, URL /kapouet/pouic/toto/pouet will search for /tmp/www/pouic/toto/pouet. »</p>
+      <cite>— webserv.pdf, IV.3 Configuration file</cite>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔑</span><span>Ce n'est pas une <strong>addition</strong> — c'est une <strong>substitution</strong>. Le préfixe de la location disparaît et est remplacé par le <code>root</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">📞</span><span><code>stat()</code> est obligatoire sur chaque chemin construit. On ne suppose jamais ce que contient le disque.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 02 — CONSTRUCTION DU CHEMIN   -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="construction" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">root + (URI − préfixe)</div>
+        <div class="step-subtitle">La substitution en deux exemples concrets</div>
+      </div>
+    </div>
+
+    <p class="prose">
+      La formule est invariable : on retire le préfixe de la location gagnante de l'URI,
+      puis on colle le résidu au <code>root</code> de cette location.
+      Les deux cas ci-dessous montrent deux configs différentes — dans une vraie requête, c'est toujours <strong>une seule</strong> location qui gagne.
+    </p>
+
+    <!-- Requête entrante (commune aux deux cas) -->
+    <div style="background:rgba(15,15,20,0.6);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:0.75rem 1.2rem;margin-bottom:1.2rem;font-family:'Space Mono',monospace;font-size:0.82rem;">
+      <span style="color:var(--text-muted);font-size:0.58rem;text-transform:uppercase;letter-spacing:.15em;display:block;margin-bottom:.5rem;opacity:.5;">requête HTTP reçue</span>
+      <span style="color:#afa9ec;">GET</span> <span style="color:#facc15;">/kapouet/pouic/toto/pouet</span> <span style="color:var(--text-muted);">HTTP/1.1</span>
+    </div>
+
+    <!-- Diagramme cas 1 -->
+    <div class="diag-wrap">
+      <div class="diag-label">Cas 1 — location gagnante</div>
+
+      <!-- Bloc config style nginx -->
+      <div class="diag-config-block">
+        <span class="dcb-kw">location</span> <span class="dcb-prefix">/kapouet/pouic</span> <span class="dcb-brace">{</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="dcb-dir">root</span> <span class="dcb-root">/data</span><span class="dcb-brace">;</span><br>
+        <span class="dcb-brace">}</span>
+        <div class="dcb-badge">location gagnante</div>
+      </div>
+
+      <!-- URI entrante -->
+      <div class="diag-uri-row">
+        <div class="diag-uri-label">URI reçue</div>
+        <div class="diag-uri-bar">
+          <div class="diag-uri-seg seg-prefix" title="préfixe — retiré">/kapouet/pouic</div><div class="diag-uri-seg seg-residual" title="résidu — conservé">/toto/pouet</div>
+        </div>
+      </div>
+      <div class="diag-uri-legend">
+        <span class="leg-prefix">préfixe — retiré</span>
+        <span class="leg-residual">résidu — conservé</span>
+      </div>
+
+      <!-- Flèche + résultat -->
+      <div class="diag-arrow-row">
+        <div class="diag-arrow-line"></div>
+        <div class="diag-arrow-tip">▼</div>
+      </div>
+
+      <div class="diag-result-row">
+        <div class="subst-chip chip-root">/data</div>
+        <div class="chip-op">+</div>
+        <div class="subst-chip chip-residual">/toto/pouet</div>
+        <div class="chip-op">=</div>
+        <div class="subst-chip chip-result">/data/toto/pouet</div>
+      </div>
+      <div class="diag-result-label">chemin final transmis à stat()</div>
+    </div>
+
+    <!-- Diagramme cas 2 -->
+    <div class="diag-wrap">
+      <div class="diag-label">Cas 2 — location gagnante &nbsp;<span style="opacity:.5;">(exemple officiel du sujet)</span></div>
+
+      <!-- Bloc config style nginx -->
+      <div class="diag-config-block">
+        <span class="dcb-kw">location</span> <span class="dcb-prefix">/kapouet</span> <span class="dcb-brace">{</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="dcb-dir">root</span> <span class="dcb-root">/tmp/www</span><span class="dcb-brace">;</span><br>
+        <span class="dcb-brace">}</span>
+        <div class="dcb-badge">location gagnante</div>
+      </div>
+
+      <!-- URI entrante -->
+      <div class="diag-uri-row">
+        <div class="diag-uri-label">URI reçue</div>
+        <div class="diag-uri-bar">
+          <div class="diag-uri-seg seg-prefix" title="préfixe — retiré">/kapouet</div><div class="diag-uri-seg seg-residual" title="résidu — conservé">/pouic/toto/pouet</div>
+        </div>
+      </div>
+      <div class="diag-uri-legend">
+        <span class="leg-prefix">préfixe — retiré</span>
+        <span class="leg-residual">résidu — conservé</span>
+      </div>
+
+      <!-- Flèche + résultat -->
+      <div class="diag-arrow-row">
+        <div class="diag-arrow-line"></div>
+        <div class="diag-arrow-tip">▼</div>
+      </div>
+
+      <div class="diag-result-row">
+        <div class="subst-chip chip-root">/tmp/www</div>
+        <div class="chip-op">+</div>
+        <div class="subst-chip chip-residual">/pouic/toto/pouet</div>
+        <div class="chip-op">=</div>
+        <div class="subst-chip chip-result">/tmp/www/pouic/toto/pouet</div>
+      </div>
+      <div class="diag-result-label">chemin final transmis à stat()</div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">path_builder.cpp</span>
+        </div>
+        <span class="code-tag">c++98</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="fn-name">buildPath</span>(<span class="kw">const</span> <span class="type">LocationConfig</span>& <span class="var">loc</span>, <span class="kw">const</span> <span class="type">std::string</span>& <span class="var">uri</span>)
+{
+    <span class="cmt">// ① Retirer le préfixe de la location gagnante</span>
+    <span class="type">std::string</span> <span class="var">residual</span> = <span class="var">uri</span>.substr(<span class="var">loc</span>.path.size());
+    <span class="cmt">//   uri = "/kapouet/pouic/toto/pouet", loc.path = "/kapouet"</span>
+    <span class="cmt">//   → residual = "/pouic/toto/pouet"</span>
+
+    <span class="cmt">// ② Coller root + résidu en évitant le double slash</span>
+    <span class="kw">const</span> <span class="type">std::string</span>& <span class="var">r</span> = <span class="var">loc</span>.root;
+    <span class="kw">if</span> (!<span class="var">r</span>.empty() && <span class="var">r</span>.back() == <span class="str">'/'</span> &&
+        !<span class="var">residual</span>.empty() && <span class="var">residual</span>[<span class="num">0</span>] == <span class="str">'/'</span>)
+        <span class="kw">return</span> <span class="var">r</span> + <span class="var">residual</span>.substr(<span class="num">1</span>);
+    <span class="kw">if</span> (!<span class="var">r</span>.empty() && <span class="var">r</span>.back() != <span class="str">'/'</span> &&
+        !<span class="var">residual</span>.empty() && <span class="var">residual</span>[<span class="num">0</span>] != <span class="str">'/'</span>)
+        <span class="kw">return</span> <span class="var">r</span> + <span class="str">"/"</span> + <span class="var">residual</span>;
+    <span class="kw">return</span> <span class="var">r</span> + <span class="var">residual</span>;
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-2);">
+        <div class="panel-label">Cas spécial — URI == préfixe exact</div>
+        <p>
+          Si l'URI est exactement égale au préfixe de la location,
+          le résidu est une chaîne vide <code>""</code>.
+        </p>
+        <p>
+          <code>uri = /kapouet</code>, <code>loc.path = /kapouet</code><br>
+          → <code>residual = ""</code><br>
+          → chemin = <code>/tmp/www</code>
+        </p>
+        <p>
+          <code>/tmp/www</code> est un répertoire — la logique répertoire
+          (index / autoindex / 403) s'applique.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2);">
+        <div class="panel-label">Attention — la formule vient du sujet</div>
+        <p>
+          Le sujet cite explicitement : <em>« if URL /kapouet is rooted to /tmp/www,
+          URL /kapouet/pouic/toto/pouet will search for /tmp/www/pouic/toto/pouet »</em>.
+        </p>
+        <p>
+          La logique est confirmée : le préfixe <code>/kapouet</code> est retiré,
+          la partie restante <code>/pouic/toto/pouet</code> est collée à <code>/tmp/www</code>.
+        </p>
+        <p>
+          Toute autre interprétation (ajout sans strip, double préfixe…) est fausse.
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">✂️</span><span>Le préfixe de la location est <strong>soustrait</strong> de l'URI — il ne figure jamais dans le chemin final.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔗</span><span>Le <code>root</code> de la location gagnante est le seul <code>root</code> qui compte — pas celui du bloc <code>server</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">🚫</span><span>Double slash : si <code>root</code> finit par <code>/</code> et que le résidu commence par <code>/</code>, retirer l'un des deux.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 03 — LOGIQUE stat()           -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="stat" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">stat(chemin_construit)</div>
+        <div class="step-subtitle">Appel obligatoire — 3 branches, 5 réponses possibles</div>
+      </div>
+    </div>
+
+    <p class="prose">
+      Une fois le chemin construit, on ne devine pas ce qu'il y a sur le disque.
+      On appelle <code>stat()</code> et on lit le résultat. Trois cas exhaustifs.
+    </p>
+
+    <!-- Arbre stat() en HTML -->
+    <div class="diag-wrap">
+      <div class="diag-label">Arbre de décision — stat(chemin_construit)</div>
+
+      <div class="stat-tree">
+        <!-- Entrée -->
+        <div class="stat-node-entry">
+          stat(chemin_construit)
+          <span>appel système obligatoire</span>
+        </div>
+        <div class="stat-connector-v"></div>
+        <div class="stat-branch-label">3 cas possibles</div>
+        <div class="stat-connector-v" style="height:12px;"></div>
+
+        <!-- 3 branches -->
+        <div class="stat-branches">
+
+          <!-- Branche gauche — fichier -->
+          <div class="stat-branch">
+            <div class="stat-node stat-node-green">
+              S_ISREG → fichier
+              <span class="stat-node-sub">open() + serve</span>
+            </div>
+            <div class="stat-connector-v-short"></div>
+            <div class="stat-subnode stat-node-green" style="font-weight:700;">200 OK</div>
+          </div>
+
+          <!-- Séparateur -->
+          <div style="width:1rem; flex-shrink:0;"></div>
+
+          <!-- Branche centrale — répertoire -->
+          <div class="stat-branch" style="max-width:260px;">
+            <div class="stat-node stat-node-orange">
+              S_ISDIR → répertoire
+              <span class="stat-node-sub">logique en 3 sous-cas</span>
+            </div>
+            <div class="stat-connector-v-short"></div>
+            <!-- 3 sous-cas répertoire -->
+            <div style="display:flex; gap:0.5rem; width:100%; justify-content:center; flex-wrap:wrap;">
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:70px;max-width:90px;">
+                <div class="stat-subnode stat-node-green" style="font-size:0.65rem;padding:0.4rem 0.5rem;">
+                  index ?<br><span style="color:#5dcaa5;">serve index.html</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:70px;max-width:90px;">
+                <div class="stat-subnode stat-node-orange" style="font-size:0.65rem;padding:0.4rem 0.5rem;">
+                  autoindex ?<br><span style="color:#ef9f27;">listing HTML</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:70px;max-width:90px;">
+                <div class="stat-subnode stat-node-red" style="font-size:0.65rem;padding:0.4rem 0.5rem;">
+                  sinon<br><span style="color:#f0997b;">403 Forbidden</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Séparateur -->
+          <div style="width:1rem; flex-shrink:0;"></div>
+
+          <!-- Branche droite — absent -->
+          <div class="stat-branch">
+            <div class="stat-node stat-node-red">
+              stat() = −1
+              <span class="stat-node-sub">chemin inexistant</span>
+            </div>
+            <div class="stat-connector-v-short"></div>
+            <div class="stat-subnode stat-node-red" style="font-weight:700;">404 Not Found</div>
+          </div>
+        </div>
+
+        <!-- Footnotes -->
+        <div class="stat-footnotes" style="width:100%;">
+          <p>↳ ordre répertoire : index d'abord, autoindex ensuite, 403 en dernier recours</p>
+          <p>↳ si <code>index</code> configuré mais fichier absent → <strong>404</strong> (pas 403)</p>
+          <p>↳ <code>stat()</code> sur fichier disque = pas besoin de <code>epoll_wait()</code> — exemption autorisée par le sujet</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">static_handler.cpp</span>
+        </div>
+        <span class="code-tag">c++98</span>
+      </div>
+      <pre><span class="type">int</span> <span class="fn-name">handleStaticRequest</span>(<span class="kw">const</span> <span class="type">std::string</span>& <span class="var">path</span>,
+                           <span class="kw">const</span> <span class="type">LocationConfig</span>& <span class="var">loc</span>)
+{
+    <span class="type">struct stat</span> <span class="var">st</span>;
+
+    <span class="cmt">// ① Appel obligatoire — jamais supposer</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="fn-name">stat</span>(<span class="var">path</span>.c_str(), &<span class="var">st</span>) == <span class="num">-1</span>)</span>
+<span class="highlight-line">        <span class="kw">return</span> <span class="num">404</span>;  <span class="cmt">// chemin introuvable</span></span>
+
+    <span class="cmt">// ② Fichier ordinaire → servir directement</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="fn-name">S_ISREG</span>(<span class="var">st</span>.st_mode))</span>
+<span class="highlight-line">        <span class="kw">return</span> <span class="fn-name">serveFile</span>(<span class="var">path</span>);</span>
+
+    <span class="cmt">// ③ Répertoire → 3 sous-cas dans l'ordre</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="fn-name">S_ISDIR</span>(<span class="var">st</span>.st_mode))</span>
+<span class="highlight-line">        <span class="kw">return</span> <span class="fn-name">handleDirectory</span>(<span class="var">path</span>, <span class="var">loc</span>);</span>
+
+    <span class="cmt">// ④ Autre (symlink cassé, device...) → 404 défensif</span>
+    <span class="kw">return</span> <span class="num">404</span>;
+}
+
+<span class="type">int</span> <span class="fn-name">handleDirectory</span>(<span class="kw">const</span> <span class="type">std::string</span>& <span class="var">dir</span>, <span class="kw">const</span> <span class="type">LocationConfig</span>& <span class="var">loc</span>)
+{
+    <span class="cmt">// Sous-cas 1 : index configuré ?</span>
+    <span class="kw">if</span> (!<span class="var">loc</span>.index.empty()) {
+        <span class="type">std::string</span> <span class="var">idx</span> = <span class="fn-name">joinPath</span>(<span class="var">dir</span>, <span class="var">loc</span>.index);
+        <span class="type">struct stat</span> <span class="var">si</span>;
+        <span class="kw">if</span> (<span class="fn-name">stat</span>(<span class="var">idx</span>.c_str(), &<span class="var">si</span>) == <span class="num">0</span> && <span class="fn-name">S_ISREG</span>(<span class="var">si</span>.st_mode))
+            <span class="kw">return</span> <span class="fn-name">serveFile</span>(<span class="var">idx</span>);
+        <span class="kw">return</span> <span class="num">404</span>;  <span class="cmt">// index configuré mais absent → 404 (pas 403)</span>
+    }
+    <span class="cmt">// Sous-cas 2 : autoindex activé ?</span>
+    <span class="kw">if</span> (<span class="var">loc</span>.autoindex)
+        <span class="kw">return</span> <span class="fn-name">serveDirectoryListing</span>(<span class="var">dir</span>);
+    <span class="cmt">// Sous-cas 3 : rien de tout ça → 403</span>
+    <span class="kw">return</span> <span class="num">403</span>;
+}</pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📋</span><span>L'ordre des sous-cas répertoire est <strong>figé</strong> : index → autoindex → 403. Jamais dans l'autre sens.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚠️</span><span>Index configuré mais fichier absent = <strong>404</strong>, pas 403. Le serveur a cherché un fichier précis qui n'existe pas.</span></div>
+      <div class="key-point"><span class="key-point-icon">🖥️</span><span><code>stat()</code> sur disque est une opération synchrone autorisée sans <code>epoll_wait()</code> — exception explicite du sujet.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 04 — PIÈGES C++               -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="pieges" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">pièges C++98</div>
+        <div class="step-subtitle">Les 3 bugs classiques de cette étape</div>
+      </div>
+    </div>
+
+    <div class="trap-grid">
+      <div class="trap-card" style="border-color: rgba(240,153,123,0.3);">
+        <div class="trap-card-num" style="color: #f0997b;">01</div>
+        <div class="trap-card-title" style="color: #f0997b;">Double slash à la jonction</div>
+        <div class="trap-card-body">
+          Si <code>root = "/tmp/www"</code> et le résidu vaut <code>"/pouic/..."</code>,
+          la concaténation naïve donne <code>"/tmp/www//pouic/..."</code>.
+          Sur Linux <code>stat()</code> l'accepte, mais c'est incorrect et peut poser problème ailleurs.
+          Toujours normaliser la jonction.
+        </div>
+      </div>
+      <div class="trap-card" style="border-color: rgba(239,159,39,0.3);">
+        <div class="trap-card-num" style="color: #ef9f27;">02</div>
+        <div class="trap-card-title" style="color: #ef9f27;">URI == préfixe exact → résidu vide</div>
+        <div class="trap-card-body">
+          Si l'URI est exactement égale au préfixe (<code>/kapouet</code> == <code>/kapouet</code>),
+          <code>uri.substr(prefix.size())</code> retourne <code>""</code>.
+          Le chemin final est juste <code>root</code>. C'est souvent un répertoire —
+          ne pas oublier d'appeler quand même <code>stat()</code> puis <code>handleDirectory()</code>.
+        </div>
+      </div>
+      <div class="trap-card" style="border-color: rgba(175,169,236,0.3);">
+        <div class="trap-card-num" style="color: #afa9ec;">03</div>
+        <div class="trap-card-title" style="color: #afa9ec;">Ne jamais supposer, toujours stat()</div>
+        <div class="trap-card-body">
+          Même si l'URI finit par <code>.html</code> ou <code>.jpg</code>, ne pas supposer
+          que c'est un fichier. Il peut ne pas exister, être un répertoire, ou être un lien cassé.
+          <code>stat()</code> est la seule source de vérité — toujours appeler.
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">joinPath() — utilitaire safe</span>
+        </div>
+        <span class="code-tag">c++98</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="fn-name">joinPath</span>(<span class="kw">const</span> <span class="type">std::string</span>& <span class="var">root</span>, <span class="kw">const</span> <span class="type">std::string</span>& <span class="var">residual</span>)
+{
+    <span class="kw">if</span> (<span class="var">root</span>.empty())
+        <span class="kw">return</span> <span class="var">residual</span>;
+    <span class="kw">if</span> (<span class="var">residual</span>.empty())
+        <span class="kw">return</span> <span class="var">root</span>;
+
+    <span class="kw">bool</span> <span class="var">rootSlash</span>     = (<span class="var">root</span>.back()      == <span class="str">'/'</span>);
+    <span class="kw">bool</span> <span class="var">residualSlash</span> = (<span class="var">residual</span>.front() == <span class="str">'/'</span>);
+
+    <span class="kw">if</span> (<span class="var">rootSlash</span> && <span class="var">residualSlash</span>)       <span class="cmt">// "root/" + "/res" → "root/res"</span>
+        <span class="kw">return</span> <span class="var">root</span> + <span class="var">residual</span>.substr(<span class="num">1</span>);
+    <span class="kw">if</span> (!<span class="var">rootSlash</span> && !<span class="var">residualSlash</span>)    <span class="cmt">// "root" + "res"  → "root/res"</span>
+        <span class="kw">return</span> <span class="var">root</span> + <span class="str">"/"</span> + <span class="var">residual</span>;
+    <span class="kw">return</span> <span class="var">root</span> + <span class="var">residual</span>;               <span class="cmt">// cas normal — pas de conflit</span>
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Path traversal :</strong> si le résidu contient <code>../</code>, le chemin résolu peut sortir du <code>root</code>.
+        Valider que le chemin final commence toujours par le <code>root</code> configuré (ou utiliser <code>realpath()</code> + vérification de préfixe).
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 05 — TESTS                    -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="tests" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">tests</div>
+        <div class="step-subtitle">Scénarios à couvrir pour valider toute la chaîne</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">test-root-to-file.sh</span>
+        </div>
+        <span class="code-tag">curl</span>
+      </div>
+      <pre><span class="cmt"># Config de référence :</span>
+<span class="cmt"># location /kapouet       { root /tmp/www; index index.html; }</span>
+<span class="cmt"># location /kapouet/pouic { root /data;    autoindex on; }</span>
+
+<span class="cmt"># ① Fichier existant → 200</span>
+<span class="cmt">#    URI /kapouet/pouic/toto/pouet → chemin /data/toto/pouet (fichier)</span>
+curl -i http://localhost:8080/kapouet/pouic/toto/pouet
+
+<span class="cmt"># ② URI == préfixe exact → répertoire → index</span>
+<span class="cmt">#    URI /kapouet → chemin /tmp/www → index.html → 200 ou 404</span>
+curl -i http://localhost:8080/kapouet
+
+<span class="cmt"># ③ Répertoire + autoindex activé → listing HTML → 200</span>
+<span class="cmt">#    URI /kapouet/pouic → chemin /data (répertoire, autoindex on)</span>
+curl -i http://localhost:8080/kapouet/pouic/
+
+<span class="cmt"># ④ Chemin inexistant → 404</span>
+curl -i http://localhost:8080/kapouet/nope/missing.txt
+
+<span class="cmt"># ⑤ Répertoire sans index ni autoindex → 403</span>
+<span class="cmt">#    (nécessite location sans index ni autoindex)</span>
+curl -i http://localhost:8080/private/
+
+<span class="cmt"># ⑥ Index configuré mais absent sur disque → 404 (pas 403)</span>
+<span class="cmt">#    supprimer index.html de /tmp/www avant ce test</span>
+curl -i http://localhost:8080/kapouet</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5);">
+        <div class="panel-label">Ce que tu dois observer</div>
+        <p>
+          Le test ⑥ est le plus important : index configuré mais fichier absent.
+          La réponse doit être <strong>404</strong> — pas 403, pas 500.
+          Si tu obtiens 403, c'est que tu as sauté la vérification <code>stat()</code> sur le fichier index.
+        </p>
+        <p>
+          Le test ③ vérifie que l'URI se terminant par <code>/</code> ne déclenche pas
+          un <code>stat()</code> sur un fichier imaginaire.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5);">
+        <div class="panel-label">Checklist de validation</div>
+        <p>
+          ✅ Fichier existant → <strong>200</strong><br>
+          ✅ URI == préfixe → répertoire correctement détecté<br>
+          ✅ autoindex → listing HTML généré<br>
+          ✅ chemin absent → <strong>404</strong><br>
+          ✅ répertoire sans index/autoindex → <strong>403</strong><br>
+          ✅ index configuré + absent → <strong>404</strong><br>
+          ✅ pas de double slash dans les chemins loggés
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🧪</span><span>Le test ⑥ (index absent → 404 pas 403) est la discrimination entre une implémentation correcte et une approximation.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔎</span><span>Logger le chemin construit à chaque requête (<code>std::cerr &lt;&lt; "path: " &lt;&lt; path</code>) permet de vérifier visuellement que la substitution est juste.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗣️</span><span>À la soutenance : l'évaluateur peut demander ce que retourne le serveur pour <code>/kapouet</code> exactement — connaître la réponse à l'oral prouve la maîtrise.</span></div>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-5);">
+      <p>URI → longest prefix match → location gagnante → root + (URI − préfixe) → chemin disque → stat() → fichier / répertoire / absent → réponse HTTP</p>
+      <cite>— Le résumé mental en une ligne, à réciter à la soutenance.</cite>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — 04 Fichier de configuration — Du root au fichier final</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
+  });
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (!href || href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sections = document.querySelectorAll('.step-section');
+  var navPills = document.querySelectorAll('.step-pill');
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        var id = entry.target.id;
+        navPills.forEach(function(pill) {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { observer.observe(s); });
+</script>
+</body>
+</html>

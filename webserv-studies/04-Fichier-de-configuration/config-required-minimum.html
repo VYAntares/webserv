@@ -151,10 +151,11 @@
         <div class="code-header-left"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">webserv.conf — server level</span></div>
         <span class="code-tag">3 directives requises</span>
       </div>
-      <pre><span class="cmt"># ① listen — chaque port distinct = un socket serveur ouvert</span>
+      <pre><span class="cmt"># ① listen — port seul OU interface:port (le sujet demande les deux formes)</span>
 <span class="dir">server</span> {
-    <span class="dir">listen</span>               <span class="num">8080</span>;       <span class="cmt"># socket A</span>
-    <span class="dir">server_name</span>          localhost;  <span class="cmt"># optionnel (virtual host)</span>
+    <span class="dir">listen</span>               <span class="num">8080</span>;            <span class="cmt"># port seul → écoute sur toutes les interfaces</span>
+    <span class="dir">listen</span>               <span class="num">127.0.0.1:8080</span>; <span class="cmt"># interface:port — forme que le sujet peut tester</span>
+    <span class="dir">server_name</span>          localhost;       <span class="cmt"># nécessaire si deux server sur le même port</span>
 
     <span class="cmt"># ② error_page — pages d'erreur personnalisées</span>
     <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
@@ -176,7 +177,7 @@
           <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">REQUIS</span>
           listen
         </div>
-        <p>Ouvre un socket TCP sur ce port au démarrage. Plusieurs blocs <code>server</code> peuvent partager le même port — la sélection se fait ensuite par <code>server_name</code>. Chaque port distinct = un socket séparé enregistré dans <code>poll()</code>.</p>
+        <p>Ouvre un socket TCP au démarrage. Le sujet demande de gérer les paires <strong>interface:port</strong> — pas seulement un port. Formes valides : <code>listen 8080</code> (toutes interfaces) et <code>listen 127.0.0.1:8080</code> (interface spécifique). Chaque port distinct = un socket séparé dans la boucle epoll.</p>
       </article>
       <article class="term-card" style="--step-color: var(--accent-2);">
         <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
@@ -270,28 +271,28 @@
           <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">④ REQUIS</span>
           autoindex
         </div>
-        <p>Active le listing du contenu d'un dossier quand aucun index n'est trouvé. <code>off</code> = <code>403 Forbidden</code> si pas d'index. Implémenté avec <code>opendir</code> / <code>readdir</code> pour générer le HTML du listing.</p>
+        <p>Active le listing quand aucun index n'est trouvé. <code>on</code> = listing HTML. <code>off</code> = <code>403</code> si le répertoire <em>existe</em> mais est inaccessible. Si le chemin n'existe pas du tout → <code>404</code>, pas <code>403</code>. Implémenté avec <code>opendir</code> / <code>readdir</code>.</p>
       </article>
       <article class="term-card" style="--step-color: var(--accent-4);">
         <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
           <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑤ REQUIS</span>
           index
         </div>
-        <p>Fichier servi automatiquement quand la requête pointe sur un répertoire. Le serveur tente <code>root + "/" + index</code>. Si absent et <code>autoindex off</code> : <code>403</code>. Si absent et <code>autoindex on</code> : listing du dossier.</p>
+        <p>Fichier servi quand l'URI pointe sur un répertoire qui <em>existe</em>. Le serveur tente <code>root + "/" + index</code>. Si absent et <code>autoindex off</code> : <code>403</code> (répertoire inaccessible). Si absent et <code>autoindex on</code> : listing. Si le chemin n'existe pas du tout : <code>404</code>.</p>
       </article>
       <article class="term-card" style="--step-color: var(--accent-4);">
         <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
-          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑥ REQUIS</span>
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-3); background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑥ CUSTOM</span>
           upload_store
         </div>
-        <p>Dossier de destination des fichiers uploadés. Le serveur décode le body <code>multipart/form-data</code>, extrait le fichier, et l'écrit dans ce dossier. Le dossier doit exister et être writable. Nettoyer le nom de fichier (path traversal, <code>..</code>).</p>
+        <p>Dossier de destination des fichiers uploadés. Le sujet dit <em>« storage location is provided »</em> mais ne prescrit pas ce nom — c'est ton choix d'implémentation. Le serveur décode le body <code>multipart/form-data</code>, extrait le fichier, et l'écrit dans ce dossier. Le dossier doit exister et être writable.</p>
       </article>
       <article class="term-card" style="--step-color: var(--accent-4);">
         <div class="term-name" style="display:flex; align-items:center; gap:0.5rem;">
-          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-4); background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑦ REQUIS</span>
+          <span style="font-family:'Space Mono',monospace; font-size:0.55rem; color:var(--accent-3); background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.2); border-radius:4px; padding:0.15rem 0.4rem;">⑦ CUSTOM</span>
           cgi_pass
         </div>
-        <p>Associe une extension à un interpréteur. Si l'URI correspond à cette extension : <code>fork</code> + <code>execve</code> de l'interpréteur avec les variables CGI en env, le body en <code>stdin</code>, réponse sur <code>stdout</code>. <code>fork</code> est réservé exclusivement au CGI.</p>
+        <p>Associe une extension à un interpréteur. Le sujet dit <em>« execution of CGI based on file extension »</em> mais ne prescrit pas le nom <code>cgi_pass</code> — c'est une convention, pas une exigence. L'important : mapper extension → interpréteur, puis <code>fork</code> + <code>execve</code>. <code>fork</code> est réservé exclusivement au CGI.</p>
       </article>
     </div>
 
@@ -386,7 +387,7 @@
     </div>
 
     <div class="key-points" style="margin-top:1rem;">
-      <div class="key-point"><span class="key-point-icon">🧪</span><span>Test <code>listen</code> : deux ports distincts, vérifier que les deux répondent. Test multi-port = obligatoire.</span></div>
+      <div class="key-point"><span class="key-point-icon">🧪</span><span>Test <code>listen</code> : tester <code>127.0.0.1:8080</code> ET <code>8080</code> seul — le sujet demande les paires interface:port. Deux <code>server</code> sur le même port sans <code>server_name</code> = comportement indéfini : définir une règle (ex : premier bloc gagne) et s'y tenir.</span></div>
       <div class="key-point"><span class="key-point-icon">🗂️</span><span>Test <code>error_page</code> : requête sur une URL inexistante → réponse 404 avec ta page custom, pas le body générique.</span></div>
       <div class="key-point"><span class="key-point-icon">⛔</span><span>Test <code>client_max_body_size</code> : <code>curl -X POST --data-binary @bigfile.bin</code> avec un fichier > limite → <code>413</code> immédiat.</span></div>
       <div class="key-point"><span class="key-point-icon">🚫</span><span>Test <code>allowed_methods</code> : <code>DELETE /</code> → <code>405</code> + header <code>Allow: GET</code>. La méthode interdite ne doit jamais atteindre la résolution de fichier.</span></div>
