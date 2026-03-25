@@ -85,6 +85,30 @@
       </p>
     </div>
 
+    <div class="panel" style="--step-color: var(--accent-5);">
+      <div class="panel-label">Les autres méthodes HTTP (culture générale)</div>
+      <p style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.8;">
+        Webserv n'a pas besoin de les implémenter, mais savoir ce qu'elles font aide à comprendre le protocole :
+      </p>
+      <ul style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.8; padding-left: 1.2rem;">
+        <li><strong style="color: var(--text);">HEAD</strong> — identique à GET, mais le serveur renvoie
+        <strong>uniquement les headers</strong>, sans body. Utile pour vérifier si une ressource existe
+        ou connaître sa taille (<code>Content-Length</code>) sans la télécharger.</li>
+        <li><strong style="color: var(--text);">PUT</strong> — remplace <strong>intégralement</strong> la
+        ressource à l'URI donnée. Contrairement à POST, PUT est <strong>idempotent</strong> : envoyer
+        la même requête 10 fois donne le même résultat qu'une seule fois.</li>
+        <li><strong style="color: var(--text);">PATCH</strong> — modifie <strong>partiellement</strong>
+        une ressource (ex : changer uniquement le champ <code>email</code> d'un utilisateur).
+        Non idempotent par défaut.</li>
+      </ul>
+      <p style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.8;">
+        Si ton serveur reçoit l'une de ces méthodes, il doit répondre
+        <code style="color:var(--accent-1);">501 Not Implemented</code> — pas <code>405</code>.
+        Le <code>405</code> signifie « je connais cette méthode mais elle n'est pas autorisée ici » ;
+        le <code>501</code> signifie « je ne sais pas du tout gérer cette méthode ».
+      </p>
+    </div>
+
     <div class="info-box">
       <span>💡</span>
       <div>

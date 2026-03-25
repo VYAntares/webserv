@@ -469,7 +469,7 @@
     <div class="key-points">
       <div class="key-point"><span class="key-point-icon">🚦</span><span><code>allowed_methods</code> : si la méthode n'est pas dans la liste → <code>405 Method Not Allowed</code> + header <code>Allow: GET, POST, DELETE</code>. Ce header est obligatoire avec le 405.</span></div>
       <div class="key-point"><span class="key-point-icon">↩️</span><span><code>return</code> court-circuite tout le reste. Si défini dans la location matchée, on répond immédiatement — pas de lookup fichier, pas de CGI, pas de root.</span></div>
-      <div class="key-point"><span class="key-point-icon">📐</span><span>Le sujet dit explicitement : <strong>pas de regex</strong>. Matching uniquement par préfixe d'URI. Plus long préfixe = winner. L'algo C++ de sélection est simple et déterministe.</span></div>
+      <div class="key-point"><span class="key-point-icon">📐</span><span>Matching par préfixe uniquement (plus long préfixe = winner). Voir la page dédiée <em>Sélection de route : préfixe le plus long</em> pour l'algo complet.</span></div>
     </div>
 
     <div class="code-panel" style="--step-color: var(--accent-5);">

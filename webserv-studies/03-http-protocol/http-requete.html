@@ -372,6 +372,25 @@
           </div>
         </div>
 
+        <div class="info-box" style="margin-top: 1rem;">
+          <span>&#128161;</span>
+          <div>
+            <strong>HTTP/1.0 vs HTTP/1.1 — les différences clés</strong>
+            <ul style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.8; padding-left: 1.2rem; margin: 0.5rem 0 0 0;">
+              <li><strong style="color: var(--text);">Host obligatoire</strong> — en HTTP/1.1,
+              le header <code>Host</code> est <strong>requis</strong>. Sans lui, le serveur doit répondre
+              <code>400 Bad Request</code>. C'est ce header qui permet le <strong>virtual hosting</strong>
+              (plusieurs sites sur la même IP/port).</li>
+              <li><strong style="color: var(--text);">Connexion persistante par défaut</strong> — en HTTP/1.0,
+              chaque requête ouvrait une nouvelle connexion TCP. En HTTP/1.1, la connexion reste ouverte
+              (<code>Connection: keep-alive</code> est implicite). Le client doit envoyer
+              <code>Connection: close</code> pour demander la fermeture.</li>
+              <li><strong style="color: var(--text);">Transfer-Encoding: chunked</strong> — introduit en HTTP/1.1.
+              Permet d'envoyer un body sans connaître sa taille à l'avance. N'existe pas en HTTP/1.0.</li>
+            </ul>
+          </div>
+        </div>
+
         <!-- Part 2: Headers -->
         <div style="border-left: 3px solid var(--accent-2); padding-left: 1.2rem;">
           <div style="font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent-2); margin-bottom: 0.5rem;">

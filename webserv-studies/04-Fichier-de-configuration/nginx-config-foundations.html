@@ -439,7 +439,7 @@ nginx -s stop</pre>
     <div class="key-points">
       <div class="key-point"><span class="key-point-icon">🔌</span><span>Plusieurs paires <code>interface:port</code> = plusieurs <code>server</code> blocks. Le serveur écoute sur plusieurs ports simultanément — un seul <code>poll()</code> surveille tous les fds.</span></div>
       <div class="key-point"><span class="key-point-icon">🔀</span><span>CGI par extension : si l'URI finit en <code>.php</code> ou <code>.py</code>, webserv doit exécuter un CGI externe (via <code>fork</code> + <code>execve</code>). Le seul endroit où <code>fork</code> est autorisé.</span></div>
-      <div class="key-point"><span class="key-point-icon">📐</span><span>Le sujet dit explicitement : pas de regex pour les routes. Le matching est uniquement par préfixe — ce que tu viens d'apprendre dans la section 04.</span></div>
+      <div class="key-point"><span class="key-point-icon">📐</span><span>Le matching de routes est par préfixe uniquement (pas de regex). Détails et algo C++ dans la page <em>Sélection de route : préfixe le plus long</em>.</span></div>
       <div class="key-point"><span class="key-point-icon">⚖️</span><span>En cas de doute sur un comportement, <strong>comparer avec NGINX</strong>. C'est la référence officielle du sujet pour tous les cas ambigus (headers, codes de statut, comportement 404/403).</span></div>
     </div>
   </section>
