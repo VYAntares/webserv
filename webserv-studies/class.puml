@@ -1,0 +1,311 @@
+@startuml cpp-common
+
+!theme blueprint
+
+skinparam IconPrivate {
+  Color #FF0000
+
+  BackgroundColor #FF0000
+}
+skinparam IconPublic {
+  Color #00FF00
+  BackgroundColor #00FF00
+}
+skinparam IconProtected {
+  Color #ff7f00
+  BackgroundColor #ff7f00
+}
+
+title Class Diagram for Cpp-common
+
+namespace common.core.io {
+
+	enum "e_Type" as e_Type {
+		SELECT
+		POLL
+	}
+
+	enum "e_Event" as e_Event {
+		E_NONE
+		E_IN
+		E_OUT
+		E_EXCEPT
+	}
+
+	struct "Sets" as Sets {
+		fd_set read_fds
+		fd_set write_fds
+		fd_set except_fds
+		--
+		Sets()
+	}
+
+	class "EventFactoryIO" as EventFactoryIO [[classcommon_1_1core_1_1io_1_1_event_factory_i_o.html]] {
+		--
+		+ {static} createEventIO(type : e_Type) : IEventIO*
+		- EventFactoryIO()
+	}
+
+	interface "IEventIO" as IEventIO [[classcommon_1_1core_1_1io_1_1_i_event_i_o.html]] {
+		+ wait(timeout_ms : int) : int
+		+ add(fd : int, mask : e_Event) : void
+		+ remove(fd : int) : void
+		+ update(fd : int, mask : e_Event) : void
+		+ clear() : void
+		+ getEvents(fd : int) : e_Event
+	}
+
+	class "SelectEventIO" as SelectEventIO [[classcommon_1_1core_1_1io_1_1_select_event_i_o.html]] {
+		- _set : map<int, e_Event>
+		- _nfds : int
+		--
+		- initSets(sets : Sets) : void
+		- updateSets(sets : Sets) : void
+		- initTimeout(timeout_ms : int) : timeval
+		+ SelectEventIO()
+		+ wait(timeout_ms : int) : int
+		+ add(fd : int, mask : e_Event) : void
+		+ remove(fd : int) : void
+		+ update(fd : int, mask : e_Event) : void
+		+ clear() : void
+		+ getEvents(fd : int) : e_Event
+	}
+
+	class "PollEventIO" as PollEventIO [[classcommon_1_1core_1_1io_1_1_poll_event_i_o.html]] {
+		- _events : map<int, e_Event>
+		- _pollfds : vector<pollfd>
+		--
+		- eventToMask(event : e_Event) : short
+		- maskToEvent(mask : short) : e_Event
+		- rebuildPollFds() : void
+		- updateEvents() : void
+		+ PollEventIO()
+		+ wait(timeout_ms : int) : int
+		+ add(fd : int, mask : e_Event) : void
+		+ remove(fd : int) : void
+		+ update(fd : int, mask : e_Event) : void
+		+ clear() : void
+		+ getEvents(fd : int) : e_Event
+	}
+
+	IEventIO <|.. SelectEventIO
+	IEventIO <|.. PollEventIO
+	SelectEventIO +-- Sets : contains
+	EventFactoryIO ..> e_Type : uses
+	EventFactoryIO ..> IEventIO : creates
+}
+
+namespace common.core.net {
+	class "Addrinfo" as Addrinfo [[classcommon_1_1core_1_1net_1_1_addrinfo.html]] {
+		-  _res : addrinfo
+		--
+		+ Addrinfo()
+		+ Addrinfo(hostname : string, servname : string, ai_flags : int, ai_family : int, ai_socktype : int, ai_protocol : int)
+		+ getRes() : addrinfo
+	}
+
+	interface "ISocket" as ISocket [[classcommon_1_1core_1_1net_1_1_i_socket.html]] {
+		+ bind(addr : sockaddr, addrlen : socklen_t) : void
+		+ close() : void
+		+ getFd() : int
+		+ shutdown(how : int) : void
+	}
+
+	class "SocketFdRAII" as SocketFdRAII [[classcommon_1_1core_1_1net_1_1_a_socket_1_1_socket_fd_r_a_i_i.html]] {
+		- _fdRef : int
+		--
+		+ SocketFdRAII(init_fd : int)
+		+ getFd() : int
+		+ setFd(new_fd : int) : void
+	}
+
+	abstract class "ASocket" as ASocket [[classcommon_1_1core_1_1net_1_1_a_socket.html]] {
+		# _fd : SocketFdRAII
+		# _isNonblock : bool
+		--
+		+ ASocket()
+		+ ASocket(init_fd : int)
+		+ ASocket(domain : int, type : int, protocol : int, isNonblock : bool)
+		+ bind(addr : sockaddr, addrlen : socklen_t) : void
+		+ close() : void
+		+ getFd() : int
+		+ getIsNonblock() : bool
+		+ setIsNonblock(isNonblock : bool) : void
+		+ shutdown(how : int) : void
+		- getFlags() : int
+		--
+		+ <<template>> getsockname<T>() : T
+		+ <<template>> getpeername<T>() : T
+		+ <<template>> getsockopt<T>(optname : int, level : int) : T
+		+ <<template>> setsockopt<T>(optname : int, optval : T, level : int) : void
+	}
+
+	abstract class "ATcpSocket" as ATcpSocket [[classcommon_1_1core_1_1net_1_1_a_tcp_socket.html]] {
+		--
+		+ ATcpSocket()
+		+ ATcpSocket(init_fd : int)
+		+ ATcpSocket(init_domain : int, init_protocol : int, isNonblock : bool)
+		+ recv(buffer : void*, length : int, flags : int) : int
+		+ send(buffer : const void*, length : int, flags : int) : int
+	}
+
+	class "TcpClient" as TcpClient [[classcommon_1_1core_1_1net_1_1_tcp_client.html]] {
+		--
+		+ TcpClient()
+		+ TcpClient(init_fd : int)
+		+ TcpClient(init_domain : int, init_protocol : int, isNonblock : bool)
+		+ connect(addr : sockaddr, addrlen : socklen_t) : void
+	}
+
+	class "TcpServer" as TcpServer [[classcommon_1_1core_1_1net_1_1_tcp_server.html]] {
+		--
+		+ TcpServer()
+		+ TcpServer(init_fd : int)
+		+ TcpServer(init_domain : int, init_protocol : int, isNonblock : bool)
+		+ listen(backlog : int) : void
+		--
+		+ <<template>> accept<T>() : pair<TcpClient, T>
+	}
+
+	ISocket <|.. ASocket
+	ASocket <|-- ATcpSocket
+	ATcpSocket <|-- TcpClient
+	ATcpSocket <|-- TcpServer
+	ASocket +-- SocketFdRAII : owns
+	TcpServer "1" ..> "0..*" TcpClient : creates
+}
+
+namespace common.core.raii {
+	interface "IDeleter" as IDeleter [[structcommon_1_1core_1_1raii_1_1_i_deleter.html]] {
+		+ destroy(ptr : void*) : void
+	}
+
+	class "DefaultDelete<T>" as DefaultDeleteT <<template>> [[structcommon_1_1core_1_1raii_1_1_default_delete.html]]{
+		+ destroy(ptr : void*) : void
+		+ operator()(ptr : T*) : void
+	}
+
+	class "DefaultDelete<T[]>" as DefaultDeleteArray <<template>> [[structcommon_1_1core_1_1raii_1_1_default_delete_3_01_t_0f_0e_4.html]]{
+		+ destroy(ptr : void*) : void
+		+ operator()(ptr : T*) : void
+	}
+
+	class "AddrinfoDeleter" as AddrinfoDeleter [[structcommon_1_1core_1_1raii_1_1_addrinfo_deleter.html]] {
+		+ destroy(ptr : void*) : void
+		+ operator()(ptr : addrinfo) : void
+	}
+
+	struct "SharedPtrControlBlock" as SharedPtrControlBlock [[structcommon_1_1core_1_1raii_1_1_shared_ptr_control_block.html]] {
+		ptr : void*
+		deleter : IDeleter*
+		count : int
+		weak_count : int
+		--
+		SharedPtrControlBlock(p : void*, d : IDeleter*)
+	}
+
+	class "SharedPtrBase" as SharedPtrBase [[classcommon_1_1core_1_1raii_1_1_shared_ptr_base.html]] {
+		# _cb : SharedPtrControlBlock
+		--
+		# SharedPtrBase(ptr : void*, deleter : IDeleter*)
+		# reset(ptr : void*) : void
+		# swap(other : SharedPtrBase) : void
+		+ useCount() : int
+		+ unique() : bool
+		+ operator bool() : bool
+	}
+
+	class "SharedPtr<T>" as SharedPtrT <<template>> [[classcommon_1_1core_1_1raii_1_1_shared_ptr.html]] {
+		+ SharedPtr(ptr : T*)
+		+ get() : T*
+		+ operator->() : T*
+		+ operator*() : T&
+	}
+
+	class "SharedPtr<T[]>" as SharedPtrArray <<template>> [[classcommon_1_1core_1_1raii_1_1_shared_ptr_3_01_t_0f_0e_4.html]] {
+		+ SharedPtr(ptr : T*)
+		+ operator[](i : int) : T&
+	}
+
+	class "UniquePtrBase<T, Deleter>" as UniquePtrBaseT <<template>> [[classcommon_1_1core_1_1raii_1_1_unique_ptr_base.html]] {
+		# _ptr : T*
+		# _deleter : Deleter
+		--
+		# UniquePtrBase(ptr : T*, deleter : Deleter)
+		+ release() : T*
+		+ reset(ptr : T*) : void
+		+ swap(other : UniquePtrBase<T, Deleter>) : void
+		+ get() : T*
+		+ getDeleter() : Deleter&
+	}
+
+	class "UniquePtr<T, Deleter>" as UniquePtrT <<template>> [[classcommon_1_1core_1_1raii_1_1_unique_ptr.html]] {
+		+ UniquePtr(ptr : T*, deleter : Deleter)
+		+ operator->() : T*
+		+ operator*() : T&
+	}
+
+	class "UniquePtr<T[], Deleter>" as UniquePtrArray <<template>> [[classcommon_1_1core_1_1raii_1_1_unique_ptr_3_01_t_0f_0e_00_01_deleter_01_4.html]]{
+		+ UniquePtr(ptr : T*, deleter : Deleter)
+		+ operator[](i : int) : T&
+	}
+
+	class "WeakPtr<T>" as WeakPtrT <<template>> [[classcommon_1_1core_1_1raii_1_1_weak_ptr.html]]{
+		- _cb : SharedPtrControlBlock
+		--
+		- release() : void
+		+ WeakPtr(sp : SharedPtr<T>)
+		+ reset() : void
+		+ swap(other : WeakPtr<T>) : void
+		+ expired() : bool
+		+ lock() : SharedPtr<T>
+	}
+
+	IDeleter <|.. DefaultDeleteT
+	IDeleter <|.. DefaultDeleteArray
+	IDeleter <|.. AddrinfoDeleter
+	SharedPtrBase "0..*" o-- "0..1" SharedPtrControlBlock : shares
+	SharedPtrBase <|-- SharedPtrT
+	SharedPtrBase <|-- SharedPtrArray
+	WeakPtrT ..> SharedPtrControlBlock : observes
+	UniquePtrBaseT <|-- UniquePtrT
+	UniquePtrBaseT <|-- UniquePtrArray
+}
+
+namespace common.core.utils {
+	class "Directory" as Directory [[classcommon_1_1core_1_1utils_1_1_directory.html]] {
+		- dir : DIR*
+		--
+		+ Directory(filename : string)
+		+ begin() : DirectoryIterator
+		+ end() : DirectoryIterator
+		+ getDir() : DIR*
+		+ {static} create(filename : string) : void
+	}
+
+	class "DirectoryIterator" as DirectoryIterator [[classcommon_1_1core_1_1utils_1_1_directory_iterator.html]] {
+		- dir : Directory*
+		- entry : dirent*
+		--
+		+ DirectoryIterator()
+		+ DirectoryIterator(dir : Directory*)
+		+ operator*() : dirent*
+		+ operator++() : DirectoryIterator&
+		+ operator++(int) : DirectoryIterator
+		+ operator!=(rhs : DirectoryIterator) : bool
+	}
+
+	Directory +-- DirectoryIterator : iterates
+}
+
+namespace common.loader {
+	class "Loader" as Loader [[classcommon_1_1loader_1_1_loader.html]] {
+		+ <<typedef>> fileParser
+		--
+		+ Loader()
+		+ loadDirectory(dirname : string, extension : string, parser : fileParser) : void
+		- loadFile(filename : string, parser : fileParser) : void
+	}
+}
+
+@enduml
