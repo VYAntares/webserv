@@ -52,3 +52,4 @@ class FileDescriptor {
         FileDescriptor(const FileDescriptor&);
         FileDescriptor& operator=(const FileDescriptor&);
 };
+

@@ -1,304 +1,275 @@
-# 🌐 Webserv — Sujet complet (42, v24.0)
+![](assets/webserv_subject_chunk0001-0015___page_0_Picture_0.jpeg)
 
-> *"This is when you finally understand why URLs start with HTTP"*
+# Webserv
 
----
+This is when you finally understand why URLs start with HTTP
 
-## Table des matières
+#### *Summary:*
 
-- [Introduction](#introduction)
-- [Règles générales](#règles-générales)
-- [Instructions IA](#instructions-ia)
-- [Partie obligatoire](#partie-obligatoire)
-  - [Requirements techniques](#requirements-techniques)
-  - [Spécificités macOS](#spécificités-macos)
-  - [Fichier de configuration](#fichier-de-configuration)
-- [README requis](#readme-requis)
-- [Bonus](#bonus)
-- [Rendu & évaluation](#rendu--évaluation)
-- [Récapitulatif des pièges critiques](#récapitulatif-des-pièges-critiques)
+*This project is about writing your own HTTP server. You will be able to test it with an actual browser. HTTP is one of the most widely used protocols on the internet. Understanding its intricacies will be useful, even if you won't be working on a website.*
 
----
+*Version: 24.0*
 
-## Introduction
+# **Contents**
 
-Le protocole HTTP (Hypertext Transfer Protocol) est un protocole applicatif pour les systèmes d'information distribués, collaboratifs et hypermédia.
+| I    | Introduction                   | 2  |
+|------|--------------------------------|----|
+| II   | General rules                  | 3  |
+| III  | AI Instructions                | 4  |
+| IV   | Mandatory part                 | 6  |
+| IV.1 | Requirements                   | 8  |
+| IV.2 | For MacOS only                 | 10 |
+| IV.3 | Configuration file             | 10 |
+| V    | Readme Requirements            | 12 |
+| VI   | Bonus part                     | 13 |
+| VII  | Submission and peer-evaluation | 14 |
 
-HTTP est la **fondation de la communication de données** du World Wide Web. Les documents hypertexte incluent des hyperliens vers d'autres ressources accessibles facilement par l'utilisateur (clic de souris, tap sur écran dans un navigateur).
+# <span id="page-2-0"></span>**Chapter I**
 
-**Rôle principal d'un serveur web :**
-- Stocker, traiter et délivrer des pages web aux clients
-- La communication client-serveur passe par HTTP
-- Les pages délivrées sont le plus souvent des documents HTML (images, feuilles de style, scripts inclus)
+# **Introduction**
 
-**Caractéristiques importantes :**
-- Plusieurs serveurs web peuvent être utilisés pour un site à fort trafic (répartition de charge entre machines physiques)
-- Un *user agent* (navigateur ou crawler) initie la communication en demandant une ressource via HTTP
-- Le serveur répond avec le contenu de la ressource ou un message d'erreur
-- La ressource est typiquement un fichier réel sur le stockage du serveur, ou le résultat d'un programme
-- HTTP permet aussi aux clients d'**envoyer des données** (formulaires web, upload de fichiers)
+The **Hypertext Transfer Protocol** (HTTP) is an application protocol for distributed, collaborative, hypermedia information systems.
 
----
+HTTP is the foundation of data communication for the World Wide Web, where hypertext documents include hyperlinks to other resources that the user can easily access. For example, by clicking a mouse button or tapping the screen on a web browser.
 
-## Règles générales
+HTTP was developed to support hypertext functionality and the growth of the World Wide Web.
 
-| Règle | Détail |
-|-------|--------|
-| **Crash interdit** | Le programme ne doit jamais crasher ni se terminer de manière inattendue (même en cas de manque de mémoire). Si c'est le cas → note = **0** |
-| **Makefile obligatoire** | Doit compiler les sources, sans relinkage inutile |
-| **Règles Makefile** | `$(NAME)`, `all`, `clean`, `fclean`, `re` |
-| **Compilation** | `c++` avec les flags `-Wall -Wextra -Werror` |
-| **Standard C++** | C++ 98. Doit compiler avec `-std=c++98` |
-| **Préférer C++** | Utiliser `<cstring>` plutôt que `<string.h>`, etc. Les fonctions C sont autorisées mais préférer leurs équivalents C++ |
-| **Bibliothèques externes** | **Interdites** (Boost et toutes autres libs externes) |
+The primary function of a web server is to store, process, and deliver web pages to clients. Client-server communication occurs through the Hypertext Transfer Protocol (HTTP).
 
----
+Pages delivered are most frequently HTML documents, which may include images, style sheets, and scripts in addition to the text content.
 
-## Instructions IA
+Multiple web servers may be used for a high-traffic website, splitting traffic between multiple physical machines.
 
-> Le sujet intègre une section dédiée à l'usage de l'IA dans le cursus 42.
+A user agent, commonly a web browser or web crawler, initiates communication by requesting a specific resource using HTTP, and the server responds with the content of that resource or an error message if unable to do so. The resource is typically a real file on the server's storage, or the result of a program. But this is not always the case and can actually be many other things.
 
-### Message principal
+Although its primary function is to serve content, HTTP also enables clients to send data. This feature is used for submitting web forms, including the uploading of files.
 
-- ✅ Utiliser l'IA pour réduire les tâches répétitives ou fastidieuses
-- ✅ Développer des compétences de *prompting* (coding et non-coding) utiles pour la carrière
-- ✅ Apprendre comment fonctionnent les systèmes IA pour anticiper risques, biais et problèmes éthiques
-- ✅ Continuer à construire les compétences techniques et *soft skills* avec les pairs
-- ✅ N'utiliser que du contenu généré par IA que l'on **comprend totalement** et dont on peut prendre la responsabilité
+# <span id="page-3-0"></span>**Chapter II**
 
-### Règles pour l'apprenant
+# **General rules**
 
-- Réfléchir au problème **avant** de prompter (prompt plus clair, plus précis)
-- Systématiquement vérifier, revoir, questionner et tester tout ce qui est généré par IA
-- Toujours demander une peer review
+- Your program must not crash under any circumstances (even if it runs out of memory) or terminate unexpectedly. If this occurs, your project will be considered non-functional and your grade will be 0.
+- You must submit a Makefile that compiles your source files. It must not perform unnecessary relinking.
+- Your Makefile must at least contain the rules: \$(NAME), all, clean, fclean and re.
+- Compile your code with c++ and the flags -Wall -Wextra -Werror
+- Your code must comply with the **C++ 98 standard** and should still compile when adding the flag -std=c++98.
+- Make sure to leverage as many C++ features as possible (e.g., choose <cstring> over <string.h>). You are allowed to use C functions, but always prefer their C++ versions if possible.
+- Any external library and Boost libraries are forbidden.
 
-### ❌ Mauvaises pratiques à éviter
+# <span id="page-4-0"></span>**Chapter III**
 
-- Copier-coller une fonction entière générée par IA sans comprendre ce qu'elle fait → échec garanti à la peer-eval
-- Laisser Copilot générer une partie clé du projet sans pouvoir l'expliquer
+# **AI Instructions**
 
-### ✅ Bonnes pratiques
+## ● **Context**
 
-- Utiliser l'IA pour concevoir un parser, puis revoir la logique avec un pair → corriger les bugs ensemble
-- Demander à l'IA comment tester une fonction, essayer, puis revoir les résultats avec un pair
+During your learning journey, AI can assist with many different tasks. Take the time to explore the various capabilities of AI tools and how they can support your work. However, always approach them with caution and critically assess the results. Whether it's code, documentation, ideas, or technical explanations, you can never be completely sure that your question was well-formed or that the generated content is accurate. Your peers are a valuable resource to help you avoid mistakes and blind spots.
 
----
+## ● **Main message**
 
-## Partie obligatoire
+- ☛ Use AI to reduce repetitive or tedious tasks.
+- ☛ Develop prompting skills both coding and non-coding that will benefit your future career.
+- ☛ Learn how AI systems work to better anticipate and avoid common risks, biases, and ethical issues.
+- ☛ Continue building both technical and power skills by working with your peers.
+- ☛ Only use AI-generated content that you fully understand and can take responsibility for.
 
-### Informations générales
+## ● **Learner rules:**
 
-| Champ | Valeur |
-|-------|--------|
-| **Nom du programme** | `webserv` |
-| **Fichiers à rendre** | `Makefile`, `*.{h,hpp}`, `*.cpp`, `*.tpp`, `*.ipp`, fichiers de configuration |
-| **Règles Makefile** | `NAME`, `all`, `clean`, `fclean`, `re` |
-| **Arguments** | `[fichier de configuration]` (optionnel si chemin par défaut défini) |
-| **Description** | Un serveur HTTP en C++ 98 |
+- You should take the time to explore AI tools and understand how they work, so you can use them ethically and reduce potential biases.
+- You should reflect on your problem before prompting this helps you write clearer, more detailed, and more relevant prompts using accurate vocabulary.
+- You should develop the habit of systematically checking, reviewing, questioning, and testing anything generated by AI.
+- You should always seek peer review don't rely solely on your own validation.
 
-### Fonctions externes autorisées
+## ● **Phase outcomes:**
 
-```
-execve, pipe, strerror, gai_strerror, errno, dup, dup2, fork,
-socketpair, htons, htonl, ntohs, ntohl, select, poll,
-epoll (epoll_create, epoll_ctl, epoll_wait),
-kqueue (kqueue, kevent), socket, accept, listen, send, recv,
-chdir, bind, connect, getaddrinfo, freeaddrinfo, setsockopt,
-getsockname, getprotobyname, fcntl, close, read, write,
-waitpid, kill, signal, access, stat, open, opendir, readdir,
-closedir
-```
+- Develop both general-purpose and domain-specific prompting skills.
+- Boost your productivity with effective use of AI tools.
+- Continue strengthening computational thinking, problem-solving, adaptability, and collaboration.
 
-### Usage
+## ● **Comments and examples:**
 
-```bash
-./webserv [fichier_de_configuration]
-```
+- You'll regularly encounter situations exams, evaluations, and more where you must demonstrate real understanding. Be prepared, keep building both your technical and interpersonal skills.
+- Explaining your reasoning and debating with peers often reveals gaps in your understanding. Make peer learning a priority.
+- AI tools often lack your specific context and tend to provide generic responses. Your peers, who share your environment, can offer more relevant and accurate insights.
+- Where AI tends to generate the most likely answer, your peers can provide alternative perspectives and valuable nuance. Rely on them as a quality checkpoint.
 
-> **Note :** Bien que `poll()` soit mentionné dans le sujet et la fiche d'évaluation, vous pouvez utiliser n'importe quelle fonction équivalente : `select()`, `kqueue()`, ou `epoll()`.
+#### ✓ **Good practice:**
 
-> **Recommandation :** Lire les RFC définissant le protocole HTTP et effectuer des tests avec `telnet` et NGINX **avant** de commencer. HTTP 1.0 est suggéré comme point de référence mais n'est pas imposé.
+I ask AI: "How do I test a sorting function?" It gives me a few ideas. I try them out and review the results with a peer. We refine the approach together.
 
----
+#### ✗ **Bad practice:**
 
-### Requirements techniques
+I ask AI to write a whole function, copy-paste it into my project. During peerevaluation, I can't explain what it does or why. I lose credibility — and I fail my project.
 
-#### Non-blocking I/O — ⚠️ CRITIQUE
+#### ✓ **Good practice:**
 
-- Le serveur doit rester **non-bloquant à tout moment**
-- Gérer correctement les déconnexions clients
-- Utiliser **un seul `poll()`** (ou équivalent) pour **toutes** les opérations I/O entre clients et serveur (y compris le `listen`)
-- `poll()` doit surveiller **lecture ET écriture simultanément**
-- **Ne jamais** faire de `read` ou `write` sans passer par `poll()` (ou équivalent)
-- **Interdiction** de vérifier `errno` pour ajuster le comportement du serveur après une opération `read` ou `write`
-- `poll()` (ou équivalent) **n'est pas requis** pour les fichiers disque ordinaires — `read()` et `write()` sur ces fichiers n'ont pas besoin de notifications de disponibilité
+I use AI to help design a parser. Then I walk through the logic with a peer. We catch two bugs and rewrite it together — better, cleaner, and fully understood.
 
-> ⚠️ **PIÈGE CRITIQUE :** Appeler `read`/`recv` ou `write`/`send` sur des sockets, pipes/FIFOs sans readiness préalable → **note = 0**
+#### ✗ **Bad practice:**
 
-#### Comportement général
+I let Copilot generate my code for a key part of my project. It compiles, but I can't explain how it handles pipes. During the evaluation, I fail to justify and I fail my project.
 
-- Une requête au serveur ne doit **jamais rester en attente indéfiniment**
-- Doit être compatible avec les navigateurs web standards (au choix)
-- NGINX peut être utilisé pour comparer les headers et les comportements de réponse (attention aux différences entre versions HTTP)
-- Les codes de statut HTTP doivent être **précis**
-- Pages d'erreur par défaut si aucune n'est fournie
-- **`fork` réservé aux CGI uniquement** (PHP, Python, etc.) — interdit pour autre usage
-- Doit pouvoir servir un site **entièrement statique**
-- Les clients doivent pouvoir **uploader des fichiers**
-- Méthodes HTTP minimales : **GET, POST, DELETE**
-- Stress-tester le serveur pour s'assurer qu'il reste disponible en permanence
-- Doit pouvoir écouter sur **plusieurs ports** pour délivrer différents contenus
+# <span id="page-6-0"></span>**Chapter IV Mandatory part**
 
-> **Note :** Le *virtual host* est considéré hors-scope dans ce contexte, mais son implémentation est autorisée.
+| Program Name<br>Files to Submit<br>Makefile<br>Arguments<br>External Function | webserv<br>Makefile,<br>*.{h,<br>hpp},<br>*.cpp,<br>*.tpp,<br>*.ipp,<br>configuration<br>files<br>NAME,<br>all,<br>clean,<br>fclean,<br>re<br>[A<br>configuration<br>file]<br>All<br>functionality<br>must<br>be<br>implemented<br>in<br>C++<br>98.<br>execve,<br>pipe,<br>strerror,<br>gai_strerror,<br>errno,<br>dup,<br>dup2,<br>fork,<br>socketpair,<br>htons,<br>htonl,<br>ntohs,<br>ntohl,<br>select,<br>poll,<br>epoll<br>(epoll_create,<br>epoll_ctl,<br>epoll_wait),<br>kqueue<br>(kqueue,<br>kevent),<br>socket,<br>accept,<br>listen,<br>send,<br>recv,<br>chdir,<br>bind,<br>connect,<br>getaddrinfo,<br>freeaddrinfo,<br>setsockopt,<br>getsockname,<br>getprotobyname,<br>fcntl,<br>close,<br>read,<br>write,<br>waitpid, |
+|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|                                                                               | kill,<br>signal,<br>access,<br>stat,<br>open,<br>opendir,<br>readdir<br>and<br>closedir.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Libft authorized                                                              | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Description                                                                   | An<br>HTTP<br>server<br>in<br>C++<br>98                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
----
+You must write an HTTP server in C++ 98.
 
-### Spécificités macOS
+Your executable should be executed as follows:
 
-> Cette section s'applique **uniquement** à macOS.
+./webserv [configuration file]
 
-macOS gère `write()` différemment des autres OS Unix. Par conséquent :
+![](assets/webserv_subject_chunk0001-0015___page_6_Picture_5.jpeg)
 
-- Utiliser `fcntl()` est autorisé
-- Les file descriptors doivent être utilisés en **mode non-bloquant**
-- `fcntl()` n'est autorisé qu'avec les flags suivants : `F_SETFL`, `O_NONBLOCK`, `FD_CLOEXEC`
-- **Tout autre flag est interdit**
+Even though poll() is mentioned in the subject and evaluation sheet, you can use any equivalent function such as select(), kqueue(), or epoll().
 
----
+![](assets/webserv_subject_chunk0001-0015___page_7_Picture_2.jpeg)
 
-### Fichier de configuration
+Please read the RFCs defining the HTTP protocol, and perform tests with telnet and NGINX before starting this project. Although you are not required to implement the entire RFCs, reading
 
-> S'inspirer de la section `server` du fichier de configuration NGINX.
+it will help you develop the required features. The HTTP 1.0 is suggested as a reference point, but not enforced.
 
-#### Ce que le fichier de configuration doit permettre :
+#### <span id="page-8-0"></span>**IV.1 Requirements**
 
-**1. Définir les paires interface:port d'écoute**
-- Permet de définir plusieurs sites web servis par le programme
+- Your program must use a configuration file, provided as an argument on the command line, or available in a default path.
+- You cannot execve another web server.
+- Your server must remain non-blocking at all times and properly handle client disconnections when necessary.
+- It must be non-blocking and use only **1** poll() (or equivalent) for all the I/O operations between the clients and the server (listen included).
+- poll() (or equivalent) must monitor both reading and writing simultaneously.
+- You must never do a read or a write operation without going through poll() (or equivalent).
+- Checking the value of errno to adjust the server behaviour is strictly forbidden after performing a read or write operation.
+- You are not required to use poll() (or an equivalent function) for regular disk files; read() and write() on them do not require readiness notifications.
 
-**2. Configurer les pages d'erreur par défaut**
+![](assets/webserv_subject_chunk0001-0015___page_8_Figure_11.jpeg)
 
-**3. Définir la taille maximale du corps des requêtes client**
+I/O that can wait for data (sockets, pipes/FIFOs, etc.) must be non-blocking and driven by a single poll() (or equivalent). Calling read/recv or write/send on these descriptors without prior readiness will result in a grade of 0. Regular disk files are exempt.
 
-**4. Configurer des règles par URL/route** (pas de regex nécessaire) :
+- When using poll() or any equivalent call, you can use every associated macro or helper function (e.g., FD\_SET for select()).
+- A request to your server should never hang indefinitely.
+- Your server must be compatible with standard **web browsers** of your choice.
+- NGINX may be used to compare headers and answer behaviours (pay attention to differences between HTTP versions).
+- Your HTTP response status codes must be accurate.
+- Your server must have **default error pages** if none are provided.
+- You can't use fork for anything other than CGI (like PHP, or Python, and so forth).
+- You must be able to **serve a fully static website**.
+- Clients must be able to **upload files**.
+- You need at least the GET, POST, and DELETE methods.
 
-| Directive | Description |
-|-----------|-------------|
-| **Méthodes HTTP acceptées** | Lister les méthodes autorisées pour la route |
-| **Redirection HTTP** | Configurer des redirections |
-| **Racine du répertoire** | Définir où chercher les fichiers (ex: `/kapouet` → `/tmp/www`, donc `/kapouet/pouic/toto/pouet` → `/tmp/www/pouic/toto/pouet`) |
-| **Listing de répertoire** | Activer ou désactiver l'affichage du contenu d'un répertoire |
-| **Fichier par défaut** | Fichier à servir quand la ressource demandée est un répertoire |
-| **Upload de fichiers** | Autoriser l'upload et définir l'emplacement de stockage |
-| **CGI** | Exécution basée sur l'extension de fichier (ex: `.php`) |
+- Stress test your server to ensure it remains available at all times.
+- Your server must be able to listen to multiple ports to deliver different content (see *Configuration file*).
 
-#### Remarques spécifiques sur les CGI :
+![](assets/webserv_subject_chunk0001-0015___page_9_Picture_4.jpeg)
 
-- Les **variables d'environnement** impliquées dans la communication serveur-CGI sont cruciales
-- La **requête complète et les arguments** fournis par le client doivent être disponibles pour le CGI
-- Pour les **requêtes chunked** : le serveur doit les **dé-chunker** ; le CGI attend `EOF` comme fin du body
-- Pour la **sortie du CGI** : si aucun `content_length` n'est retourné, `EOF` marque la fin des données
-- Le CGI doit être exécuté dans le **bon répertoire** pour l'accès aux fichiers par chemin relatif
-- Le serveur doit supporter **au moins un CGI** (php-CGI, Python, etc.)
+We deliberately chose to offer only a subset of the HTTP RFC. In this context, the virtual host feature is considered out of scope. But you are allowed to implement it if you want.
 
-#### Obligations supplémentaires :
+### <span id="page-10-0"></span>**IV.2 For MacOS only**
 
-- Fournir des fichiers de configuration et des fichiers par défaut pour **tester et démontrer** que chaque fonctionnalité fonctionne lors de l'évaluation
-- D'autres règles/informations peuvent être incluses (ex: nom de serveur pour virtual hosts si implémentés)
+![](assets/webserv_subject_chunk0001-0015___page_10_Picture_3.jpeg)
 
-> En cas de doute sur un comportement spécifique, **comparer avec NGINX**.
+Since macOS handles write() differently from other Unix-based OSes, you are allowed to use fcntl().
 
-> Un petit testeur est fourni — non obligatoire si tout fonctionne avec le navigateur, mais utile pour trouver et corriger des bugs.
+You must use file descriptors in non-blocking mode to achieve behaviour similar to that of other Unix OSes.
 
-> **Conseil :** Écrire les tests dans un langage adapté (Python, Golang, C, C++...), pas seulement avec un seul programme.
+![](assets/webserv_subject_chunk0001-0015___page_10_Picture_6.jpeg)
 
----
+However, you are allowed to use fcntl() only with the following flags:
 
-## README requis
+F\_SETFL, O\_NONBLOCK and, FD\_CLOEXEC.
 
-Un fichier `README.md` **doit être présent** à la racine du dépôt Git.
+Any other flag is forbidden.
 
-### Sections obligatoires :
+#### <span id="page-10-1"></span>**IV.3 Configuration file**
 
-| Section | Contenu |
-|---------|---------|
-| **Première ligne** | Doit être en italique et lire : *This project has been created as part of the 42 curriculum by \<login1\>[, \<login2\>[, \<login3\>[...]]]* |
-| **Description** | Présente clairement le projet, son objectif et un aperçu général |
-| **Instructions** | Informations sur la compilation, l'installation et/ou l'exécution |
-| **Resources** | Références classiques sur le sujet (docs, articles, tutoriels) + description de l'usage de l'IA (pour quelles tâches et quelles parties du projet) |
+![](assets/webserv_subject_chunk0001-0015___page_10_Picture_11.jpeg)
 
-> Le README doit être **rédigé en anglais**.
+You can take inspiration from the 'server' section of the NGINX configuration file.
 
----
+In the configuration file, you should be able to:
 
-## Bonus
+- Define all the interface:port pairs on which your server will listen to (defining multiple websites served by your program).
+- Set up default error pages.
+- Set the maximum allowed size for client request bodies.
+- Specify rules or configurations on a URL/route (no regex required here), for a website, among the following:
+  - List of accepted HTTP methods for the route.
+  - HTTP redirection.
+  - Directory where the requested file should be located (e.g., if URL /kapouet is rooted to /tmp/www, URL /kapouet/pouic/toto/pouet will search for /tmp/www/pouic/toto/pouet).
+  - Enabling or disabling directory listing.
+  - Default file to serve when the requested resource is a directory.
+  - Uploading files from the clients to the server is authorized, and storage location is provided.
 
-> ⚠️ Le bonus n'est évalué que si la **partie obligatoire est entièrement complétée sans problèmes**.
+- Execution of CGI, based on file extension (for example .php). Here are some specific remarks regarding CGIs:
+  - ∗ Do you wonder what a [CGI](https://en.wikipedia.org/wiki/Common_Gateway_Interface) is?
+  - ∗ Have a careful look at the environment variables involved in the web server-CGI communication. The full request and arguments provided by the client must be available to the CGI.
+  - ∗ Just remember that, for chunked requests, your server needs to un-chunk them, the CGI will expect EOF as the end of the body.
+  - ∗ The same applies to the output of the CGI. If no content\_length is returned from the CGI, EOF will mark the end of the returned data.
+  - ∗ The CGI should be run in the correct directory for relative path file access.
+  - ∗ Your server should support at least one CGI (php-CGI, Python, and so forth).
 
-Fonctionnalités bonus possibles :
+You must provide configuration files and default files to test and demonstrate that every feature works during the evaluation.
 
-- **Support des cookies et gestion de sessions** (fournir des exemples simples)
-- **Gestion de plusieurs types de CGI**
+You can have other rules or configuration information in your file (e.g., a server name for a website if you plan to implement virtual hosts).
 
----
+![](assets/webserv_subject_chunk0001-0015___page_11_Picture_11.jpeg)
 
-## Rendu & évaluation
+If you have a question about a specific behaviour, you can compare your program's behaviour with NGINX's.
 
-- Soumettre dans le dépôt Git habituel
-- Seul le contenu du dépôt est évalué lors de la soutenance
-- Vérifier soigneusement les noms des fichiers
+We have provided a small tester. Using it is not mandatory if everything works fine with your browser and tests, but it can help you find and fix bugs.
 
-### Modification lors de l'évaluation
+![](assets/webserv_subject_chunk0001-0015___page_11_Picture_14.jpeg)
 
-Lors de l'évaluation, une **modification mineure du projet peut être demandée** :
-- Changement de comportement mineur
-- Quelques lignes de code à écrire ou réécrire
-- Fonctionnalité simple à ajouter
+Resilience is key. Your server must remain operational at all times.
 
-> Cette étape vise à **vérifier la compréhension réelle** d'une partie spécifique du projet. La modification doit être réalisable en quelques minutes dans l'environnement de développement habituel.
+![](assets/webserv_subject_chunk0001-0015___page_11_Picture_16.jpeg)
 
----
+Do not test with only one program. Write your tests in a more suitable language, such as Python or Golang, among others, even in C or C++ if you prefer.
 
-## Récapitulatif des pièges critiques
+# <span id="page-12-0"></span>**Chapter V**
 
-> Section synthèse pour Claude Code — points d'attention maximale.
+# **Readme Requirements**
 
-### 🔴 Note = 0 immédiate
+A README.md file must be provided at the root of your Git repository. Its purpose is to allow anyone unfamiliar with the project (peers, staff, recruiters, etc.) to quickly understand what the project is about, how to run it, and where to find more information on the topic.
 
-| Piège | Règle |
-|-------|-------|
-| Crash ou terminaison inattendue | Le programme ne doit jamais crasher |
-| `read`/`recv` ou `write`/`send` sur socket sans `poll()` préalable | Toujours passer par `poll()` |
-| `fork` utilisé ailleurs que pour le CGI | Réservé exclusivement aux CGI |
-| Vérifier `errno` après `read`/`write` pour ajuster le comportement | Strictement interdit |
+The README.md must include at least:
 
-### 🟠 Architecture non-blocking
+- The very first line must be italicized and read: *This project has been created as part of the 42 curriculum by <login1>[, <login2>[, <login3>[...]]].*
+- A "**Description**" section that clearly presents the project, including its goal and a brief overview.
+- An "**Instructions**" section containing any relevant information about compilation, installation, and/or execution.
+- A "**Resources**" section listing classic references related to the topic (documentation, articles, tutorials, etc.), as well as a description of how AI was used specifying for which tasks and which parts of the project.
+- ➠ **Additional sections may be required depending on the project** (e.g., usage examples, feature list, technical choices, etc.).
 
-- **1 seul** `poll()` (ou équivalent) pour **toutes** les I/O
-- `poll()` surveille **lecture ET écriture** simultanément
-- Fichiers disque ordinaires : exemptés de `poll()`
-- Sockets, pipes, FIFOs : **toujours non-bloquants et pilotés par `poll()`**
+*Any required additions will be explicitly listed below.*
 
-### 🟡 Fonctionnalités minimum à implémenter
+![](assets/webserv_subject_chunk0001-0015___page_12_Picture_10.jpeg)
 
-- [ ] Méthodes **GET**, **POST**, **DELETE**
-- [ ] Upload de fichiers
-- [ ] Site statique complet
-- [ ] Pages d'erreur par défaut
-- [ ] Fichier de configuration (NGINX-like)
-- [ ] Écoute sur plusieurs ports
-- [ ] Au moins **1 CGI** (php-CGI ou Python)
-- [ ] Codes de statut HTTP précis
-- [ ] Gestion des déconnexions client
+Your README must be written in English.
 
-### 🟢 Bonnes pratiques recommandées
+# <span id="page-13-0"></span>**Chapter VI Bonus part**
 
-- Tester avec `telnet` et NGINX comme référence
-- Stress-tester le serveur (doit rester disponible en permanence)
-- Écrire des tests automatisés (Python, Golang, C++)
-- Sur macOS : `fcntl()` avec `F_SETFL`, `O_NONBLOCK`, `FD_CLOEXEC` uniquement
-- Lire les RFC HTTP avant de commencer
-- Comparer les comportements avec NGINX en cas de doute
+Here are some additional features you can implement:
 
----
+- Support cookies and session management (provide simple examples).
+- Handle multiple CGI types.
 
-*Document généré depuis le sujet officiel Webserv 42 — Version 24.0*
+![](assets/webserv_subject_chunk0001-0015___page_13_Picture_4.jpeg)
+
+The bonus part will only be assessed if the mandatory part is fully completed without issues. If you fail to meet all the mandatory requirements, your bonus part will not be evaluated.
+
+# <span id="page-14-0"></span>**Chapter VII**
+
+# **Submission and peer-evaluation**
+
+Submit your assignment in your Git repository as usual. Only the content of your repository will be evaluated during the defense. Be sure to double-check the names of your files to ensure they are correct.
+
+During the evaluation, a brief **modification of the project** may occasionally be requested. This could involve a minor behaviour change, a few lines of code to write or rewrite, or an easy-to-add feature.
+
+While this step may **not be applicable to every project**, you must be prepared for it if it is mentioned in the evaluation guidelines.
+
+This step is meant to verify your actual understanding of a specific part of the project. The modification can be performed in any development environment you choose (e.g., your usual setup), and it should be feasible within a few minutes — unless a specific time frame is defined as part of the evaluation.
+
+You can, for example, be asked to make a small update to a function or script, modify a display, or adjust a data structure to store new information, etc.
+
+The details (scope, target, etc.) will be specified in the **evaluation guidelines** and may vary from one evaluation to another for the same project.
+
