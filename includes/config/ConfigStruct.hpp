@@ -20,21 +20,28 @@ struct Location {
 	std::map<int, str>			error_page;			// code erreur -> page HTML (404 -> /errors/404.html)
 	std::string					root;				// dossier racine des fichiers servis
 	std::string					index;				// fichier par defaut (index.html)
+	size_t						max_body_client;	// taille max du body en octets (defaut: 1MB)
 	int							autoindex;			// listing du dossier (-1 = non defini, 0 = off, 1 = on)
 
 	Location() : return_path(-1, ""), autoindex(-1) {}
 };
 
+// Directive            Validation          -ne figure pas dans nginx
+//
+// allowed_methods      valeurs parmi GET/POST/DELETE, au moins une
+// cgi_pass             2 args, extension commence par ., chemin valide
+// upload_store         1 arg, chemin absolu, dossier accessible en écriture
+
 struct Server {
 	// Propre au Server
 	std::vector<strint>			listen;				// adresse + port d'ecoute (0.0.0.0:8080)
 	std::string					server_name;		// nom de domaine (localhost, example.com)
-	size_t						max_body_client;	// taille max du body en octets (defaut: 1MB)
 
 	// Location en herite si vide
 	std::map<int, str>			error_page;			// code erreur -> page HTML (404 -> /errors/404.html)
 	std::string					root;				// dossier racine des fichiers servis
 	std::string					index;				// fichier par defaut (index.html)
+	size_t						max_body_client;	// taille max du body en octets (defaut: 1MB)
 	int							autoindex;			// listing du dossier (-1 = non defini, 0 = off, 1 = on)
 
 	std::vector<Location>		locations;			// blocs location du server
