@@ -5,8 +5,8 @@
 #include <map>
 #include <utility>
 
-typedef std::string             str;
-typedef std::pair<str, int>     strint;				// string, port
+typedef std::string             	str;
+typedef std::pair<uint32_t, int>	addrport;		// string, port
 
 struct Location {
 	// Propre à Location
@@ -34,7 +34,7 @@ struct Location {
 
 struct Server {
 	// Propre au Server
-	std::vector<strint>			listen;				// adresse + port d'ecoute (0.0.0.0:8080)
+	std::vector<addrport>		listen;				// adresse + port d'ecoute (0.0.0.0:8080)
 	std::string					server_name;		// nom de domaine (localhost, example.com)
 
 	// Location en herite si vide
@@ -50,6 +50,6 @@ struct Server {
 };
 
 struct Config {
-	std::vector<Server>			servers;			// tous les serveurs du fichier de config
+	std::vector<Server>			srv;			// tous les serveurs du fichier de config
 };
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <sys/socket.h>
+
 class ASocket {
 	public:
 		virtual				~ASocket() {}
