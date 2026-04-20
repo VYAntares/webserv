@@ -2,6 +2,7 @@
 
 #include "ASocket.hpp"
 #include "../config/ConfigStruct.hpp"
+#include "../../includes/utils/FileDescriptor.hpp"
 #include <vector>
 #include <iostream>
 #include <cstring>
@@ -13,14 +14,13 @@ class ServerSocket : public ASocket {
 		ServerSocket(Config servers);
 		~ServerSocket() {}
 		int createSocket();
-		void bindAddress(int serverFd,
-						addrport listen);
+		void bindAddress(int serverFd, addrport listen);
 
-		void onReadable();
-		void onWritable();
+		// void onReadable();
+		// void onWritable();
 
 	private:
-		Config				_servers;
+		Config						_servers;
 		std::vector<int>	_serverFd;
 };
 

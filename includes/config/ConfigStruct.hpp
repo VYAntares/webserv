@@ -47,17 +47,7 @@ struct Server {
 
 	std::vector<Location>		locations;			// blocs location du server
 
-	// Server() : max_body_client(1024 * 1024), autoindex(-1) {}
-	
-	Server() : max_body_client(1024 * 1024), autoindex(-1) {
-    listen.push_back(addrport(INADDR_ANY, 8080));
-	listen.push_back(addrport(inet_addr("127.0.0.1"), 8081));
-    server_name = "localhost";
-    root        = "/var/www/main";
-    index       = "index.html";
-    error_page[404] = "/errors/404.html";
-    error_page[500] = "/errors/500.html";
-	}
+	Server() : max_body_client(1024 * 1024), autoindex(-1) {}
 };
 
 struct Config {
