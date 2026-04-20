@@ -6,16 +6,16 @@
 #include <iostream>
 #include <cstring>
 #include <fcntl.h>
+#include <arpa/inet.h>
 
 class ServerSocket : public ASocket {
 	public:
 		ServerSocket(Config servers);
-		~ServerSocket();
+		~ServerSocket() {}
 		int createSocket();
-		int bindAddress(int serverFd,
-						std::vector<addrport> listen);
+		void bindAddress(int serverFd,
+						addrport listen);
 
-		const int getFd() const;
 		void onReadable();
 		void onWritable();
 

@@ -3,12 +3,16 @@
 ServerSocket::ServerSocket(Config servers) : _servers(servers) {
 	try {
 		for (size_t i = 0; i < _servers.srv.size(); i++) {
-			_serverFd.push_back(createSocket());
-			for (size_t j = 0; j < _servers.srv[i].listen.size(); j++)
-				bindAddress(_serverFd[i], _servers.srv[i].listen);
+			for (size_t j = 0; j < _servers.srv[i].listen.size(); j++) {
+				int serverFd = createSocket();
+				bindAddress(serverFd, _servers.srv[i].listen[j]);
+				if (listen(serverFd, SOMAXCONN) == -1)
+					throw std::runtime_error("socket() failed:" + std::string(strerror(errno)));
+				_serverFd.push_back(serverFd);
+			}
 		}
 	} catch (const std::exception &e) {
-
+		std::cerr << "Error: " << e.what() << std::endl;
 	}
 }
 
@@ -25,6 +29,13 @@ int ServerSocket::createSocket() {
 	return serverFd;
 }
 
-int ServerSocket::bindAddress(int serverFd, std::vector<addrport> listen) {
+void ServerSocket::bindAddress(int serverFd, addrport listen) {
+	struct sockaddr_in addr;
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_addr.s_addr = listen.first;
+	addr.sin_family = AF_INET;
+	addr.sin_port = listen.second;
 
+	if (bind(serverFd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
+		throw std::runtime_error("bind() failed:" + std::string(strerror(errno)));
 }
