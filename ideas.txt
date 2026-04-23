@@ -1,0 +1,5 @@
+quand on accept un client on creer un objet clienthandler, qui lui creera un timehandler
+timehandler creera le timeout pour le client. 
+accept lance un timer a 30s ou 15s osef
+le timer est remis a 30 ou 15s a chaque action du client (recv/send)
+et le cgi aura la meme logique

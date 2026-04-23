@@ -6,7 +6,7 @@
 
 class ConfigParser {
 	public:
-		ConfigParser(const std::string& filepath);
+		ConfigParser(int argc, char** argv);
 		void parse();
 
 	private:

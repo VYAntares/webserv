@@ -2,7 +2,7 @@ NAME = webserv
 CXX = g++
 CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 
-SRCS = main.cpp srcs/sockets/ServerSocket.cpp
+SRCS = main.cpp srcs/handlers/AcceptHandler.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 

@@ -51,6 +51,5 @@ struct Server {
 };
 
 struct Config {
-	std::vector<Server>			srv;			// tous les serveurs du fichier de config
+	std::vector<Server>			cfg;				// tous les serveurs du fichier de config
 };
-
