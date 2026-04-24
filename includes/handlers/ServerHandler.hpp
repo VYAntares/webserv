@@ -3,10 +3,10 @@
 #include "../core/IEventHandler.hpp"
 #include "../config/ConfigStruct.hpp"
 
-class AcceptHandler : public IEventHandler {
+class ServerHandler : public IEventHandler {
 	public:
-		AcceptHandler(addrport listen, const Server& server);
-		~AcceptHandler();
+		ServerHandler(addrport listen, const Server& server);
+		~ServerHandler();
 
 		// IEventHandler
 		int getFd() const;
