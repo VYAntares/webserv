@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <iostream>
 
+// Initialise le socket serveur en enchaînant createSocket(), bindAddress() et listen().
+// En cas d'échec, ferme le fd avant de relancer l'exception (RAII).
 ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(server) {
 	try {
 		_fd = createSocket();
@@ -21,6 +23,9 @@ ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(ser
 	}
 }
 
+// Crée un socket TCP non bloquant.
+// SO_REUSEADDR évite "Address already in use" lors d'un redémarrage rapide du serveur.
+// O_NONBLOCK est requis pour que la boucle événementielle ne se bloque pas sur accept().
 int ServerHandler::createSocket() {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1)
@@ -33,6 +38,8 @@ int ServerHandler::createSocket() {
 	return fd;
 }
 
+// Associe l'adresse IP et le port fournis au fd du socket.
+// htons() convertit le port en ordre réseau (big-endian).
 void ServerHandler::bindAddress(int serverFd, addrport listen) {
 	struct sockaddr_in addr;
 
@@ -45,6 +52,9 @@ void ServerHandler::bindAddress(int serverFd, addrport listen) {
 		throw std::runtime_error("bind() failed:" + std::string(strerror(errno)));
 }
 
+// Accepte une connexion entrante et retourne un ClientHandler alloué dynamiquement.
+// Le retour en IEventHandler* permet à la boucle événementielle de traiter
+// tous les handlers de façon uniforme via le polymorphisme.
 IEventHandler* ServerHandler::handle_accept() {
 	struct sockaddr_in client_addr;
 	socklen_t len = sizeof(client_addr);
@@ -53,7 +63,6 @@ IEventHandler* ServerHandler::handle_accept() {
 		throw std::runtime_error("accept() failed:" + std::string(strerror(errno)));
 	
 	return new ClientHandler(client_fd, _server);
-	std::cout << "handle_accept a ete trigger" << std::endl;
 }
 
 int ServerHandler::getFd() const {
