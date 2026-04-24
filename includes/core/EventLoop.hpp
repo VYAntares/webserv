@@ -6,11 +6,12 @@
 
 #define MAX_EVENTS 128
 
-class EventLoop.h {
+class EventLoop {
 	public:
 		EventLoop();
 		~EventLoop();
 		looping();
+		
 	private:
 		int	_epfd;
-}
+};

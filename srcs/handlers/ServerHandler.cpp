@@ -1,4 +1,4 @@
-#include "../../includes/handlers/AcceptHandler.hpp"
+#include "../../includes/handlers/ServerHandler.hpp"
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <iostream>
 
-AcceptHandler::AcceptHandler(addrport addrs, const Server& server) : _server(server) {
+ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(server) {
 	try {
 		_fd = createSocket();
 		bindAddress(_fd, addrs);
@@ -20,7 +20,7 @@ AcceptHandler::AcceptHandler(addrport addrs, const Server& server) : _server(ser
 	}
 }
 
-int AcceptHandler::createSocket() {
+int ServerHandler::createSocket() {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1)
 		throw std::runtime_error("socket() failed:" + std::string(strerror(errno)));
@@ -32,7 +32,7 @@ int AcceptHandler::createSocket() {
 	return fd;
 }
 
-void AcceptHandler::bindAddress(int serverFd, addrport listen) {
+void ServerHandler::bindAddress(int serverFd, addrport listen) {
 	struct sockaddr_in addr;
 
 	memset(&addr, 0, sizeof(addr));
@@ -46,14 +46,14 @@ void AcceptHandler::bindAddress(int serverFd, addrport listen) {
 	std::cout << "bind() success" << std::endl;
 }
 
-// int AcceptHandler::handle_accept() {
+// int ServerHandler::handle_accept() {
 
 // }
 
-int AcceptHandler::getFd() const {
+int ServerHandler::getFd() const {
 	return this->_fd;
 }
 
-AcceptHandler::~AcceptHandler() {
+ServerHandler::~ServerHandler() {
 	close(_fd);
 }

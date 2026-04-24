@@ -1,4 +1,4 @@
-#include "includes/handlers/AcceptHandler.hpp"
+#include "includes/handlers/ServerHandler.hpp"
 #include <iostream>
 
 int main() {
@@ -29,12 +29,12 @@ int main() {
 		c.cfg.push_back(s1);
 		c.cfg.push_back(s2);
 		c.cfg.push_back(s3);
-		std::vector<AcceptHandler*> handlers;
+		std::vector<ServerHandler*> handlers;
 		for (size_t i = 0; i < c.cfg.size(); i++) {
 			for (size_t j = 0; j < c.cfg[i].listen.size(); j++) {
 				std::cout << "server: " << i << std::endl;
 				try {
-					handlers.push_back(new AcceptHandler(c.cfg[i].listen[j], c.cfg[i]));
+					handlers.push_back(new ServerHandler(c.cfg[i].listen[j], c.cfg[i]));
 				} catch (std::exception &e) {
 					std::cerr << e.what() << std::endl;
 				}
