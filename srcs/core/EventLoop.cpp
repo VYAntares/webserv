@@ -28,5 +28,6 @@ EventLoop::EventLoop(Config c) {
 }
 
 EventLoop::~EventLoop() {
-
+	for (size_t i = 0; i < handlers.size(); i++)
+		delete handlers[i];
 }
