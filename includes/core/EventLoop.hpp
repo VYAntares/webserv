@@ -8,7 +8,7 @@
 
 class EventLoop {
 	public:
-		EventLoop();
+		EventLoop(AcceptHandler toloopin);
 		~EventLoop();
 		looping();
 		
