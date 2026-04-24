@@ -10,7 +10,7 @@ class ServerHandler : public IEventHandler {
 
 		// IEventHandler
 		int getFd() const;
-		// void handle_accept();
+		IEventHandler* handle_accept();
 
 		int createSocket();
 		void bindAddress(int serverFd, addrport listen);

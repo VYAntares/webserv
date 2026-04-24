@@ -1,4 +1,5 @@
 #include "../../includes/handlers/ServerHandler.hpp"
+#include "../../includes/handlers/ClientHandler.hpp"
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -42,13 +43,18 @@ void ServerHandler::bindAddress(int serverFd, addrport listen) {
 
 	if (bind(serverFd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
 		throw std::runtime_error("bind() failed:" + std::string(strerror(errno)));
-
-	std::cout << "bind() success" << std::endl;
 }
 
-// int ServerHandler::handle_accept() {
-
-// }
+IEventHandler* ServerHandler::handle_accept() {
+	struct sockaddr_in client_addr;
+	socklen_t len = sizeof(client_addr);
+	int client_fd = accept(_fd, (struct sockaddr*)&client_addr, &len);
+	if (client_fd == -1)
+		throw std::runtime_error("accept() failed:" + std::string(strerror(errno)));
+	
+	return new ClientHandler(client_fd, _server);
+	std::cout << "handle_accept a ete trigger" << std::endl;
+}
 
 int ServerHandler::getFd() const {
 	return this->_fd;

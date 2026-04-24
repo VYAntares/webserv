@@ -22,12 +22,14 @@
 // getFd() = 0 : tout handler a un fd, obligatoire.
 // handle_*    : default vide, override si besoin.
 
+#include <cstddef>
+
 class IEventHandler {
 	public:
 		virtual int getFd() const  = 0;
 		virtual void handle_close()   {}
 		virtual void handle_read()	  {}	// ClientHandler.hpp, CGIReadHandler.hpp
 		virtual void handle_write()	  {}	// ClientHandler.hpp, CGIWriteHandler.hpp
-		virtual void handle_accept()  {}	// AcceptHandler.hpp
+		virtual IEventHandler* handle_accept()  { return NULL; }	// AcceptHandler.hpp
 		virtual		~IEventHandler()  {}
 };
