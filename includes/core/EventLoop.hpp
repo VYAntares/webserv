@@ -1,6 +1,7 @@
 #pragma once
 
-#include "../handlers/AcceptHandler.hpp"
+#include "../handlers/ServerHandler.hpp"
+#include "../config/ConfigStruct.hpp"
 #include "IEventHandler.hpp"
 #include <sys/epoll.h>
 
@@ -8,9 +9,9 @@
 
 class EventLoop {
 	public:
-		EventLoop(AcceptHandler toloopin);
+		EventLoop(Config c);
 		~EventLoop();
-		looping();
+		// looping();
 		
 	private:
 		int	_epfd;

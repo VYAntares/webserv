@@ -1,6 +1,9 @@
 #include "../../includes/core/EventLoop.hpp"
 #include "../../includes/handlers/ServerHandler.hpp"
 
+#include <iostream>
+#include <string.h>
+
 EventLoop::EventLoop(Config c) {
 	std::vector<ServerHandler*> handlers;
 	for (size_t i = 0; i < c.cfg.size(); i++) {
@@ -24,4 +27,6 @@ EventLoop::EventLoop(Config c) {
 	}
 }
 
+EventLoop::~EventLoop() {
 
+}
