@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string.h>
+#include <sys/epoll.h>
 
 EventLoop::EventLoop(Config c) {
 	std::vector<ServerHandler*> handlers;
@@ -23,7 +24,8 @@ EventLoop::EventLoop(Config c) {
 	for (size_t i = 0; i < handlers.size(); i++) {
 		struct epoll_event ev;
 		ev.events = EPOLLIN;
-		//ev.data.fd = handlers[i].
+		ev.data.fd = handlers[i]->getFd();
+		epoll_ctl(_epfd, EPOLL_CTL_ADD, handlers[i]->getFd(), &ev);
 	}
 }
 
@@ -31,3 +33,5 @@ EventLoop::~EventLoop() {
 	for (size_t i = 0; i < handlers.size(); i++)
 		delete handlers[i];
 }
+
+
