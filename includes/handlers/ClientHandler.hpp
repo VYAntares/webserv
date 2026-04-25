@@ -7,8 +7,9 @@ class ClientHandler : public IEventHandler {
 	public:
 		ClientHandler(int clientFd, const Server& server);
 		~ClientHandler();
+		
 		int getFd() const;
-		void handle_read();
+		int handle_input();
 
 	private:
 		int		_fd;

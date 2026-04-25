@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../handlers/ServerHandler.hpp"
 #include "../config/ConfigStruct.hpp"
 #include "IEventHandler.hpp"
 #include <vector>
@@ -13,15 +12,27 @@
 // vers le bon handler via looping().
 // _epfd     : fd de l'instance epoll partagée par tous les handlers.
 // _handlers : liste des ServerHandlers (ownership — détruits dans le destructeur).
+
+struct HandlerEntry {
+	IEventHandler*	handler;
+	EventType		type;
+};
+
 class EventLoop {
 	public:
-		EventLoop(Config c);
-		~EventLoop();
-		void addHandler(IEventHandler* h, uint32_t events);
-		void looping();
+		static EventLoop* instance();
+
+		void register_handler(IEventHandler* h, EventType type);
+		void remove_handler(IEventHandler* h, EventType type);
+		void handle_events();
 		
 	private:
+		EventLoop();
+		~EventLoop();
+
 		int							_epfd;
-		std::vector<IEventHandler*>	_handlers;
+		std::vector<HandlerEntry*>	_table;
+
+		static EventLoop* 			_instance;
 };
 

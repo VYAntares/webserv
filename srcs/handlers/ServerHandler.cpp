@@ -1,5 +1,6 @@
 #include "../../includes/handlers/ServerHandler.hpp"
 #include "../../includes/handlers/ClientHandler.hpp"
+#include "../../includes/core/EventLoop.hpp"
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -21,6 +22,7 @@ ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(ser
 		close(_fd);
 		throw;
 	}
+	EventLoop::instance()->register_handler(this, ACCEPT_EVENT);
 }
 
 // Crée un socket TCP non bloquant.
@@ -55,20 +57,16 @@ void ServerHandler::bindAddress(int serverFd, addrport listen) {
 // Accepte une connexion entrante et retourne un ClientHandler alloué dynamiquement.
 // Le retour en IEventHandler* permet à la boucle événementielle de traiter
 // tous les handlers de façon uniforme via le polymorphisme.
-IEventHandler* ServerHandler::handle_accept() {
+int ServerHandler::handle_accept() {
 	struct sockaddr_in client_addr;
 	socklen_t len = sizeof(client_addr);
 	int client_fd = accept(_fd, (struct sockaddr*)&client_addr, &len);
 	if (client_fd == -1)
-		throw std::runtime_error("accept() failed:" + std::string(strerror(errno)));
-	
-	return new ClientHandler(client_fd, _server);
+		return -1;
+	new ClientHandler(client_fd, _server);
+	return 0;
 }
 
-int ServerHandler::getFd() const {
-	return this->_fd;
-}
+int ServerHandler::getFd() const { return this->_fd; }
 
-ServerHandler::~ServerHandler() {
-	close(_fd);
-}
+ServerHandler::~ServerHandler() { close(_fd); }

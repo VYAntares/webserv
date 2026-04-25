@@ -12,12 +12,11 @@ class ServerHandler : public IEventHandler {
 		~ServerHandler();
 
 		// IEventHandler
-		int getFd() const;
-		IEventHandler* handle_accept();
+		int		getFd() const;
+		int		handle_accept();
 
-		int createSocket();
-		void bindAddress(int serverFd, addrport listen);
-
+		int		createSocket();
+		void	bindAddress(int serverFd, addrport listen);
 
 	private:
 		Server	_server;

@@ -31,8 +31,17 @@ int main() {
 		c.cfg.push_back(s2);
 		c.cfg.push_back(s3);
 
-		EventLoop event(c);
-		event.looping();
+		for (size_t i = 0; i < c.cfg.size(); i++) {
+			for (size_t j = 0; j < c.cfg[i].listen.size(); j++) {
+				try {
+					new ServerHandler(c.cfg[i].listen[j], c.cfg[i]);
+				} catch (std::exception &e) {
+					std::cerr << e.what() << std::endl;
+				}
+			}
+		}
+
+		EventLoop::instance()->handle_events();
 
 	return 0;
 }
