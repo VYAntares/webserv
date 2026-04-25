@@ -1,5 +1,5 @@
 NAME = webserv
-CXX = g++
+CXX = c++
 CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 INCLUDES = -I includes
 

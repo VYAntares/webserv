@@ -42,6 +42,7 @@ int main() {
 		}
 
 		EventLoop::instance()->handle_events();
+		EventLoop::destroy();
 
 	return 0;
 }

@@ -10,8 +10,11 @@ class ClientHandler : public IEventHandler {
 		
 		int getFd() const;
 		int handle_input();
+		int handle_output();
 
 	private:
 		int		_fd;
+		size_t	_sent;
 		Server	_server;
 };
+

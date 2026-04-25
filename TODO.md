@@ -1,313 +1,53 @@
-Il y a 5 changements fondamentaux pour être 100% fidèle :
-
-EventType enum exacte du papier
-EventLoop devient un Singleton avec register_handler() et handle_events()
-Les handlers s'auto-enregistrent dans leur constructeur (plus de retour de IEventHandler*)
-handle_accept() retourne int, plus IEventHandler*
-main() crée les handlers, plus le constructeur d'EventLoop
-includes/core/IEventHandler.hpp
-
-#pragma once
-
-enum EventType {
-    ACCEPT_EVENT  = 01,
-    READ_EVENT    = 02,
-    WRITE_EVENT   = 04,
-    TIMEOUT_EVENT = 010,
-    SIGNAL_EVENT  = 020,
-    CLOSE_EVENT   = 040
-};
-
-class IEventHandler {
-    public:
-        virtual int getFd()           const = 0;
-        virtual int handle_accept()         { return 0; }
-        virtual int handle_input()          { return 0; }
-        virtual int handle_output()         { return 0; }
-        virtual int handle_close()          { return 0; }
-        virtual ~IEventHandler() {}
-};
-
---------
-
-includes/core/EventLoop.hpp
-
-#pragma once
-
-#include "IEventHandler.hpp"
-#include <vector>
-#include <sys/epoll.h>
-
-#define MAX_EVENTS 128
-
-struct HandlerEntry {
-    IEventHandler* handler;
-    EventType      type;
-};
-
-class EventLoop {
-    public:
-        static EventLoop* instance();
-
-        void register_handler(IEventHandler* h, EventType type);
-        void remove_handler(IEventHandler* h, EventType type);
-        void handle_events();
-
-    private:
-        EventLoop();
-        ~EventLoop();
-
-        int                        _epfd;
-        std::vector<HandlerEntry*> _table;
-
-        static EventLoop* _instance;
-};
-
----------
-
-srcs/core/EventLoop.cpp
-
-#include "../../includes/core/EventLoop.hpp"
-#include <string.h>
-#include <errno.h>
-#include <stdexcept>
-#include <iostream>
-
-EventLoop* EventLoop::_instance = NULL;
-
-EventLoop* EventLoop::instance() {
-    if (!_instance)
-        _instance = new EventLoop();
-    return _instance;
-}
-
-EventLoop::EventLoop() {
-    _epfd = epoll_create1(0);
-    if (_epfd == -1)
-        throw std::runtime_error("epoll_create() failed: " + std::string(strerror(errno)));
-}
-
-void EventLoop::register_handler(IEventHandler* h, EventType type) {
-    HandlerEntry* entry = new HandlerEntry();
-    entry->handler = h;
-    entry->type    = type;
-    _table.push_back(entry);
-
-    struct epoll_event ev;
-    ev.events   = EPOLLIN;
-    ev.data.ptr = entry;
-    epoll_ctl(_epfd, EPOLL_CTL_ADD, h->getFd(), &ev);
-}
-
-void EventLoop::remove_handler(IEventHandler* h, EventType type) {
-    (void)type;
-    epoll_ctl(_epfd, EPOLL_CTL_DEL, h->getFd(), NULL);
-    for (size_t i = 0; i < _table.size(); i++) {
-        if (_table[i]->handler == h) {
-            delete _table[i];
-            _table.erase(_table.begin() + i);
-            break;
-        }
-    }
-}
-
-void EventLoop::handle_events() {
-    std::cout << "Serveur en écoute..." << std::endl;
-    struct epoll_event events[MAX_EVENTS];
-    while (true) {
-        int n = epoll_wait(_epfd, events, MAX_EVENTS, -1);
-        for (int i = 0; i < n; i++) {
-            HandlerEntry*  entry = static_cast<HandlerEntry*>(events[i].data.ptr);
-            IEventHandler* h     = entry->handler;
-            if (entry->type == ACCEPT_EVENT)
-                h->handle_accept();
-            else if (entry->type == READ_EVENT)
-                h->handle_input();
-        }
-    }
-}
-
-EventLoop::~EventLoop() {
-    for (size_t i = 0; i < _table.size(); i++) {
-        delete _table[i]->handler;
-        delete _table[i];
-    }
-}
-
---------
-
-includes/handlers/ServerHandler.hpp
-
-#pragma once
-
-#include "../core/IEventHandler.hpp"
-#include "../config/ConfigStruct.hpp"
-
-class ServerHandler : public IEventHandler {
-    public:
-        ServerHandler(addrport listen, const Server& server);
-        ~ServerHandler();
-
-        int getFd() const;
-        int handle_accept();
-
-        int  createSocket();
-        void bindAddress(int serverFd, addrport listen);
-
-    private:
-        Server _server;
-        int    _fd;
-};
-
----------
-
-srcs/handlers/ServerHandler.cpp
-
-#include "../../includes/handlers/ServerHandler.hpp"
-#include "../../includes/handlers/ClientHandler.hpp"
-#include "../../includes/core/EventLoop.hpp"
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <cstring>
-#include <cerrno>
-#include <stdexcept>
-#include <iostream>
-
-ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(server) {
-    try {
-        _fd = createSocket();
-        bindAddress(_fd, addrs);
-        if (listen(_fd, SOMAXCONN) == -1)
-            throw std::runtime_error("listen() failed: " + std::string(strerror(errno)));
-    } catch (...) {
-        close(_fd);
-        throw;
-    }
-    EventLoop::instance()->register_handler(this, ACCEPT_EVENT);
-}
-
-int ServerHandler::createSocket() {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1)
-        throw std::runtime_error("socket() failed: " + std::string(strerror(errno)));
-    int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
-    return fd;
-}
-
-void ServerHandler::bindAddress(int serverFd, addrport listen) {
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_addr.s_addr = listen.first;
-    addr.sin_family      = AF_INET;
-    addr.sin_port        = htons(listen.second);
-    if (bind(serverFd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
-        throw std::runtime_error("bind() failed: " + std::string(strerror(errno)));
-}
-
-int ServerHandler::handle_accept() {
-    struct sockaddr_in client_addr;
-    socklen_t len = sizeof(client_addr);
-    int client_fd = accept(_fd, (struct sockaddr*)&client_addr, &len);
-    if (client_fd == -1)
-        return -1;
-    new ClientHandler(client_fd, _server);  // s'enregistre lui-même
-    return 0;
-}
-
-int ServerHandler::getFd() const { return _fd; }
-
-ServerHandler::~ServerHandler() { close(_fd); }
-
------------
-
-includes/handlers/ClientHandler.hpp
-
-#pragma once
-
-#include "../core/IEventHandler.hpp"
-#include "../config/ConfigStruct.hpp"
-
-class ClientHandler : public IEventHandler {
-    public:
-        ClientHandler(int clientFd, const Server& server);
-        ~ClientHandler();
-        int getFd() const;
-        int handle_input();
-
-    private:
-        int    _fd;
-        Server _server;
-};
-
-----------
-
-srcs/handlers/ClientHandler.cpp
-
-#include "../../includes/handlers/ClientHandler.hpp"
-#include "../../includes/core/EventLoop.hpp"
-#include <unistd.h>
-#include <sys/socket.h>
-#include <iostream>
-
-ClientHandler::ClientHandler(int clientFd, const Server& server) : _fd(clientFd), _server(server) {
-    EventLoop::instance()->register_handler(this, READ_EVENT);
-}
-
-ClientHandler::~ClientHandler() { close(_fd); }
-
-int ClientHandler::getFd() const { return _fd; }
-
-int ClientHandler::handle_input() {
-    char buf[4096];
-    ssize_t n = recv(_fd, buf, sizeof(buf) - 1, 0);
-    if (n <= 0)
-        return -1;
-    buf[n] = '\0';
-    std::cout << "=== REQUEST ===\n" << buf << "===============" << std::endl;
-    return 0;
-}
-
------------
-
-main.cpp
-
-#include "includes/core/EventLoop.hpp"
-#include "includes/handlers/ServerHandler.hpp"
-#include <iostream>
-#include <arpa/inet.h>
-
-int main() {
-    Config c;
-
-    Server s1;
-    s1.listen.push_back(addrport(INADDR_ANY, 8080));
-
-    Server s2;
-    s2.listen.push_back(addrport(INADDR_ANY, 8081));
-    s2.listen.push_back(addrport(inet_addr("127.0.0.1"), 8082));
-
-    Server s3;
-    s3.listen.push_back(addrport(inet_addr("127.0.0.1"), 9000));
-
-    c.cfg.push_back(s1);
-    c.cfg.push_back(s2);
-    c.cfg.push_back(s3);
-
-    for (size_t i = 0; i < c.cfg.size(); i++) {
-        for (size_t j = 0; j < c.cfg[i].listen.size(); j++) {
-            try {
-                new ServerHandler(c.cfg[i].listen[j], c.cfg[i]);
-            } catch (std::exception& e) {
-                std::cerr << e.what() << std::endl;
-            }
-        }
-    }
-
-    EventLoop::instance()->handle_events();
-    return 0;
-}
-Le point clé de la fidélité : new ServerHandler(...) dans main et new ClientHandler(...) dans handle_accept() s'enregistrent eux-mêmes dans leur constructeur via EventLoop::instance() — exactement comme Logging_Acceptor et Logging_Handler dans le papier.
+Vue d'ensemble
+Structure de dossiers — saine et bien découpée : core/ (EventLoop + interface), handlers/ (concrete handlers), config/, http/, cgi/, utils/. Le découpage colle au pattern Reactor.
+
+Mapping Reactor → ton code (conforme au papier Schmidt) :
+
+Pattern	Ton code
+Initiation Dispatcher	EventLoop (Singleton, conforme §9.5)
+Synchronous Event Demultiplexer	epoll_wait
+Event Handler (interface)	IEventHandler — multi-method (§9.4)
+Concrete Acceptor	ServerHandler
+Concrete Handler	ClientHandler, CGIRead/Write, Timer
+L'auto-enregistrement dans le constructeur (ServerHandler::ServerHandler → register_handler) reproduit fidèlement l'exemple Logging_Acceptor du papier (lignes 273-283). 👍
+
+Points solides
+Multi-method interface (handle_accept/input/output/close) avec defaults vides — bon choix, évite les switch (§9.4 du papier).
+EventType en octal matchant le papier.
+Singleton EventLoop avec ctor/dtor privés.
+RAII dans ServerHandler : try/catch pour fermer le fd si bind/listen échoue.
+SO_REUSEADDR + O_NONBLOCK dès la création du socket — correct.
+Problèmes majeurs à corriger
+1. EventLoop n'enregistre que EPOLLIN (EventLoop.cpp:30)
+
+ev.events = EPOLLIN;  // ❌ peu importe le type passé
+Le sujet exige : "poll() doit surveiller lecture ET écriture simultanément". Quand tu voudras écrire la réponse HTTP ou pousser dans le pipe CGI, il faudra EPOLLOUT. Mappe EventType → flags epoll :
+
+
+uint32_t flags = 0;
+if (type & (ACCEPT_EVENT|READ_EVENT)) flags |= EPOLLIN;
+if (type & WRITE_EVENT)               flags |= EPOLLOUT;
+2. Un fd ne peut pas basculer READ ↔ WRITE
+Ta HandlerEntry { handler, type } fige le type à l'enregistrement. Or un ClientHandler doit lire la requête (READ) puis écrire la réponse (WRITE) sur le même fd. Deux options :
+
+Faire un EventLoop::modify_handler(h, newType) qui appelle EPOLL_CTL_MOD.
+Plus propre : ne pas stocker type dans la table, et dans handle_events regarder events[i].events & EPOLLIN/EPOLLOUT pour appeler handle_input ou handle_output. C'est le dispatch que fait NGINX.
+3. handle_events ne dispatche que ACCEPT et READ (EventLoop.cpp:58-69)
+Manquent : WRITE_EVENT, CLOSE_EVENT, EPOLLHUP/EPOLLERR. Le sujet est explicite sur la gestion propre des déconnexions.
+
+4. Ownership fragile
+EventLoop::_instance n'est jamais delete (leak en fin de programme — pas dramatique mais à noter).
+handle_events fait delete h après remove_handler, et ~EventLoop aussi delete _table[i]->handler. Si un handler quitte la table avant la destruction de l'EventLoop c'est OK, mais le pattern est fragile. Documente clairement : « le handler s'enregistre lui-même → l'EventLoop devient propriétaire ».
+5. bindAddress (ServerHandler.cpp:49)
+addr.sin_addr.s_addr = listen.first; — fonctionne pour INADDR_ANY (0), mais pour une IP explicite il faudra que la config stocke déjà la valeur en network byte order (ou tu fais htonl ici). Ajoute un commentaire pour figer la convention.
+
+Trous fonctionnels (normal au stade actuel)
+ConfigParser.cpp : parse() est commenté. Token.hpp existe mais aucun lexer. Le sujet demande des virtual servers, locations, error_pages, autoindex, redirect, CGI… ton ConfigStruct.hpp couvre déjà tout ça, c'est solide.
+CGIReadHandler.hpp, CGIWriteHandler.hpp, TimerHandler.hpp : vides.
+Pas de parser HTTP, pas de Request/Response dans http/.
+ClientHandler::handle_input fait un seul recv sans buffer cumulatif — squelette à étendre pour les requêtes multi-paquets et le Content-Length/chunked.
+Pas de main.cpp visible.
+Verdict
+Très bonne base : la structure de classes, l'interface IEventHandler multi-méthode, le Singleton EventLoop et le câblage Acceptor → Handler sont conformes au papier Schmidt et au sujet. Les classes ont du sens.
+
+Les deux choses à régler avant d'aller plus loin sont (1) le support de EPOLLOUT/WRITE_EVENT dans EventLoop et (2) la possibilité pour un client de basculer READ↔WRITE sur le même fd via EPOLL_CTL_MOD. Sans ça, tu ne pourras pas écrire de réponse HTTP ni gérer le CGI.

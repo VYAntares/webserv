@@ -10,8 +10,8 @@
 #include <stdexcept>
 #include <iostream>
 
-// Initialise le socket serveur en enchaînant createSocket(), bindAddress() et listen().
-// En cas d'échec, ferme le fd avant de relancer l'exception (RAII).
+// Initialise le socket serveur puis s'enregistre auprès du singleton EventLoop
+// pour recevoir les événements ACCEPT. En cas d'échec, ferme le fd (RAII).
 ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(server) {
 	try {
 		_fd = createSocket();
@@ -54,9 +54,9 @@ void ServerHandler::bindAddress(int serverFd, addrport listen) {
 		throw std::runtime_error("bind() failed:" + std::string(strerror(errno)));
 }
 
-// Accepte une connexion entrante et retourne un ClientHandler alloué dynamiquement.
-// Le retour en IEventHandler* permet à la boucle événementielle de traiter
-// tous les handlers de façon uniforme via le polymorphisme.
+// Accepte une connexion entrante et crée un ClientHandler dynamique.
+// Le ClientHandler s'enregistre lui-même dans l'EventLoop via son constructeur.
+// Retourne 0 en succès, -1 si accept() échoue (EventLoop supprimera ce handler).
 int ServerHandler::handle_accept() {
 	struct sockaddr_in client_addr;
 	socklen_t len = sizeof(client_addr);
@@ -70,3 +70,4 @@ int ServerHandler::handle_accept() {
 int ServerHandler::getFd() const { return this->_fd; }
 
 ServerHandler::~ServerHandler() { close(_fd); }
+

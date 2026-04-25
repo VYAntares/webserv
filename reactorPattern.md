@@ -1,74 +1,3 @@
-OG-End➜  reactor-siemens  ᐅ  cat reactor-siemens.md
-# **Reactor**
-
-## An Object Behavioral Pattern for Demultiplexing and Dispatching Handles for Synchronous Events
-
-### Douglas C. Schmidt
-
-schmidt@cs.wustl.edu Department of Computer Science Washington University, St. Louis, MO<sup>1</sup>
-
-An earlier version of this paper appeared as a chapter in the book "Pattern Languages of Program Design" ISBN 0- 201-6073-4, edited by Jim Coplien and Douglas C. Schmidt and published by Addison-Wesley, 1995.
-
-# **1 Intent**
-
-The Reactor design pattern handles service requests that are delivered concurrently to an application by one or more clients. Each service in an application may consist of serveral methods and is represented by a separate event handler that is responsible for dispatching service-specific requests. Dispatching of event handlers is performed by an initiation dispatcher, which manages the registered event handlers. Demultiplexing of service requests is performed by a synchronous event demultiplexer.
-
-# **2 Also Known As**
-
-Dispatcher, Notifier
-
-# **3 Example**
-
-To illustrate the Reactor pattern, consider the event-driven server for a distributed logging service shown in Figure 1. Client applications use the logging service to record information about their status in a distributed environment. This status information commonly includes error notifications, debugging traces, and performance reports. Logging records are sent to a central logging server, which can write the records to various output devices, such as a console, a printer, a file, or a network management database.
-
-The logging server shown in Figure 1 handles logging records and connection requests sent by clients. Logging records and connection requests can arrive concurrently on multiple *handles*. A handle identifies network communication resources managed within an OS.
-
-The logging server communicates with clients using a connection-oriented protocol, such as TCP [1]. Clients that want to log data must first send a connection request to the
-
-![](assets/reactor-siemens_chunk0001-0011___page_0_Picture_14.jpeg)
-
-Figure 1: Distributed Logging Service
-
-server. The server waits for these connection requests using a *handle factory* that listens on an address known to clients. When a connection request arrives, the handle factory establishes a connection between the client and the server by creating a new handle that represents an endpoint of the connection. This handle is returned to the server, which then waits for client service requests to arrive on the handle. Once clients are connected, they can send logging records concurrently to the server. The server receives these records via the connected socket handles.
-
-Perhaps the most intuitive way to develop a concurrent logging server is to use multiple threads that can process multiple clients concurrently, as shown in Figure 2. This approach synchronously accepts network connections and spawns a "thread-per-connection" to handle client logging records.
-
-However, using multi-threading to implement the processing of logging records in the server fails to resolve the following forces:
-
-**Efficiency:** Threading may lead to poor performance due to context switching, synchronization, and data movement [2];
-
-<sup>1</sup> This work was supported in part by a grant by Siemens.
-
-![](assets/reactor-siemens_chunk0001-0011___page_1_Figure_0.jpeg)
-
-Figure 2: Multi-threaded Logging Server
-
-- **Programming simplicity:** Threading may require complex concurrency control schemes;
-- **Portability:** Threading is not available on all OS platforms.
-
-As a result of these drawbacks, multi-threading is often not the most efficient nor the least complex solution to develop a concurrent logging server.
-
-# **4 Context**
-
-A server application in a distributed system that receives events from one or more clients concurrently.
-
-# **5 Problem**
-
-Server applications in a distributed system must handle multiple clients that send them service requests. Before invoking a specific service, however, the server application must demultiplex and dispatch each incoming request to its corresponding service provider. Developing an effective server mechanisms for demultiplexing and dispatching client requests requires the resolution of the following forces:
-
-- **Availability:** The server must be available to handle incoming requests even if it is waiting for other requests to arrive. In particular, a server must not block indefinitely handling any single source of events at the exclusion of other event sources since this may significantly delay the responseness to other clients.
-- **Efficiency:** A server must minimize latency, maximize throughput, and avoid utilizing the CPU(s) unnecessarily.
-- **Programming simplicity:** The design of a server should simplify the use of suitable concurrency strategies.
-
-- **Adaptability:** Integrating new or improved services, such as changing message formats or adding server-side caching, should incur minimal modifications and maintenance costs for existing code. For instance, implementing new application services should not require modifications to the generic event demultiplexing and dispatching mechanisms.
-- **Portability:** Porting a server to a new OS platform should not require significant effort.
-
-# **6 Solution**
-
-Integrate the synchronous demultiplexing of events and the dispatching of their corresponding event handlers that process the events. In addition, decouple the applicationspecific dispatching and implementation of services from the general-purpose event demultiplexing and dispatching mechanisms.
-
-For each service the application offers, introduce a separate Event Handler that processes certain types of events. All Event Handlers implement the same interface. Event Handlers register with an Initiation Dispatcher, which uses a Synchronous Event Demultiplexer to wait for events to occur. When events occur, the Synchronous Event Demultiplexer notifies the Initiation Dispatcher, which synchronously calls back to the Event Handler associated with the event. The Event Handler then dispatches the event to the method that implements the requested service.
-
 # **7 Structure**
 
 The key participants in the Reactor pattern include the following:
@@ -85,7 +14,7 @@ The key participants in the Reactor pattern include the following:
 
  Defines an interface for registering, removing, and dispatching Event Handlers. Ultimately, the Synchronous Event Demultiplexer is responsible for waiting until new events occur. When it detects new events, it informs the Initiation Dispatcher to call back application-specific event handlers. Common events include connection acceptance events, data input and output events, and timeout events.
 
-#### **Event Handler**
+#### **Event Handler**x
 
  Specifies an interface consisting of a hook method [3] that abstractly represents the dispatching operation for service-specific events. This method must be implemented by application-specific services.
 

@@ -5,6 +5,25 @@
 #include <errno.h>
 #include <signal.h>
 
+// g_stop est le drapeau d'arrêt propre du serveur, mis à 1 par le signal handler.
+//
+// volatile : interdit au compilateur de mettre g_stop en cache dans un registre.
+//   Sans volatile, le compilateur peut voir que g_stop ne change jamais dans la boucle
+//   et l'optimiser en "while(true)" — il ne sait pas qu'un signal peut la modifier
+//   en dehors du flot d'exécution normal.
+//
+// sig_atomic_t : type entier garanti atomique au niveau CPU.
+//   Un signal peut interrompre n'importe quelle instruction, y compris une écriture
+//   multi-octet. sig_atomic_t garantit que la lecture/écriture se fait en une seule
+//   opération indivisible — pas de valeur à moitié écrite visible par la boucle.
+static volatile sig_atomic_t g_stop = 0;
+
+// Signal handler pour SIGINT (Ctrl+C) et SIGTERM.
+// Seules les fonctions "async-signal-safe" sont autorisées ici (pas malloc, pas cout...).
+// Écrire dans un sig_atomic_t en fait partie — on se contente donc de lever le drapeau.
+// La boucle dans handle_events() le détectera au prochain tour et sortira proprement.
+static void handle_sigint(int) { g_stop = 1; }
+
 EventLoop* EventLoop::_instance = NULL;
 
 EventLoop* EventLoop::instance() {
@@ -20,20 +39,74 @@ EventLoop::EventLoop() {
 		throw std::runtime_error("epoll_create() failed: " + std::string(strerror(errno)));
 }
 
+// Crée une entrée dans la table : associe le handler à son type d'événement.
+// C'est ce pointeur (entry) qu'epoll nous rendra dans events[i].data.ptr
+// lors du prochain epoll_wait — on sait ainsi quel handler appeler.
 void EventLoop::register_handler(IEventHandler* h, EventType type) {
 	HandlerEntry* entry	= new HandlerEntry();
 	entry->handler		= h;
 	entry->type			= type;
 	_table.push_back(entry);
 
+	// Traduit notre EventType en flags epoll.
+	// EventType et les flags epoll sont deux systèmes de constantes différents —
+	// on ne peut pas passer EventType directement à epoll_ctl.
+	//
+	// Chaque constante est une puissance de 2, donc un seul bit est allumé :
+	//   ACCEPT_EVENT = 01 = 00000001
+	//   READ_EVENT   = 02 = 00000010
+	//   WRITE_EVENT  = 04 = 00000100
+	//
+	// L'opérateur & (ET bit à bit) teste si un bit est présent dans type :
+	//   type & READ_EVENT → non-zéro (true) si le bit READ est allumé, 0 sinon.
+	//
+	// L'opérateur |= allume un bit dans flags sans effacer les autres,
+	// ce qui permet d'accumuler plusieurs flags pour un seul appel epoll_ctl.
+	uint32_t flags = 0;
+	if (type & (ACCEPT_EVENT | READ_EVENT))	flags |= EPOLLIN;	// surveille les données entrantes
+	if (type & WRITE_EVENT)					flags |= EPOLLOUT;	// surveille la disponibilité en écriture
+
+	// Enregistre le fd auprès d'epoll avec le masque d'événements calculé.
+	// EPOLL_CTL_ADD : premier enregistrement de ce fd (utiliser MOD si déjà présent).
 	struct epoll_event ev;
-	ev.events	= EPOLLIN;
+	ev.events	= flags;
 	ev.data.ptr	= entry;
 	epoll_ctl(_epfd, EPOLL_CTL_ADD, h->getFd(), &ev);
 }
 
-void EventLoop::remove_handler(IEventHandler* h, EventType type) {
-	(void)type;
+// Met à jour le type d'événement surveillé pour un handler déjà enregistré.
+// Cherche l'entrée dans la table, met à jour son type, puis recalcule les flags
+// et appelle EPOLL_CTL_MOD pour que epoll surveille le nouveau masque.
+void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
+	HandlerEntry* entry = NULL;
+	for (size_t i = 0; i < _table.size(); i++) {
+		if (_table[i]->handler == h) {
+			_table[i]->type = newType;
+			entry = _table[i];
+			break;
+		}
+	}
+	if (!entry)
+		return;
+
+	// Même logique de traduction EventType → flags epoll que dans register_handler.
+	// |= accumule les deux flags si newType a à la fois un bit READ et un bit WRITE :
+	// sans |=, le deuxième if écraserait le résultat du premier.
+	uint32_t flags = 0;
+	if (newType & (ACCEPT_EVENT | READ_EVENT))	flags |= EPOLLIN;
+	if (newType & (WRITE_EVENT))				flags |= EPOLLOUT;
+
+	struct epoll_event ev;
+	ev.events	= flags;
+	ev.data.ptr	= entry;
+	epoll_ctl(_epfd, EPOLL_CTL_MOD, h->getFd(), &ev);
+}
+
+// Retire le fd d'epoll puis supprime l'entrée de la table interne.
+// EPOLL_CTL_DEL n'a pas besoin de struct epoll_event (dernier arg NULL).
+// Le handler lui-même n'est pas delete ici — c'est à l'appelant de le faire
+// pour éviter un double-free (handle_events() appelle remove_handler puis delete h).
+void EventLoop::remove_handler(IEventHandler* h) {
 	epoll_ctl(_epfd, EPOLL_CTL_DEL, h->getFd(), NULL);
 	for (size_t i = 0; i < _table.size(); i++) {
 		if (_table[i]->handler == h) {
@@ -45,35 +118,52 @@ void EventLoop::remove_handler(IEventHandler* h, EventType type) {
 }
 
 void EventLoop::handle_events() {
+	signal(SIGINT, handle_sigint);
+	signal(SIGTERM, handle_sigint);
+	signal(SIGQUIT, handle_sigint);
+
 	std::cout << "Server listening.." << std::endl;
 	struct epoll_event events[MAX_EVENTS];
-	while (true) {
-		int n = epoll_wait(_epfd, events, MAX_EVENTS, -1);
+
+	while (!g_stop) {
+		int n = epoll_wait(_epfd, events, MAX_EVENTS, 500);
+
+		// epoll_wait retourne :
+		//   > 0 : n événements prêts → on traite le for ci-dessous
+		//     0 : timeout (500ms écoulées sans événement) → on reboucle pour re-vérifier g_stop
+		//    -1 : erreur, typiquement EINTR quand le signal a interrompu l'appel système
+		// Dans les deux cas non-positifs on saute le for : events[] n'est pas rempli
+		// et n vaut 0 ou -1, donc itérer dessus serait UB ou traiterait des entrées vides.
+		if (n <= 0)
+			continue;
 
 		for (int i = 0; i < n; i++) {
-
 			HandlerEntry* entry	= static_cast<HandlerEntry*>(events[i].data.ptr);
 			IEventHandler* h	= entry->handler;
 
-			if (entry->type == ACCEPT_EVENT) {
-				if (h->handle_accept() == -1) {
-					EventLoop::instance()->remove_handler(h, ACCEPT_EVENT);
-					delete h;
-				}
-			}
-			else if (entry->type == READ_EVENT) {
-				if (h->handle_input() == -1) {
-					EventLoop::instance()->remove_handler(h, READ_EVENT);
-					delete h;
-				}
+			int ret = 0;
+			if (entry->type == ACCEPT_EVENT) 
+				ret = h->handle_accept();
+			else if (entry->type == READ_EVENT)
+				ret = h->handle_input();
+			else if (entry->type == WRITE_EVENT)
+				ret = h->handle_output();
+
+			if (ret == -1) {
+				remove_handler(h);
+				delete h;
 			}
 		}
 	}
 }
+
+void EventLoop::destroy() { delete _instance; }
 
 EventLoop::~EventLoop() {
 	for (size_t i = 0; i < _table.size(); i++) {
 		delete _table[i]->handler;
 		delete _table[i];
 	}
+	_instance = NULL;
 }
+
