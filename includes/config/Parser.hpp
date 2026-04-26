@@ -1,17 +1,17 @@
 #pragma once
 
 #include "ConfigStruct.hpp"
+#include "Token.hpp"
 
 #include <fstream>
 
-class ConfigParser {
+class Parser {
 	public:
-		ConfigParser(int argc, char** argv);
+		Parser(int argc, char** argv);
 		void parse();
 
 	private:
-		std::vector<std::string>	_tokens;
-		std::ifstream				_file;
+		std::vector<Token>			_tokens;
 		size_t						_pos;
 };
 
