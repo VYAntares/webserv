@@ -30,10 +30,8 @@ Parser::Parser(int argc, char** argv) : _pos(0) {
 	ss << file.rdbuf();
 	std::string input = ss.str();
 	
-	Lexer lexer(input);
-	_tokens = lexer.tokenize();
-
-
+	Lexer lex(input);
+	_tokens = lex.tokenize();
 
 	for (size_t i = 0; i < _tokens.size(); i++) {
 		std::cout << "Type: " << std::setw(10) << std::left << tokenTypeToString(_tokens[i].type)

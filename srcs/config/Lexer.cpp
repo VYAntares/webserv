@@ -5,42 +5,42 @@
 
 Lexer::Lexer(const std::string& input) : _input(input), _pos(0), _line(1), _col(1) {}
 
-// bool si on est ou pas a la fin
+// retourne vrai si on est à la fin
 bool	Lexer::atEnd() { return _pos >= _input.size(); }
 
 // renvoie le char actuel
 char	Lexer::current() { return _input[_pos]; }
 
-// itoa style
+// entier vers string
 static std::string toString(size_t n) {
 	std::stringstream ss;
 	ss << n;
 	return ss.str();
 }
 
-// avance et met a jour line et col correctement selon si il y a \n
+// avance et met à jour line et col selon la présence d'un \n
 void	Lexer::advance() {
 	if (current() == '\n')	{ _line++; _col = 1; }
 	else					{ _col++; }
 	_pos++;
 }
 
-// le nom de la fonction ne point mieux expliquer son fonctionnement
+// le nom de la fonction ne pourrait mieux expliquer son fonctionnement
 void	Lexer::skipWhitespacesAndComments() {
 	while (!atEnd()) {
 		char c = current();
 		if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
 			advance();
 		else if (c == '#') {
-			// si c'est un commentaire, lire jusqua la fin ou jusqua \n
+			// si c'est un commentaire, lire jusqu'à la fin de ligne ou jusqu'à \n
 			while (!atEnd() && current() != '\n')
 				advance();
-		} else 
+		} else
 			break;
 	}
 }
 
-// pareil ici quoi, makeToken en francais: faisToken
+// pareil ici, makeToken en français : créeToken
 Token	Lexer::makeToken(TokenType type, const std::string& value) {
 	Token t;
 	t.type	= type;
@@ -51,30 +51,30 @@ Token	Lexer::makeToken(TokenType type, const std::string& value) {
 	return t;
 }
 
-// tokenize ce qu'il y a, a linterieur des quotes
-// throw une exception si quote non fermante pas trouvee
+// tokenize ce qu'il y a à l'intérieur des quotes
+// throw une exception si la quote fermante n'est pas trouvée
 Token	Lexer::readQuote(char quote) {
 	size_t	startLine	= _line;
 	size_t	startCol	= _col;
 	std::string	value;
-	
-	// skip quote ouvrante
+
+	// saute la quote ouvrante
 	advance();
-	// recuperer ce qu'il y a entre jusqu'a quote fermante ou 
-	// fin du fichier
+	// récupère ce qu'il y a jusqu'à la quote fermante ou
+	// la fin du fichier
 	while (!atEnd() && current() != quote) {
 		value += current();
 		advance();
 	}
-	// et si fin du fichier, alors quote fermante pas trouvee 
+	// si fin du fichier, alors quote fermante pas trouvée
 	// donc erreur
 	if (atEnd()) {
 		throw std::runtime_error(
-				"unclosed quote at line: " + toString(startLine) +
+				"Tokenizer: unclosed quote at line: " + toString(startLine) +
 				", col: " + toString(startCol)
 				);
 	}
-	// skip quote fermante
+	// saute la quote fermante
 	advance();
 
 	Token t;
@@ -86,13 +86,13 @@ Token	Lexer::readQuote(char quote) {
 	return t;
 }
 
-// tokenize un word
+// tokenize un mot
 Token	Lexer::readWord() {
 	size_t	startLine	= _line;
 	size_t	startCol	= _col;
 	std::string value;
 
-	// lire jusqu'a la fin et si on croise un espace, bracket, semi 
+	// lit jusqu'à la fin, et si on croise un espace, bracket, semi
 	// ou commentaire, alors on forme un mot
 	while (!atEnd()) {
 		char c = current();
@@ -112,7 +112,7 @@ Token	Lexer::readWord() {
 	return t;
 }
 
-// tokenizer, prend l'input et nous rend un vector de token.
+// prend l'input et retourne un vecteur de tokens.
 std::vector<Token> Lexer::tokenize() {
 	std::vector<Token> token;
 	while (!atEnd()) {

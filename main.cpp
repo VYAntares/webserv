@@ -4,7 +4,14 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-		Parser parser(argc, argv);
+	try {
+		Parser p(argc, argv);
+		p.parse();
+	} catch (std::exception &e) {
+		std::cerr << e.what() << std::endl;
+		std::cerr << "parser: configuration file " << 
+			argv[1] << " failed." << std::endl;
+	}
 
 		// Config	c;
 		//
