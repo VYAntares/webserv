@@ -16,6 +16,10 @@ class Lexer {
 
 		bool	atEnd();
 		char	current();
+		void	advance();
+		Token	readQuote();
+		Token	readWord();
+		Token	makeToken(TokenType type, const std::string& val);
 		void	skipWhitespacesAndComments();	
 };
 

@@ -29,7 +29,7 @@ static uint32_t to_epoll_flags(EventType type) {
 	uint32_t flags = 0;
 	if (type & (ACCEPT_EVENT | READ_EVENT))	flags |= EPOLLIN;	// surveille les données entrantes
 	if (type & WRITE_EVENT)					flags |= EPOLLOUT;	// surveille la disponibilité en écriture
-
+	return flags;
 }
 
 EventLoop* EventLoop::_instance = NULL;
@@ -91,6 +91,7 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 // pour éviter un double-free (handle_events() appelle remove_handler puis delete h).
 void EventLoop::remove_handler(IEventHandler* h) {
 	epoll_ctl(_epfd, EPOLL_CTL_DEL, h->getFd(), NULL);
+
 	for (size_t i = 0; i < _table.size(); i++) {
 		if (_table[i]->handler == h) {
 			delete _table[i];
