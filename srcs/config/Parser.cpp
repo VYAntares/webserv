@@ -18,8 +18,10 @@ Parser::Parser(int argc, char** argv) : _pos(0) {
 	ss << file.rdbuf();
 	std::string input = ss.str();
 
-	Lexer lexer(input);
-	_tokens = lexer.tokenize();
+	// Lexer lexer(input);
+	// _tokens = lexer.tokenize();
+	
+	std::cout << input << std::endl;
 }
 
 void	Parser::parse() {

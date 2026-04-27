@@ -7,7 +7,7 @@
 #include <sstream>
 
 static std::string make_response() {
-	std::string body(1024, 'A'); // 10MB de 'A'
+	std::string body(1024, 'B'); // 10MB de 'A'
 	std::ostringstream oss;
 	oss << "HTTP/1.1 200 OK\r\n"
 		<< "Content-Type: text/plain\r\n"

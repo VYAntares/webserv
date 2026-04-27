@@ -41,18 +41,15 @@ class EventLoop {
 		EventLoop();
 		~EventLoop();
 
-		// --- _epfd ---
 		// fd de l'instance epoll unique, créée dans le constructeur via epoll_create1.
 		// Tous les fds du serveur (sockets, pipes CGI) sont surveillés via ce seul epfd.
 		int							_epfd;
 
-		// --- _table ---
 		// Liste de tous les HandlerEntry* enregistrés. EventLoop en est propriétaire :
 		// les entries sont détruits dans remove_handler et dans le destructeur.
 		// Les handlers eux-mêmes sont détruits par handle_events quand ils retournent -1.
 		std::vector<HandlerEntry*>	_table;
 
-		// Implémentation du Singleton :
 		//   _instance est un pointeur statique initialisé à NULL.
 		//   instance() le crée au premier appel (lazy initialization), puis retourne
 		//   toujours le même objet. Le ctor/dtor sont privés : impossible de créer
