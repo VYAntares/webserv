@@ -80,7 +80,7 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 		return;
 
 	struct epoll_event ev;
-	ev.events	= to_epoll_flags(type);
+	ev.events	= to_epoll_flags(newType);
 	ev.data.ptr	= entry;
 	epoll_ctl(_epfd, EPOLL_CTL_MOD, h->getFd(), &ev);
 }
