@@ -5,6 +5,18 @@
 
 #include <iostream>
 #include <sstream>
+#include <iomanip>
+
+static std::string tokenTypeToString(TokenType type) {
+    switch (type) {
+        case TOK_WORD:   return "WORD";
+        case TOK_LBRACE: return "LBRACE";
+        case TOK_RBRACE: return "RBRACE";
+        case TOK_SEMI:   return "SEMI";
+        case TOK_EOF:    return "EOF";
+        default:         return "UNKNOWN";
+    }
+}
 
 Parser::Parser(int argc, char** argv) : _pos(0) {
 	if (argc != 2) 
@@ -17,16 +29,15 @@ Parser::Parser(int argc, char** argv) : _pos(0) {
 	std::ostringstream ss;
 	ss << file.rdbuf();
 	std::string input = ss.str();
-
-	
-	std::cout << input << std::endl;
 	
 	Lexer lexer(input);
 	_tokens = lexer.tokenize();
 
 
+
 	for (size_t i = 0; i < _tokens.size(); i++) {
-		std::cout << "Type: " << _tokens[i].type << " Value: " << _tokens[i].value << std::endl;
+		std::cout << "Type: " << std::setw(10) << std::left << tokenTypeToString(_tokens[i].type)
+				  << " Value: " << _tokens[i].value << std::endl;
 	}
 }
 
