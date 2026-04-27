@@ -36,7 +36,7 @@ struct Location {
 struct Server {
 	// Propre au Server
 	std::vector<addrport>		listen;				// adresse + port d'ecoute (0.0.0.0:8080)
-	std::string					server_name;		// nom de domaine (localhost, example.com)
+	std::vector<str>			server_name;		// nom de domaine (localhost, example.com)
 
 	// Location en herite si vide
 	std::map<int, str>			error_page;			// code erreur -> page HTML (404 -> /errors/404.html)

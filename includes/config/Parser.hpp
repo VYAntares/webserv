@@ -3,15 +3,23 @@
 #include "ConfigStruct.hpp"
 #include "Token.hpp"
 
-#include <fstream>
-
 class Parser {
 	public:
-		Parser(int argc, char** argv);
+		Parser(const std::vector<Token>& tokens);
 		void parse();
 
 	private:
-		std::vector<Token>			_tokens;
-		size_t						_pos;
-};
+		size_t				_pos;
+		std::vector<Token>	_tokens;
+		Config				_c;
 
+		void parseServerBlock();
+		void parseLocationBlock(Server& s);
+
+		template<typename T>
+		void parseDirective(T& block);
+
+		Token	current();
+		Token	consume();
+		Token	except(TokenType type);
+};

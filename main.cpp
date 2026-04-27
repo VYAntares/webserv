@@ -1,17 +1,11 @@
 #include "includes/handlers/ServerHandler.hpp"
 #include "includes/config/Parser.hpp"
 #include "includes/core/EventLoop.hpp"
+#include "includes/config/ConfigLoader.hpp"
 #include <iostream>
 
 int main(int argc, char **argv) {
-	try {
-		Parser p(argc, argv);
-		p.parse();
-	} catch (std::exception &e) {
-		std::cerr << e.what() << std::endl;
-		std::cerr << "parser: configuration file " << 
-			argv[1] << " failed." << std::endl;
-	}
+	ConfigLoader cl(argc, argv);
 
 		// Config	c;
 		//

@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 
 Lexer::Lexer(const std::string& input) : _input(input), _pos(0), _line(1), _col(1) {}
 
@@ -112,6 +113,17 @@ Token	Lexer::readWord() {
 	return t;
 }
 
+static std::string tokenTypeToString(TokenType type) {
+    switch (type) {
+        case TOK_WORD:   return "WORD";
+        case TOK_LBRACE: return "LBRACE";
+        case TOK_RBRACE: return "RBRACE";
+        case TOK_SEMI:   return "SEMI";
+        case TOK_EOF:    return "EOF";
+        default:         return "UNKNOWN";
+    }
+}
+
 // prend l'input et retourne un vecteur de tokens.
 std::vector<Token> Lexer::tokenize() {
 	std::vector<Token> token;
@@ -135,6 +147,12 @@ std::vector<Token> Lexer::tokenize() {
 			token.push_back(readQuote(c));
 		else 
 			token.push_back(readWord());
+	}
+	// debug list all Token struct values
+	for (size_t i = 0; i < token.size(); i++) {
+		std::cout << "Type: " << std::setw(10) << std::left << tokenTypeToString(token[i].type)
+				  << " Value: " << std::setw(30) << std::left << token[i].value
+				  << " Col: " << std::setw(3) << std::left << token[i].col << " Line: " << token[i].line << std::endl;
 	}
 	return token;
 }
