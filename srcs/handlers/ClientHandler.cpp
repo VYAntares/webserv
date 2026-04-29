@@ -1,5 +1,6 @@
 #include "../../includes/handlers/ClientHandler.hpp"
 #include "../../includes/core/EventLoop.hpp"
+#include "../../includes/http/http.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
 #include <cstring>
@@ -21,7 +22,8 @@ static std::string make_response() {
 static const std::string response = make_response();
 
 ClientHandler::ClientHandler(int clientFd, const Server& server)
-							 : _fd(clientFd), _sent(0), _server(server) {
+							 : _fd(clientFd), _sent(0), _server(server), 
+							   _parser(server.max_body_client) {
 	EventLoop::instance()->register_handler(this, READ_EVENT);
 }
 
@@ -30,15 +32,21 @@ ClientHandler::~ClientHandler() { close(_fd); }
 int ClientHandler::getFd() const { return _fd; }
 
 int ClientHandler::handle_input() {
-	
 	char buf[4096];
 	ssize_t n = recv(_fd, buf, sizeof(buf) - 1, 0);
 	if (n <= 0)
 		return -1;
 	buf[n] = '\0';
+
+	_parser.runParsing((str)buf, n);
+
+	if (_parser.getState() == HttpParser::COMPLETE)
+		EventLoop::instance()->modify_handler(this, WRITE_EVENT);
+	else if (_parser.getState() == HttpParser::ERROR)
+		return -1;
+
 	std::cout << "=== REQUEST ===\n" << buf << "===============" << std::endl;
 
-	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 	return 0;
 }
 
