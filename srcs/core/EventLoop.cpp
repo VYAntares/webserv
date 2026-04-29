@@ -50,14 +50,14 @@ EventLoop::EventLoop() {
 // Crée une entrée dans la table : associe le handler à son type d'événement.
 // C'est ce pointeur (entry) qu epoll nous rendra dans events[i].data.ptr
 // lors du prochain epoll_wait — on sait ainsi quel handler appeler.
+// Enregistre le fd auprès d epoll avec le masque d'événements calculé.
+// EPOLL_CTL_ADD : premier enregistrement de ce fd (utiliser MOD si déjà présent).
 void EventLoop::register_handler(IEventHandler* h, EventType type) {
 	HandlerEntry* entry	= new HandlerEntry();
 	entry->handler		= h;
 	entry->type			= type;
 	_table.push_back(entry);
 
-	// Enregistre le fd auprès d epoll avec le masque d'événements calculé.
-	// EPOLL_CTL_ADD : premier enregistrement de ce fd (utiliser MOD si déjà présent).
 	struct epoll_event ev;
 	ev.events	= to_epoll_flags(type);
 	ev.data.ptr	= entry;
@@ -101,6 +101,12 @@ void EventLoop::remove_handler(IEventHandler* h) {
 	}
 }
 
+// epoll_wait retourne :
+//   > 0 : n événements prêts → on traite le for ci-dessous
+//     0 : timeout (500ms écoulées sans événement) → on reboucle pour re-vérifier g_stop
+//    -1 : erreur, typiquement EINTR quand le signal a interrompu l'appel système
+// Dans les deux cas non-positifs on saute le for : events[] n'est pas rempli
+// et n vaut 0 ou -1, donc itérer dessus serait UB ou traiterait des entrées vides.
 void EventLoop::handle_events() {
 	signal(SIGINT, handle_sigint);
 	signal(SIGTERM, handle_sigint);
@@ -112,12 +118,6 @@ void EventLoop::handle_events() {
 	while (!g_stop) {
 		int n = epoll_wait(_epfd, events, MAX_EVENTS, 500);
 
-		// epoll_wait retourne :
-		//   > 0 : n événements prêts → on traite le for ci-dessous
-		//     0 : timeout (500ms écoulées sans événement) → on reboucle pour re-vérifier g_stop
-		//    -1 : erreur, typiquement EINTR quand le signal a interrompu l'appel système
-		// Dans les deux cas non-positifs on saute le for : events[] n'est pas rempli
-		// et n vaut 0 ou -1, donc itérer dessus serait UB ou traiterait des entrées vides.
 		if (n <= 0)
 			continue;
 

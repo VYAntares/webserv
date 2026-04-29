@@ -47,7 +47,10 @@ int ClientHandler::handle_output() {
 	if (n <= 0)
 		return -1;
 	_sent += n;
-	if (_sent >= response.size())
-		return -1;
+	if (_sent >= response.size()) {
+		_sent = 0;
+		EventLoop::instance()->modify_handler(this, READ_EVENT);
+		return 0;
+	}
 	return 0;
 }
