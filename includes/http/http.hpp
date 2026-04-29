@@ -34,8 +34,8 @@ class ParseHttp {
 		State							_state;
 		std::string						_buffer;
 		HttpRequest						_req;
-		size_t						body_read;
-		size_t						body_received;
+		size_t						_bodyRead;
+		size_t						_bodyReceived;
 		size_t						maxbodysize;
 };
 
