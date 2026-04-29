@@ -17,4 +17,3 @@ class ClientHandler : public IEventHandler {
 		size_t	_sent;
 		Server	_server;
 };
-
