@@ -30,6 +30,7 @@ ClientHandler::~ClientHandler() { close(_fd); }
 int ClientHandler::getFd() const { return _fd; }
 
 int ClientHandler::handle_input() {
+	
 	char buf[4096];
 	ssize_t n = recv(_fd, buf, sizeof(buf) - 1, 0);
 	if (n <= 0)

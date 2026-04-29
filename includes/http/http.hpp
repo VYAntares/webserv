@@ -10,16 +10,16 @@ enum class Method {
 };
 
 enum class State {
-	reading_headers,
-	readig_chunked,
-	reading_body,
-	complete,
-	error,
+	R_HEADERS,
+	R_BODY,
+	R_CHUNCKED,
+	COMPLETE,
+	ERROR
 };
 
 struct HttpRequest {
 	Method								method;
-	std::string							target;
+	std::string							uri;
 	std::string							body;	
 	std::map<std::string, std::string>	headers;
 }; 
