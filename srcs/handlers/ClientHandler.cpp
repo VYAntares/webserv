@@ -38,10 +38,13 @@ int ClientHandler::handle_input() {
 		return -1;
 	buf[n] = '\0';
 
-	_parser.runParsing((str)buf, n);
+	std::string data(buf, n);
+	_parser.runParsing(data, n);
 
-	if (_parser.getState() == HttpParser::COMPLETE)
+	if (_parser.getState() == HttpParser::COMPLETE) {
 		EventLoop::instance()->modify_handler(this, WRITE_EVENT);
+		return 0;
+	}
 	else if (_parser.getState() == HttpParser::ERROR)
 		return -1;
 

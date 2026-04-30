@@ -1,21 +1,5 @@
 #pragma once
 
-#include <iostream>
-#include <map>
-
-enum class Method {
-	GET,
-	POST,
-	DELETE,
-};
-
-struct HttpRequest {
-	Method								method;
-	std::string							uri;
-	std::string							body;	
-	std::map<std::string, std::string>	headers;
-}; 
-
 class HttpParser {
 	public:
 		enum State {
@@ -42,4 +26,3 @@ class HttpParser {
 		size_t							_bodyReceived;
 		size_t							_maxBodySize;
 };
-
