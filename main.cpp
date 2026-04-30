@@ -5,7 +5,9 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-	ConfigLoader cl(argc, argv);
+	(void)argc;
+	(void)argv;
+	// ConfigLoader cl(argc, argv);
 
 		Config	c;
 		//
@@ -18,7 +20,6 @@ int main(int argc, char **argv) {
 		Server	s2;
 		s2.listen.clear();
 		s2.listen.push_back(addrport(INADDR_ANY, 8081));
-		s2.listen.push_back(addrport(inet_addr("127.0.0.1"), 8082));
 		s2.listen.push_back(addrport(inet_addr("127.0.0.1"), 8082));
 
 		// Server 3 : meme port que s2 sur 0.0.0.0:8081 → doit etre deduplique plus tard

@@ -2,7 +2,7 @@
 
 #include "../core/IEventHandler.hpp"
 #include "../config/ConfigStruct.hpp"
-#include "../http/http.hpp"
+#include "../http/HttpParser.hpp"
 
 class ClientHandler : public IEventHandler {
 	public:

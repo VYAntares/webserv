@@ -1,6 +1,6 @@
 #include "../../includes/handlers/ClientHandler.hpp"
 #include "../../includes/core/EventLoop.hpp"
-#include "../../includes/http/http.hpp"
+#include "../../includes/http/HttpParser.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
 #include <cstring>
@@ -47,15 +47,12 @@ int ClientHandler::handle_input() {
 	}
 	else if (_parser.getState() == HttpParser::ERROR)
 		return -1;
-
-	std::cout << "=== REQUEST ===\n" << buf << "===============" << std::endl;
-
+	
 	return 0;
 }
 
 int ClientHandler::handle_output() {
 	ssize_t n = send(_fd, response.c_str() + _sent, response.size() - _sent, 0);
-	std::cout << "send: n=" << n << " _sent=" << _sent << "/" << response.size() << std::endl;
 	if (n <= 0)
 		return -1;
 	_sent += n;
