@@ -4,6 +4,7 @@
 #include <map>
 
 struct HttpRequest {
+	int									error;
 	std::string							method;
 	std::string							uri;
 	std::string							version;

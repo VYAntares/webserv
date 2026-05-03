@@ -1,3 +1,14 @@
+ROUTER Ordre correct (important)
+1. Est-ce que la route existe ?
+Sinon : 404 Not Found
+
+2. Est-ce que la méthode est connue ?
+Sinon : 501 Not Implemented
+
+3. Est-ce que la méthode est autorisée sur CETTE route ?
+Sinon : 405 Method Not Allowed
+
+
 quand on accept un client on creer un objet clienthandler, qui lui creera un timehandler
 timehandler creera le timeout pour le client. 
 accept lance un timer a 30s ou 15s osef

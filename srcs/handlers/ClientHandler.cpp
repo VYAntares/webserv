@@ -1,6 +1,8 @@
 #include "../../includes/handlers/ClientHandler.hpp"
 #include "../../includes/core/EventLoop.hpp"
 #include "../../includes/http/HttpParser.hpp"
+#include "../../includes/http/HttpRequest.hpp"
+#include "../../includes/http/Router.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
 #include <cstring>
@@ -42,6 +44,12 @@ int ClientHandler::handle_input() {
 	_parser.runParsing(data, n);
 
 	if (_parser.getState() == HttpParser::COMPLETE) {
+		HttpRequest _request = _parser.getReq();
+    	_request.error = Router::routeChecker(_request, _server);
+		if (_request.error != 200)
+			return -1;
+		std::cout << _request.error << std::endl;
+    	// _parser.reset();
 		EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 		return 0;
 	}

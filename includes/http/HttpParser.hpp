@@ -23,6 +23,9 @@ class HttpParser {
 		~HttpParser();
 
 		enum State	getState();
+		HttpRequest	getReq();
+		void		setError(int errorCode);
+		void		checkFirstLine();
 		void		runParsing(std::string& buffer, size_t n);
 		void		headerParser();
 
