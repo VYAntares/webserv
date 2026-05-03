@@ -23,10 +23,11 @@ class HttpParser {
 		~HttpParser();
 
 		enum State	getState();
-		void	runParsing(std::string& buffer, size_t n);
-		void	headerParser();
+		void		runParsing(std::string& buffer, size_t n);
+		void		headerParser();
 
 	private:
+		int								_errorCode;
 		State							_state;
 		std::string						_buffer;
 		std::string						_body;

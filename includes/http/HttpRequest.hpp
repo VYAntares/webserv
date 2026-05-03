@@ -3,12 +3,6 @@
 #include <iostream>
 #include <map>
 
-enum Method {
-	GET,
-	POST,
-	DELETE
-};
-
 struct HttpRequest {
 	std::string							method;
 	std::string							uri;
