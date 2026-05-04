@@ -283,12 +283,13 @@ void	Parser::putDirective(BaseBlock& b, const std::string& key) {
 void	Parser::parseErrorPage(BaseBlock& b) {
 	std::vector<std::string> args;
 
+	size_t line = current().line;
 	while (current().type == TOK_WORD)
 		args.push_back(expect(TOK_WORD).value);
 	// error_page necessite 2 argument minimums. 
 	if (args.size() < 2)
 		throw std::runtime_error("error_page requires at least one code and a path at line "
-           						 + toString(current().line));
+           						 + toString(line));
 
 	// ajout, parsing et verification des code, doit etre digit et entre 300 et 599
 	std::string path = args.back();
@@ -410,30 +411,11 @@ size_t	Parser::parseClientBody() {
 	for (size_t j = 0; j < unit.length(); j++)
 		unit[j] = std::tolower(unit[j]);
 
-	// conversion selon l'unité (max 10GB)
-	// "k" → max 10 * 1024 * 1024 = 10 485 760 k
-	// "m" → max 10 * 1024 = 10 240 m
-	// "g" → max 10 g
-	const unsigned long MAX_GB = 10;
+	// conversion selon l'unité
 	if (unit.empty())   return num;
-	if (unit == "k") {
-		if (num > MAX_GB * 1024 * 1024)
-			throw std::runtime_error("'client_max_body_size' exceeds 10GB at line "
-									+ toString(tok.line)); 
-		return num * 1024;
-	}
-	if (unit == "m") {
-		if (num > MAX_GB * 1024)
-			throw std::runtime_error("'client_max_body_size' exceeds 10GB at line "
-									+ toString(tok.line));
-		return num * 1024 * 1024;
-	}
-	if (unit == "g") {
-		if (num > MAX_GB)
-			throw std::runtime_error("'client_max_body_size' exceeds 10GB at line "
-									+ toString(tok.line));
-		return num * 1024 * 1024 * 1024;
-	}
+	if (unit == "k")    return num * 1024;
+	if (unit == "m")    return num * 1024 * 1024;
+	if (unit == "g")    return num * 1024 * 1024 * 1024;
 	throw std::runtime_error("'client_max_body_size' invalid value at line "
 							+ toString(tok.line));
 }
