@@ -18,7 +18,7 @@ class Parser {
 
 		void 		parseDirective(Server& s);
 		void 		parseDirective(Location& l);
-		void 		putDirective(BaseBlock& b, std::string& key);
+		void 		putDirective(BaseBlock& b, const std::string& key);
 
 		void						parseErrorPage(BaseBlock& b);
 		int							parseAutoindex();

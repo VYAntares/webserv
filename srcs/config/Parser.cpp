@@ -232,7 +232,7 @@ void	Parser::parseDirective(Location& l) {
 //
 // parse les directives communes aux blocs server et location
 // root, index, error_page, autoindex, return, client_max_body_size
-void	Parser::putDirective(BaseBlock& b, std::string& key) {
+void	Parser::putDirective(BaseBlock& b, const std::string& key) {
 	if (key == "error_page")
 		parseErrorPage(b);
 	else if (key == "return")
@@ -410,11 +410,30 @@ size_t	Parser::parseClientBody() {
 	for (size_t j = 0; j < unit.length(); j++)
 		unit[j] = std::tolower(unit[j]);
 
-	// conversion selon l'unité
+	// conversion selon l'unité (max 10GB)
+	// "k" → max 10 * 1024 * 1024 = 10 485 760 k
+	// "m" → max 10 * 1024 = 10 240 m
+	// "g" → max 10 g
+	const unsigned long MAX_GB = 10;
 	if (unit.empty())   return num;
-	if (unit == "k")    return num * 1024;
-	if (unit == "m")    return num * 1024 * 1024;
-	if (unit == "g")    return num * 1024 * 1024 * 1024;
+	if (unit == "k") {
+		if (num > MAX_GB * 1024 * 1024)
+			throw std::runtime_error("'client_max_body_size' exceeds 10GB at line "
+									+ toString(tok.line)); 
+		return num * 1024;
+	}
+	if (unit == "m") {
+		if (num > MAX_GB * 1024)
+			throw std::runtime_error("'client_max_body_size' exceeds 10GB at line "
+									+ toString(tok.line));
+		return num * 1024 * 1024;
+	}
+	if (unit == "g") {
+		if (num > MAX_GB)
+			throw std::runtime_error("'client_max_body_size' exceeds 10GB at line "
+									+ toString(tok.line));
+		return num * 1024 * 1024 * 1024;
+	}
 	throw std::runtime_error("'client_max_body_size' invalid value at line "
 							+ toString(tok.line));
 }
