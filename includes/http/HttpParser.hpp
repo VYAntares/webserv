@@ -1,5 +1,14 @@
 #pragma once
 
+// HTTPParser   →   HTTPRequest   →   Router   →   IRequestHandler
+// (stateful,       (pure data,       (choisit       (Static, CGI,
+//  accumule,        méthode,          le bon          Error...)
+//  parse)           uri, headers,     handler)
+//                   body)
+
+#include "HttpRequest.hpp"
+#include <iostream>
+
 class HttpParser {
 	public:
 		enum State {
@@ -13,13 +22,17 @@ class HttpParser {
 		explicit HttpParser(size_t maxBodySize);
 		~HttpParser();
 
-		State	getState();
-		void	runParsing(std::string& buffer, size_t n);
+		enum State	getState();
+		void		runParsing(std::string& buffer, size_t n);
+		void		headerParser();
 
 	private:
+		int								_errorCode;
 		State							_state;
 		std::string						_buffer;
-
+		std::string						_body;
+		std::string						_header;
+	
 		HttpRequest						_req;
 
 		size_t							_bodyExcepted;

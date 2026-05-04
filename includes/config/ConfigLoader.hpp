@@ -10,6 +10,7 @@ class ConfigLoader {
 		ConfigLoader(int argc, char **argv);
 	
 	private:
+		
 		std::string			_input;
 		std::vector<Token>	_tokens;
 
@@ -17,4 +18,3 @@ class ConfigLoader {
 		void startParser();
 		void startValidator();
 };
-

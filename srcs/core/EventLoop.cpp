@@ -32,6 +32,8 @@ static uint32_t to_epoll_flags(EventType type) {
 	return flags;
 }
 
+// Une seule instance existe dans tout le programme, accessible via instance().
+// Voir commentaire EventLoop.hpp pour plus de détails.
 EventLoop* EventLoop::_instance = NULL;
 
 EventLoop* EventLoop::instance() {

@@ -13,13 +13,20 @@ class Parser {
 		std::vector<Token>	_tokens;
 		Config				_c;
 
-		void parseServerBlock();
-		void parseLocationBlock(Server& s);
+		void 		parseServerBlock();
+		void		parseLocationBlock(Server& s);
 
-		template<typename T>
-		void parseDirective(T& block);
+		void 		parseDirective(Server& s);
+		void 		parseDirective(Location& l);
+		void 		putDirective(BaseBlock& b, std::string& key);
 
-		Token	current();
-		Token	consume();
-		Token	except(TokenType type);
+		void						parseErrorPage(BaseBlock& b);
+		int							parseAutoindex();
+		std::pair<int, std::string>	parseReturn();
+		size_t						parseClientBody();
+		addrport					parseListen();
+
+		Token		current();
+		Token		consume();
+		Token		expect(TokenType type);
 };
