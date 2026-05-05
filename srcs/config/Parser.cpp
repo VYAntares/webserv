@@ -33,6 +33,16 @@ std::string	toString(size_t n) {
 
 
 
+static std::string	addrToStr(uint32_t addr) {
+	std::ostringstream oss;
+	oss << (addr & 0xFF) << "."
+		<< ((addr >> 8) & 0xFF) << "."
+		<< ((addr >> 16) & 0xFF) << "."
+		<< ((addr >> 24) & 0xFF);
+	return oss.str();
+}
+
+
 static std::string	tokenTypeName(TokenType t) {
 	switch (t) {
 		case TOK_WORD:   return "word";
@@ -131,8 +141,15 @@ void	Parser::parseLocationBlock(Server& s) {
 
 	consume();
 	l.path = expect(TOK_WORD).value;
-	expect(TOK_LBRACE);
+	
+	// check si duplicat de location
+	for (size_t i = 0; i < s.locations.size(); i++) {
+		if (l.path == s.locations[i].path)
+			throw std::runtime_error("duplicate location ' " + l.path
+									+ "' at line " + toString(current().line));
+	}
 
+	expect(TOK_LBRACE);
 	while (current().type != TOK_RBRACE) {
 		if (current().type == TOK_WORD)
 			parseDirective(l);
@@ -164,14 +181,16 @@ void	Parser::parseDirective(Server& s) {
 
 	// listen et server_name sont propres au bloc server
 	if (key == "listen") {
-		s.listen.push_back(parseListen());
+		s.listen.push_back(parseListen(s));
 		while (current().type == TOK_WORD)
-			s.listen.push_back(parseListen());
+			s.listen.push_back(parseListen(s));
 	}
 	else if (key == "server_name") {
-		s.server_name.push_back(expect(TOK_WORD).value);
+		if (current().type != TOK_WORD)
+			throw std::runtime_error("invalid number of arguments in 'server_name' directive at line "
+									+ toString(current().line));
 		while (current().type == TOK_WORD)
-			s.server_name.push_back(expect(TOK_WORD).value);
+			s.server_name.push_back(consume().value);
 	}
 	// directive appartenant uniquement au bloc location -> erreur
 	else if (key == "upload_store" || key == "cgi_pass" || key == "allowed_methods")
@@ -344,25 +363,80 @@ std::pair<int, str>	Parser::parseReturn() {
 // ================ listen
 //
 //
-// vérifie que l'adresse et le port sont valides avant de les insérer dans les structs
-addrport	Parser::parseListen() {
+addrport	Parser::parseListen(Server& s) {
 	// lit le token de la valeur listen (ex: "127.0.0.1:8080" ou "8080")
-	Token		tok = expect(TOK_WORD);
-	std::string val = tok.value;
-	size_t		colon = val.find(':');
+	std::string val = expect(TOK_WORD).value;
+	std::string host;
+	std::string port;
 
-	// sépare host et port ; si pas de ':', le token est uniquement un port
-	// et on écoute sur toutes les interfaces
-	std::string	host = (colon != std::string::npos) ? val.substr(0, colon) : "0.0.0.0";
-	std::string	port = (colon != std::string::npos) ? val.substr(colon + 1) : val;
+	splitHostAndPort(host, port, val);
 
 	// valide le port avant getaddrinfo : strtol détecte les non-numériques,
 	// et le range check attrape les valeurs hors 1-65535 que getaddrinfo laisserait passer
 	char*	end;
 	long	p = std::strtol(port.c_str(), &end, 10);
 	if (*end != '\0' || p < 1 || p > 65535)
-		throw std::runtime_error("invalid port '" + port + "' at line " + toString(tok.line));
+		throw std::runtime_error("invalid port '" + port
+								+ "' at line " + toString(current().line));
 
+	// resolve host
+	uint32_t addr = resolveHost(host, port);
+
+	// check de duplicat d'addresse ip + port
+	for (size_t i = 0; i < s.listen.size(); i++) {
+		if (s.listen[i].first == addr && s.listen[i].second == p)
+			throw std::runtime_error("a duplicate listen '" + addrToStr(addr) + ":"
+									+ toString((size_t)p) + "' at line "
+									+ toString(current().line));
+	}
+	return std::make_pair(addr, (int)p);
+}
+
+
+
+// ================ listen->splitHostAndPort
+//
+//
+// sépare host et port selon le format du token
+void	Parser::splitHostAndPort(std::string& host, std::string& port, std::string& val) {
+	size_t		colon = val.find(':');
+	if (colon != std::string::npos) {
+		// format "host:port" → on coupe au ':'
+		host = val.substr(0, colon);
+		port = val.substr(colon + 1);
+	} else {
+		// pas de ':' → le token est soit un port seul, soit un host seul
+		char* e;
+		long  n = std::strtol(val.c_str(), &e, 10);
+		if (*e == '\0') {
+			// token purement numérique
+			if (n >= 1 && n <= 65535) {
+				// port valide → écoute sur toutes les interfaces
+				host = "0.0.0.0";
+				port = val;
+			} else {
+				// nombre hors range port : pourrait être une IP décimale (ex: 2130706433)
+				// nginx exige un port explicite dans ce cas → on rejette
+				throw std::runtime_error("invalid port '" + val + "'");
+			}
+		} else {
+			// contient des caractères non-numériques → host textuel (ex: "127.0.0.1", "localhost")
+			// getaddrinfo validera ; un token invalide comme "804lol" échouera là-bas
+			host = val;
+			port = "8080";
+		}
+	}
+	// '*' est un alias nginx pour "toutes les interfaces", getaddrinfo ne le comprend pas
+	if (host == "*")
+		host = "0.0.0.0";
+}
+
+
+
+// ================ listen->resolveHost
+//
+//
+uint32_t	Parser::resolveHost(std::string& host, std::string& port) {
 	// hints contraint getaddrinfo à retourner uniquement IPv4 + TCP
 	// sans hints, elle pourrait retourner IPv6 ou UDP, rendant le cast sockaddr_in* invalide
 	struct addrinfo hints;
@@ -374,14 +448,15 @@ addrport	Parser::parseListen() {
 	// res pointe sur le premier résultat ; grâce aux hints, c'est garanti une sockaddr_in
 	struct addrinfo* res = NULL;
 	if (getaddrinfo(host.c_str(), port.c_str(), &hints, &res) != 0)
-		throw std::runtime_error("invalid address '" + host + "' at line " + toString(tok.line));
+		throw std::runtime_error("invalid address '" + host
+								+ "' at line " + toString(current().line));
 
 	// res->ai_addr est un sockaddr* générique → cast en sockaddr_in* (safe grâce aux hints)
 	// sin_addr.s_addr extrait le uint32_t big-endian (ex: "127.0.0.1" → 0x0100007F)
 	uint32_t addr = ((struct sockaddr_in*)res->ai_addr)->sin_addr.s_addr;
 	freeaddrinfo(res); // libère toute la liste chaînée allouée par getaddrinfo
-
-	return std::make_pair(addr, (int)p);
+	
+	return addr;
 }
 
 

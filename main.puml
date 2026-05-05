@@ -1,0 +1,73 @@
+@startuml main
+
+start
+
+:ConfigLoader cl(argc, argv);
+:Config c = cl.getConfig();
+
+while (i < c.cfg.size()) is (oui)
+    while (j < c.cfg[i].listen.size()) is (oui)
+
+        partition "ServerHandler(addrs, server)" {
+            :_fd = createSocket()
+            SO_REUSEADDR + O_NONBLOCK;
+            :bindAddress(_fd, addrs)
+            listen(_fd, SOMAXCONN);
+            note right
+                premier appel si pas encore créé :
+                **EventLoop::_instance = new EventLoop()**
+                → epoll_create1(0) → _epfd
+            end note
+            :EventLoop::instance()->register_handler(this, ACCEPT_EVENT);
+            partition "register_handler(h, ACCEPT_EVENT)" {
+                :entry = new HandlerEntry()
+                entry->handler = this
+                entry->type    = ACCEPT_EVENT;
+                :_table.push_back(entry);
+                note right
+                    **struct epoll_event ev**
+                    ev.events  = EPOLLIN
+                    ev.data.ptr = entry  ← pointe sur HandlerEntry
+                    epoll_ctl(ADD, h->getFd(), &ev)
+                end note
+            }
+        }
+
+    endwhile (non)
+endwhile (non)
+
+:EventLoop::instance()->handle_events();
+
+partition "handle_events()" {
+    while (!g_stop) is (oui)
+        :n = epoll_wait(_epfd, events, 128, 500ms);
+        if (n <= 0) then (timeout / erreur)
+            :continue;
+        else (n événements)
+            :entry = (HandlerEntry*) events[i].data.ptr
+            h = entry->handler;
+            note right
+                pas de comparaison de fd
+                le bon handler est retrouvé
+                directement via data.ptr
+            end note
+            if (entry->type) then (ACCEPT_EVENT)
+                :h->handle_accept();
+            else if (entry->type) then (READ_EVENT)
+                :h->handle_input();
+            else (WRITE_EVENT)
+                :h->handle_output();
+            endif
+            if (ret == -1) then (oui)
+                :remove_handler(h)
+                delete h;
+            endif
+        endif
+    endwhile (non - signal reçu)
+}
+
+:EventLoop::destroy();
+
+stop
+
+@enduml

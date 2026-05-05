@@ -24,7 +24,9 @@ class Parser {
 		void				parseErrorPage(BaseBlock& b);
 		int					parseAutoindex();
 		size_t				parseClientBody();
-		addrport			parseListen();
+		addrport			parseListen(Server& s);
+		void				splitHostAndPort(std::string& host, std::string& port, std::string& val);
+		uint32_t			resolveHost(std::string& host, std::string& port);
 		std::pair<int, str>	parseReturn();
 
 		Token				current();
