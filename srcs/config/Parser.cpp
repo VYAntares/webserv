@@ -11,9 +11,7 @@
 // =======================================================
 // ||                       UTILS                       ||
 // =======================================================
-
-
-
+// 
 // return le token actuel
 Token	Parser::current() { return _tokens[_pos]; }
 
@@ -149,6 +147,7 @@ void	Parser::parseLocationBlock(Server& s) {
 									+ "' at line " + toString(current().line));
 	}
 
+	// parse le block location
 	expect(TOK_LBRACE);
 	while (current().type != TOK_RBRACE) {
 		if (current().type == TOK_WORD)
@@ -294,7 +293,7 @@ void	Parser::putDirective(BaseBlock& b, const std::string& key) {
 // =======================================================
 // ||                  "SPECIAL CASE"                   ||
 // =======================================================
-
+//
 // ================ error_page
 //
 //
@@ -414,11 +413,10 @@ void	Parser::splitHostAndPort(std::string& host, std::string& port, std::string&
 				// port valide → écoute sur toutes les interfaces
 				host = "0.0.0.0";
 				port = val;
-			} else {
+			} else 
 				// nombre hors range port : pourrait être une IP décimale (ex: 2130706433)
 				// nginx exige un port explicite dans ce cas → on rejette
 				throw std::runtime_error("invalid port '" + val + "'");
-			}
 		} else {
 			// contient des caractères non-numériques → host textuel (ex: "127.0.0.1", "localhost")
 			// getaddrinfo validera ; un token invalide comme "804lol" échouera là-bas
