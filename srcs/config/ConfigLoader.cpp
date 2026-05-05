@@ -7,27 +7,40 @@
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <iostream>
+#include <sys/stat.h>
 
 ConfigLoader::ConfigLoader(int argc, char **argv) {
 	if (argc != 2)
 		throw std::runtime_error("Too many arguments, usage: <configFile path>");
 
-	std::ifstream file(argv[1]);
-	if (!file.is_open())
-		throw std::runtime_error("Can not open config file: " + std::string(argv[1]));
+	size_t colon = std::string(argv[1]).find(".conf");
+	if (colon == std::string::npos) 
+		throw std::runtime_error("Can not open config file: " + std::string(argv[1])
+								+ "\nConfig file must have: .conf extension.");
+	else {
+		// stat() remplit la struct avec les infos du chemin
+		// S_ISREG verifie que c'est un fichier regulier (pas un dossier, socket, etc.)
+		struct stat st;
+		if (stat(argv[1], &st) != 0 || !S_ISREG(st.st_mode))
+			throw std::runtime_error("Not a regular file: " + std::string(argv[1]));
 
-	std::ostringstream ss;
-	ss << file.rdbuf();
-	_input = ss.str();
+		std::ifstream file(argv[1]);
+		if (!file.is_open())
+			throw std::runtime_error("Can not open config file: " + std::string(argv[1]));
 
-	try {
-		startLexer();
-		startParser();
-		// startValidator();
-	} catch (std::exception &e) {
-		std::cerr << e.what() << std::endl;
-		std::cerr << "parser: configuration file " << 
-			argv[1] << " failed." << std::endl;
+		std::ostringstream ss;
+		ss << file.rdbuf();
+		_input = ss.str();
+
+		try {
+			startLexer();
+			startParser();
+			// startValidator();
+		} catch (std::exception &e) {
+			throw std::runtime_error(std::string(e.what()) + "\nparser: configuration file "
+				+ argv[1] + " failed.");
+		}
 	}
 }
 
@@ -38,8 +51,8 @@ void ConfigLoader::startLexer() {
 
 void ConfigLoader::startParser() {
 	Parser	p(_tokens);
-
-	p.parse();
-
-
+	_c = p.parse();
 }
+
+Config	ConfigLoader::getConfig() { return _c; }
+

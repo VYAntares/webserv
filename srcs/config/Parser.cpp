@@ -25,7 +25,7 @@ Token	Parser::consume() { return _tokens[_pos++]; }
 
 
 // entier vers string
-std::string toString(size_t n) {
+std::string	toString(size_t n) {
 	std::stringstream ss;
 	ss << n;
 	return ss.str();
@@ -33,7 +33,7 @@ std::string toString(size_t n) {
 
 
 
-static std::string tokenTypeName(TokenType t) {
+static std::string	tokenTypeName(TokenType t) {
 	switch (t) {
 		case TOK_WORD:   return "word";
 		case TOK_LBRACE: return "'{'";
@@ -74,7 +74,7 @@ Parser::Parser(const std::vector<Token>& tokens) : _pos(0) , _tokens(tokens){
 //
 //
 // lance le parsing de chaque bloc serveur
-void	Parser::parse() {
+Config	Parser::parse() {
 	while (current().type != TOK_EOF) {
 		if (current().value == "server")
 			parseServerBlock();
@@ -82,6 +82,7 @@ void	Parser::parse() {
 			throw std::runtime_error("expected 'server' at line: "
 									+ toString(_tokens[_pos].line));
 	}
+	return _c;
 }
 
 
@@ -322,7 +323,7 @@ int		Parser::parseAutoindex() {
 //
 //
 // format : "return 500" ou "return 500 /path/vers/quelquepart"
-std::pair<int, std::string>	Parser::parseReturn() {
+std::pair<int, str>	Parser::parseReturn() {
 	Token	tok = consume();
 
 	char*	end;
@@ -393,6 +394,7 @@ size_t	Parser::parseClientBody() {
 	Token		tok = expect(TOK_WORD);
 	std::string	val = tok.value;
 
+	// verifier jusqu'ou on a des digit, -> error si pas de digit tout court
 	size_t i = 0;
 	while (i < val.length() && std::isdigit(val[i]))
 		i++;
@@ -401,12 +403,15 @@ size_t	Parser::parseClientBody() {
 								+ toString(tok.line));
 
 	// extraction de la valeur numérique et de l'unité (kilo, mega, giga)
+	// strtoul convertit str en unsigned long, et met le premier non digit 
+	// dans end, si pas de non digit rencontre end = \0
 	char*			end;
 	unsigned long 	num = std::strtoul(val.substr(0, i).c_str(), &end, 10);
 	if (*end != '\0')
 		throw std::runtime_error("'client_max_body_size' invalid numeric value '" 
 								+ val.substr(0, i) + "' at line " + toString(tok.line));
 
+	// recuperer les char apres les digits
 	std::string	unit = val.substr(i);
 	for (size_t j = 0; j < unit.length(); j++)
 		unit[j] = std::tolower(unit[j]);

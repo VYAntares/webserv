@@ -7,6 +7,7 @@
 class Lexer {
 	public:
 		Lexer(const std::string& input);
+
 		std::vector<Token>	tokenize();
 
 	private:
@@ -15,12 +16,12 @@ class Lexer {
 		size_t		_line;	// débogage en ligne et colonne
 		size_t		_col;	// débogage
 
-		bool	atEnd();
-		char	current();
-		void	advance();
-		Token	readQuote(char quote);
-		Token	readWord();
-		Token	makeToken(TokenType type, const std::string& value);
-		void	skipWhitespacesAndComments();	
+		bool		atEnd();
+		char		current();
+		void		advance();
+		void		skipWhitespacesAndComments();	
+		Token		readWord();
+		Token		readQuote(char quote);
+		Token		makeToken(TokenType type, const std::string& value);
 };
 
