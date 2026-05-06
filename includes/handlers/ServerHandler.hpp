@@ -17,6 +17,7 @@ class ServerHandler : public IEventHandler {
 
 		int		createSocket();
 		void	bindAddress(int serverFd, addrport listen);
+		void	printServer() const;
 
 	private:
 		Server	_server;

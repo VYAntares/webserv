@@ -9,12 +9,68 @@
 #include <cerrno>
 #include <stdexcept>
 #include <iostream>
+#include <sstream>
+
+// ===========================================
+//					DEBUGGER
+// ===========================================
+static std::string	addrToStr(uint32_t addr) {
+	std::ostringstream oss;
+	oss << (addr & 0xFF) << "."
+		<< ((addr >> 8) & 0xFF) << "."
+		<< ((addr >> 16) & 0xFF) << "."
+		<< ((addr >> 24) & 0xFF);
+	return oss.str();
+}
+
+static std::string	sizeToStr(size_t n) {
+	std::ostringstream oss;
+	oss << n;
+	return oss.str();
+}
+
+static void	printBase(const BaseBlock& b, const std::string& pad) {
+	if (!b.root.empty())
+		std::cout << pad << "root            : " << b.root << "\n";
+	if (!b.index.empty())
+		std::cout << pad << "index           : " << b.index << "\n";
+	if (b.autoindex != -1)
+		std::cout << pad << "autoindex       : " << (b.autoindex ? "on" : "off") << "\n";
+	if (b.max_body_client != SIZE_MAX)
+		std::cout << pad << "max_body_client : " << sizeToStr(b.max_body_client) << " bytes\n";
+	if (b.return_path.first != -1)
+		std::cout << pad << "return          : " << b.return_path.first << " " << b.return_path.second << "\n";
+	for (std::map<int, str>::const_iterator it = b.error_page.begin(); it != b.error_page.end(); ++it)
+		std::cout << pad << "error_page      : " << it->first << " -> " << it->second << "\n";
+}
+
+void	ServerHandler::printServer() const {
+	for (size_t i = 0; i < _server.server_name.size(); i++)
+		std::cout << "│  server_name   : " << _server.server_name[i] << "\n";
+	printBase(_server, "│  ");
+	for (size_t i = 0; i < _server.locations.size(); i++) {
+		const Location& l = _server.locations[i];
+		std::cout << "│  ┌─ location   : " << l.path << "\n";
+		printBase(l, "│  │  ");
+		for (size_t j = 0; j < l.allowed_methods.size(); j++)
+			std::cout << "│  │  methods    : " << l.allowed_methods[j] << "\n";
+		if (!l.upload_store.empty())
+			std::cout << "│  │  upload     : " << l.upload_store << "\n";
+		for (std::map<str, str>::const_iterator it = l.cgi_pass.begin(); it != l.cgi_pass.end(); ++it)
+			std::cout << "│  │  cgi_pass   : " << it->first << " -> " << it->second << "\n";
+		std::cout << "│  └─\n";
+	}
+	std::cout << "└─\n";
+}
+
+
 
 // Initialise le socket serveur puis s'enregistre auprès du singleton EventLoop
 // pour recevoir les événements ACCEPT. En cas d'échec, ferme le fd (RAII).
 ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(server) {
 	try {
 		_fd = createSocket();
+		std::cout << "┌─ [SERVER fd=" << _fd << "] addr: " << addrToStr(addrs.first) << ":" << addrs.second << std::endl;
 		bindAddress(_fd, addrs);
 		if (listen(_fd, SOMAXCONN) == -1)
 			throw std::runtime_error("listen() failed:" + std::string(strerror(errno)));
@@ -23,6 +79,7 @@ ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(ser
 		throw;
 	}
 	EventLoop::instance()->register_handler(this, ACCEPT_EVENT);
+	printServer();
 }
 
 // Crée un socket TCP non bloquant.
