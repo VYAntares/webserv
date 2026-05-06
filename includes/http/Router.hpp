@@ -1,13 +1,14 @@
 #pragma once
 
 #include <iostream>
+#include "IRequestHandler.hpp"
 #include "../../includes/http/HttpRequest.hpp"
 #include "../../includes/config/ConfigStruct.hpp"
 
-
 class Router {
     public:
-        static int routeChecker(const HttpRequest& req, const Server& server);
+		static IRequestHandler* route(const HttpRequest& req, const Server& server);
+
     private:
         Router() {};
         ~Router() {};

@@ -4,18 +4,19 @@ CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 INCLUDES = -I includes
 
 SRCS = $(shell find . -name "*.cpp" ! -path "./test/*")
-OBJS = $(SRCS:.cpp=.o)
+OBJS = $(patsubst ./%.cpp, obj/%.o, $(SRCS))
 
 all: $(NAME)
 
 $(NAME): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $(NAME) $(OBJS)
 
-%.o: %.cpp
+obj/%.o: ./%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(OBJS)
+	rm -rf obj
 
 fclean: clean
 	rm -f $(NAME)
@@ -23,4 +24,3 @@ fclean: clean
 re: fclean all
 
 .PHONY: all clean fclean re
-

@@ -97,3 +97,13 @@ HttpParser::State	HttpParser::getState() {
 HttpRequest	HttpParser::getReq() {
     return _req;
 }
+
+void HttpParser::reset() {
+	_errorCode = 0;
+	_state = R_HEADERS;
+	// _buffer = ;
+	// _body = ;
+	// _header = ;
+	_bodyExcepted = 0;
+	_bodyReceived = 0;
+}

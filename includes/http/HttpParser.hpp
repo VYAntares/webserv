@@ -28,6 +28,7 @@ class HttpParser {
 		void		checkFirstLine();
 		void		runParsing(std::string& buffer, size_t n);
 		void		headerParser();
+		void		reset();
 
 	private:
 		int								_errorCode;

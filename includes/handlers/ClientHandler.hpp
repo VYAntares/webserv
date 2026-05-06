@@ -3,6 +3,7 @@
 #include "../core/IEventHandler.hpp"
 #include "../config/ConfigStruct.hpp"
 #include "../http/HttpParser.hpp"
+#include "../http/IRequestHandler.hpp"
 
 class ClientHandler : public IEventHandler {
 	public:
@@ -14,9 +15,9 @@ class ClientHandler : public IEventHandler {
 		int handle_output();
 
 	private:
-		int			_fd;
-		size_t		_sent;
-		Server		_server;
-		HttpParser	_parser;
+		int					_fd;
+		size_t				_sent;
+		Server				_server;
+		HttpParser			_parser;
+		IRequestHandler*	_rh;
 };
-

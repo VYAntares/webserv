@@ -42,15 +42,10 @@ int ClientHandler::handle_input() {
 
 	std::string data(buf, n);
 	_parser.runParsing(data, n);
-	std::cout << "STATE" << _parser.getState() << std::endl;
 	if (_parser.getState() == HttpParser::COMPLETE) {
-		HttpRequest _request = _parser.getReq();
-    	_request.error = Router::routeChecker(_request, _server);
-		std::cout << "ERRORCODE" << _request.error << std::endl;
-		if (_request.error != 200)
-			return -1;
-		std::cout << _request.error << std::endl;
-    	// _parser.reset();
+		HttpRequest request = _parser.getReq();
+    	_rh = Router::route(request, _server);
+    	_parser.reset();
 		EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 		return 0;
 	}
@@ -61,6 +56,7 @@ int ClientHandler::handle_input() {
 }
 
 int ClientHandler::handle_output() {
+	_rh->buildResponse();
 	ssize_t n = send(_fd, response.c_str() + _sent, response.size() - _sent, 0);
 	if (n <= 0)
 		return -1;
