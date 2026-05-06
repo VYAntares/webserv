@@ -19,7 +19,7 @@ int Router::bestRouteFound(const std::string& uri, const Server& server) {
     for (size_t i =0; i < server.locations.size(); i++) {
         std::cout << "server loc " << server.locations[i].path << std::endl;
     }
-    return 1;
+    return 0;
 }
 
 bool Router::methodImplemented(const std::string& method) {

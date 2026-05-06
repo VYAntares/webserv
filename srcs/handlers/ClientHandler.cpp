@@ -42,10 +42,11 @@ int ClientHandler::handle_input() {
 
 	std::string data(buf, n);
 	_parser.runParsing(data, n);
-
+	std::cout << "STATE" << _parser.getState() << std::endl;
 	if (_parser.getState() == HttpParser::COMPLETE) {
 		HttpRequest _request = _parser.getReq();
     	_request.error = Router::routeChecker(_request, _server);
+		std::cout << "ERRORCODE" << _request.error << std::endl;
 		if (_request.error != 200)
 			return -1;
 		std::cout << _request.error << std::endl;
