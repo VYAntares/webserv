@@ -1,6 +1,11 @@
 #pragma once
 
+#include <string>
+#include <iostream>
+
 class IRequestHandler {
-	virtual std::string buildResponse() = 0;
-	virtual 			~IRequestHandler();
+	public:
+		virtual std::string buildResponse() = 0;
+		virtual				~IRequestHandler() {}
 };
+

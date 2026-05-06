@@ -59,8 +59,8 @@ static std::string	tokenTypeName(TokenType t) {
 Token	Parser::expect(TokenType type) {
 	if (_tokens[_pos].type != type)
 		throw std::runtime_error("expected " + tokenTypeName(type)
-			+ " but got '" + _tokens[_pos].value
-			+ "' at line " + toString(_tokens[_pos].line));
+								+ " but got '" + _tokens[_pos].value
+								+ "' at line " + toString(_tokens[_pos].line));
 	return _tokens[_pos++];
 }
 
@@ -194,8 +194,8 @@ void	Parser::parseDirective(Server& s) {
 	// directive appartenant uniquement au bloc location -> erreur
 	else if (key == "upload_store" || key == "cgi_pass" || key == "allowed_methods")
 		throw std::runtime_error("directive '" + key
-									+ "' is location-only, not allowed in server at line "
-									+ toString(current().line));
+								+ "' is location-only, not allowed in server at line "
+								+ toString(current().line));
 	// directive commune avec location
 	else
 		putDirective(static_cast<BaseBlock&>(s), key);
@@ -231,16 +231,16 @@ void	Parser::parseDirective(Location& l) {
 	// directive appartenant uniquement au bloc server -> erreur
 	else if (key == "listen" || key == "server_name")
 		throw std::runtime_error("directive '" + key
-									+ "' is server-only, not allowed in location at line "
-									+ toString(current().line));
+								+ "' is server-only, not allowed in location at line "
+								+ toString(current().line));
 	// directive commune avec server
 	else
 		putDirective(static_cast<BaseBlock&>(l), key);
 
 	// toute directive doit se terminer par un ';'
 	if (current().type != TOK_SEMI)
-		throw std::runtime_error("missing ';' after directive '"
-			+ key + "' at line " + toString(current().line));
+		throw std::runtime_error("missing ';' after directive '" + key 
+								+ "' at line " + toString(current().line));
 	expect(TOK_SEMI);
 }
 
@@ -259,19 +259,19 @@ void	Parser::putDirective(BaseBlock& b, const std::string& key) {
 	else if (key == "root") {
 		if (!b.root.empty())
 			throw std::runtime_error("'root' directive is duplicate at line "
-										+ toString(current().line));
+									+ toString(current().line));
 		b.root = expect(TOK_WORD).value;
 	}
 	else if (key == "index") {
 		if (!b.index.empty())
 			throw std::runtime_error("'index' directive is duplicate at line "
-										+ toString(current().line));
+									+ toString(current().line));
 		b.index = expect(TOK_WORD).value;
 	}
 	else if (key == "autoindex") {
 		if (b.autoindex != -1) 
 			throw std::runtime_error("'autoindex' directive is duplicate at line "
-										+ toString(current().line));
+									+ toString(current().line));
 		b.autoindex = parseAutoindex();
 	}
 	// parsing spécifique à client_max_body_size
@@ -279,13 +279,13 @@ void	Parser::putDirective(BaseBlock& b, const std::string& key) {
 		// initialisé a SIZE_MAX de base, si l'on parse, ne sera plus SIZE_MAX
 		if (b.max_body_client != SIZE_MAX)
 			throw std::runtime_error("'client_max_body_size' directive is duplicate at line "
-										+ toString(current().line));
+									+ toString(current().line));
 		b.max_body_client = parseClientBody();
 	}
 	// directive non reconnue -> erreur
 	else
 		throw std::runtime_error("directive '" + key + "' is not allowed here at line "
-									+ toString(current().line));
+								+ toString(current().line));
 }
 
 

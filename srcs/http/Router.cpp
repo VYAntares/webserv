@@ -1,25 +1,28 @@
 #include "../../includes/http/Router.hpp"
+#include "../../includes/http/CGIHandler.hpp"
+#include "../../includes/http/StaticHandler.hpp"
+#include "../../includes/http/ErrorHandler.hpp"
 
-static IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
+IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (!methodImplemented(req.method))
-		std::cout << "Error Handler appele" << std::endl;
-        // return new ErrorHandler(501);
+        return new ErrorHandler(501);
 
-    if (bestRouteFound(req.uri, server) < 0)
-		std::cout << "Error Handler appele" << std::endl;
-        // return new ErrorHandler(404);
+    if (!bestRouteFound(req.uri, server)) {
+		std::cout << "ERROR 404" << std::endl;
+        return new ErrorHandler(404);
+	}
 
 	//if (isCgi())
 
     return new StaticHandler();
 }
 
-static const Location* Router::bestRouteFound(const std::string& uri, const Server& server) {
+const Location* Router::bestRouteFound(const std::string& uri, const Server& server) {
     std::string shorturi = uri;
     int j = -1;
     int len = -1;
     if (uri[0] != '/')
-        return 1;
+        return NULL;
     while (shorturi.length() != 0) {
         for (size_t i = 0; i < server.locations.size(); i++) {
             if (server.locations[i].path.find(shorturi) == 0 && 
@@ -36,7 +39,7 @@ static const Location* Router::bestRouteFound(const std::string& uri, const Serv
     }
     if (j == -1)
         return NULL;
-    return server.locations[j];
+    return &server.locations[j];
 }
 
 bool Router::methodImplemented(const std::string& method) {

@@ -13,7 +13,7 @@ class Router {
         Router() {};
         ~Router() {};
 
-        static int  bestRouteFound(const std::string& uri, const Server& server);
-        static bool methodImplemented(const std::string& method);
-        static int  methodAllowed(const std::string& method, const std::string& uri);
+        static const Location*  bestRouteFound(const std::string& uri, const Server& server);
+        static bool 			methodImplemented(const std::string& method);
 };
+
