@@ -9,19 +9,19 @@
 #include <iostream>
 #include <sstream>
 
-static std::string make_response() {
-	std::string body(1024, 'B'); // 10MB de 'A'
-	std::ostringstream oss;
-	oss << "HTTP/1.1 200 OK\r\n"
-		<< "Content-Type: text/plain\r\n"
-		<< "Content-Length: " << body.size() << "\r\n"
-		<< "Connection: close\r\n"
-		<< "\r\n"
-		<< body;
-	return oss.str();
-}
+// static std::string make_response() {
+// 	std::string body(1024, 'B'); // 10MB de 'A'
+// 	std::ostringstream oss;
+// 	oss << "HTTP/1.1 200 OK\r\n"
+// 		<< "Content-Type: text/plain\r\n"
+// 		<< "Content-Length: " << body.size() << "\r\n"
+// 		<< "Connection: close\r\n"
+// 		<< "\r\n"
+// 		<< body;
+// 	return oss.str();
+// }
 
-static const std::string response = make_response();
+// static const std::string response = make_response();
 
 ClientHandler::ClientHandler(int clientFd, const Server& server)
 							 : _fd(clientFd), _sent(0), _server(server), 
@@ -56,12 +56,12 @@ int ClientHandler::handle_input() {
 }
 
 int ClientHandler::handle_output() {
-	_rh->buildResponse();
-	ssize_t n = send(_fd, response.c_str() + _sent, response.size() - _sent, 0);
+	std::string resp = _rh->buildResponse();
+	ssize_t n = send(_fd, resp.c_str() + _sent, resp.size() - _sent, 0);
 	if (n <= 0)
 		return -1;
 	_sent += n;
-	if (_sent >= response.size()) {
+	if (_sent >= resp.size()) {
 		_sent = 0;
 		EventLoop::instance()->modify_handler(this, READ_EVENT);
 		return 0;
