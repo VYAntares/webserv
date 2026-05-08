@@ -4,6 +4,9 @@
 #include "../../includes/http/ErrorHandler.hpp"
 
 IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
+	if (req.error != 200)
+		return new ErrorHandler(req.error);
+
     if (!methodImplemented(req.method))
         return new ErrorHandler(501);
 
