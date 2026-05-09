@@ -5,7 +5,10 @@
 class Validator {
 	public:
 		Validator(Config c);
+		Config	validate();
 
 	private:
-		Config		_c;
+		void	propogateServerToLocations(Server& s);
+		Config	_c;
 };
+ 

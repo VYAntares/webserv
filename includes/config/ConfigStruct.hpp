@@ -4,8 +4,15 @@
 #include <vector>
 #include <map>
 #include <utility>
+#include <sstream>
 #include <arpa/inet.h>
 #include <stdint.h>
+
+inline std::string toString(size_t n) {
+	std::stringstream ss;
+	ss << n;
+	return ss.str();
+}
 
 typedef std::string             	str;
 typedef std::pair<uint32_t, int>	addrport;			// string, port

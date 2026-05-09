@@ -33,6 +33,9 @@ ConfigLoader::ConfigLoader(int argc, char **argv) {
 		std::ostringstream ss;
 		ss << file.rdbuf();
 		_input = ss.str();
+		if (_input.empty())
+			throw std::runtime_error("Config file: '" + std::string(argv[1]) 
+									+ "' is empty. No server will run like that..");
 
 		try {
 			startLexer();
@@ -40,7 +43,7 @@ ConfigLoader::ConfigLoader(int argc, char **argv) {
 			startValidator();
 		} catch (std::exception &e) {
 			throw std::runtime_error(std::string(e.what()) + "\nparser: configuration file "
-				+ argv[1] + " failed.");
+									+ std::string(argv[1]) + " failed.");
 		}
 	}
 }
@@ -57,6 +60,8 @@ void ConfigLoader::startParser() {
 
 void ConfigLoader::startValidator() {
 	Validator v(_c);
+
+	_c = v.validate();
 }
 
 Config	ConfigLoader::getConfig() { return _c; }

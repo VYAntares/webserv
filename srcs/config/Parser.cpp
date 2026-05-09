@@ -22,12 +22,6 @@ Token	Parser::consume() { return _tokens[_pos++]; }
 
 
 
-// entier vers string
-std::string	toString(size_t n) {
-	std::stringstream ss;
-	ss << n;
-	return ss.str();
-}
 
 
 

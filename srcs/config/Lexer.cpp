@@ -130,10 +130,8 @@ std::vector<Token> Lexer::tokenize() {
 	std::vector<Token> token;
 	while (!atEnd()) {
 		skipWhitespacesAndComments();
-		if (atEnd()) {
-			token.push_back(makeToken(TOK_EOF, ""));
+		if (atEnd())
 			break;
-		}
 		char c = current();
 		if (c == '{') {
 			token.push_back(makeToken(TOK_LBRACE, "{"));
@@ -146,9 +144,10 @@ std::vector<Token> Lexer::tokenize() {
 			advance();
 		} else if (c == '"' || c == '\'')
 			token.push_back(readQuote(c));
-		else 
+		else
 			token.push_back(readWord());
 	}
+	token.push_back(makeToken(TOK_EOF, ""));
 	// debug list all Token struct values
 	// for (size_t i = 0; i < token.size(); i++) {
 	// 	std::cout << "Type: " << std::setw(10) << std::left << tokenTypeToString(token[i].type)
