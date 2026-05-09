@@ -2,6 +2,7 @@
 #include "../../includes/config/Parser.hpp"
 #include "../../includes/config/ConfigStruct.hpp"
 #include "../../includes/config/Token.hpp"
+#include "../../includes/config/Validator.hpp"
 #include "../../includes/config/Lexer.hpp"
 
 #include <sstream>
@@ -36,7 +37,7 @@ ConfigLoader::ConfigLoader(int argc, char **argv) {
 		try {
 			startLexer();
 			startParser();
-			// startValidator();
+			startValidator();
 		} catch (std::exception &e) {
 			throw std::runtime_error(std::string(e.what()) + "\nparser: configuration file "
 				+ argv[1] + " failed.");
@@ -52,6 +53,10 @@ void ConfigLoader::startLexer() {
 void ConfigLoader::startParser() {
 	Parser	p(_tokens);
 	_c = p.parse();
+}
+
+void ConfigLoader::startValidator() {
+	Validator v(_c);
 }
 
 Config	ConfigLoader::getConfig() { return _c; }

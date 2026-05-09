@@ -63,6 +63,7 @@ int ClientHandler::handle_output() {
 	_sent += n;
 	if (_sent >= resp.size()) {
 		_sent = 0;
+		_parser.reset();
 		EventLoop::instance()->modify_handler(this, READ_EVENT);
 		return 0;
 	}

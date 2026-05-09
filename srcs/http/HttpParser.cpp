@@ -101,9 +101,9 @@ HttpRequest	HttpParser::getReq() {
 void HttpParser::reset() {
 	_errorCode = 0;
 	_state = R_HEADERS;
-	// _buffer = ;
-	// _body = ;
-	// _header = ;
+	_buffer.clear();
+	_body.clear();
+	_header.clear();
 	_bodyExcepted = 0;
 	_bodyReceived = 0;
 }
