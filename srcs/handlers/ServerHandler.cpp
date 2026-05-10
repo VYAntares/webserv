@@ -11,17 +11,6 @@
 #include <iostream>
 #include <sstream>
 
-// ===========================================
-//					DEBUGGER
-// ===========================================
-static std::string	addrToStr(uint32_t addr) {
-	std::ostringstream oss;
-	oss << (addr & 0xFF) << "."
-		<< ((addr >> 8) & 0xFF) << "."
-		<< ((addr >> 16) & 0xFF) << "."
-		<< ((addr >> 24) & 0xFF);
-	return oss.str();
-}
 
 static std::string	sizeToStr(size_t n) {
 	std::ostringstream oss;

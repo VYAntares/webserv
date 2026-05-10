@@ -22,19 +22,6 @@ Token	Parser::consume() { return _tokens[_pos++]; }
 
 
 
-
-
-
-static std::string	addrToStr(uint32_t addr) {
-	std::ostringstream oss;
-	oss << (addr & 0xFF) << "."
-		<< ((addr >> 8) & 0xFF) << "."
-		<< ((addr >> 16) & 0xFF) << "."
-		<< ((addr >> 24) & 0xFF);
-	return oss.str();
-}
-
-
 static std::string	tokenTypeName(TokenType t) {
 	switch (t) {
 		case TOK_WORD:   return "word";
@@ -309,7 +296,7 @@ void	Parser::parseErrorPage(BaseBlock& b) {
 	for (size_t i = 0; i < args.size() - 1; i++) {
 		char* 	end;
 		long	code = std::strtol(args[i].c_str(), &end, 10);
-		if (*end != '\0' || code < 300 || code > 599)
+		if (*end != '\0' || code < 400 || code > 599)
             throw std::runtime_error("invalid error code '" + args[i] + "' in error_page");
 		b.error_page[(int)code] = path;
 	}

@@ -9,6 +9,8 @@ class Validator {
 
 	private:
 		void	propogateServerToLocations(Server& s);
+		void 	checkLocationConfig(Location& l);
+		void	checkDuplicateIntraServer(Server& s, size_t& i);
 		Config	_c;
 };
  

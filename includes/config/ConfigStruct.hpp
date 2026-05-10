@@ -14,6 +14,15 @@ inline std::string toString(size_t n) {
 	return ss.str();
 }
 
+inline std::string	addrToStr(uint32_t addr) {
+	std::ostringstream oss;
+	oss << (addr & 0xFF) << "."
+		<< ((addr >> 8) & 0xFF) << "."
+		<< ((addr >> 16) & 0xFF) << "."
+		<< ((addr >> 24) & 0xFF);
+	return oss.str();
+}
+
 typedef std::string             	str;
 typedef std::pair<uint32_t, int>	addrport;			// string, port
 

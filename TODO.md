@@ -25,6 +25,7 @@ Si upload_store est défini, vérifier que POST est dans allowed_methods (sinon 
 8. Valider cgi_pass
 L'extension doit commencer par . (ex: .py, .php)
 Le chemin de l'interpréteur doit être un chemin absolu (commence par /)
+
 9. Conflit de listen entre servers différents
 Le parser vérifie les doublons dans un même server, mais pas entre deux servers. Le validator doit parcourir tous les servers et vérifier qu'aucun doublon addr:port n'existe entre eux.
 
