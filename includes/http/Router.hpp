@@ -13,7 +13,11 @@ class Router {
         Router() {};
         ~Router() {};
 
-        static const Location*  bestRouteFound(const std::string& uri, const Server& server);
-        static bool 			methodImplemented(const std::string& method);
+        static const Location*    bestRouteFound(const std::string& uri, const Server& server);
+        static bool 			        methodImplemented(const std::string& method);
+        static int                fileFound(const std::string& uri, const std::string& method);
+        static int                forbiddenAccess(const std::string& uri, const std::string& method);
+        // static const std::string  resolvePath(const Location *loc, const std::string& uri);
+
 };
 

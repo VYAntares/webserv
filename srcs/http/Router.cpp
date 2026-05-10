@@ -2,27 +2,66 @@
 #include "../../includes/http/CGIHandler.hpp"
 #include "../../includes/http/StaticHandler.hpp"
 #include "../../includes/http/ErrorHandler.hpp"
+#include <unistd.h>
+#include <cstring>
+#include <sys/stat.h>
 
 IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
 	if (req.error != 200)
 		return new ErrorHandler(req.error);
 
+    const Location *loc = bestRouteFound(req.uri, server);
+    if (!loc)
+        return new ErrorHandler(404);
+
+    // std::string finalPath = resolvePath(&loc, req.uri);
+
     if (!methodImplemented(req.method))
         return new ErrorHandler(501);
 
-    if (!bestRouteFound(req.uri, server)) {
-		std::cout << "ERROR 404" << std::endl;
+    if (!fileFound(req.uri, req.method))
         return new ErrorHandler(404);
-	}
+
+    if (forbiddenAccess(req.uri, req.method))
+        return new ErrorHandler(403);
+
+    // if (methodAllowed(&loc, req.method))
+    //     return new ErrorHandler(405);
 
 	//if (isCgi())
 
     return new StaticHandler();
 }
 
+// const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
+
+// }
+
+int Router::fileFound(const std::string& uri, const std::string& method) {
+    struct stat forbuf;
+
+    if (method == "POST")
+        return 1;
+    if (stat(uri.c_str(), &forbuf) == -1)
+        return 0;
+    return 1;
+}
+
+int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
+    int mode = 0; 
+
+    if (method == "DELETE" || method == "POST")
+        mode = W_OK;
+    else if (method == "GET")
+        mode = R_OK;
+    if (access(uri.c_str(), mode) == -1)
+        return 1;
+    return 0;
+}
+
 const Location* Router::bestRouteFound(const std::string& uri, const Server& server) {
     std::string shorturi = uri;
-    int j = -1;
+    const Location *loc = NULL; 
     int len = -1;
     if (uri[0] != '/')
         return NULL;
@@ -31,7 +70,7 @@ const Location* Router::bestRouteFound(const std::string& uri, const Server& ser
             if (server.locations[i].path.find(shorturi) == 0 && 
                 server.locations[i].path == shorturi && 
                 len < (int)(server.locations[i].path.length())) {
-                j = i;
+                loc = &server.locations[i];
                 len = (int)(server.locations[i].path.length());
             } 
         }
@@ -40,9 +79,7 @@ const Location* Router::bestRouteFound(const std::string& uri, const Server& ser
         size_t i = shorturi.rfind('/');
         shorturi.erase(i);
     }
-    if (j == -1)
-        return NULL;
-    return &server.locations[j];
+    return loc;
 }
 
 bool Router::methodImplemented(const std::string& method) {
