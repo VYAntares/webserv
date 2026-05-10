@@ -9,6 +9,7 @@ HttpParser::~HttpParser() {}
 
 void HttpParser::runParsing(std::string& buffer, size_t n) {
 	(void)n;
+	_req.error = 200;
     _buffer += buffer;
     if (_state == R_HEADERS) {
         size_t pos = _buffer.find("\r\n\r\n");
@@ -101,9 +102,9 @@ HttpRequest	HttpParser::getReq() {
 void HttpParser::reset() {
 	_errorCode = 0;
 	_state = R_HEADERS;
-	_buffer.clear();
-	_body.clear();
-	_header.clear();
+	// _buffer.clear();
+	// _body.clear();
+	// _header.clear();
 	_bodyExcepted = 0;
 	_bodyReceived = 0;
 }

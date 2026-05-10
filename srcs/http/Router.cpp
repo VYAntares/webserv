@@ -5,9 +5,10 @@
 #include <unistd.h>
 #include <cstring>
 #include <sys/stat.h>
+#include <cstdio>
 
 IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
-	if (req.error != 200)
+    if (req.error != 200)
 		return new ErrorHandler(req.error);
 
     const Location *loc = bestRouteFound(req.uri, server);
@@ -15,21 +16,19 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
         return new ErrorHandler(404);
 
     // std::string finalPath = resolvePath(&loc, req.uri);
-
     if (!methodImplemented(req.method))
         return new ErrorHandler(501);
+    // tant qu'on demande des files qui n'existent pas sort en erreur
+    // if (!fileFound(req.uri, req.method))
+    //     return new ErrorHandler(404);
 
-    if (!fileFound(req.uri, req.method))
-        return new ErrorHandler(404);
-
-    if (forbiddenAccess(req.uri, req.method))
-        return new ErrorHandler(403);
+    // if (forbiddenAccess(req.uri, req.method))
+    //     return new ErrorHandler(403);
 
     // if (methodAllowed(&loc, req.method))
     //     return new ErrorHandler(405);
 
 	//if (isCgi())
-
     return new StaticHandler();
 }
 
