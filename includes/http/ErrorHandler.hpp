@@ -10,7 +10,9 @@ class ErrorHandler : public IRequestHandler {
 		ErrorHandler(int code);
 		~ErrorHandler();
 		std::string	buildResponse();
+		std::string	getReason();
 	
 	private:
+		int	_error;
 };
 
