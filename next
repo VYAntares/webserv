@@ -1,0 +1,4 @@
+- Considération des alias dans la config ? Ne semble pas obligatoire, mais utile.
+- Return code selon location, prend le dessus sur les autres return code, pour le moment il n y a pas de return code personnel aux locations
+- Changer dans static handlers le return code selon config, a implementer avant la reponse car on a pas de "config->loc dans IRequestHandler
+- Dans autointex : comment on renvoie la reponse (liste des files dans dossier)

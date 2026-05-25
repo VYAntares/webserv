@@ -13,35 +13,52 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
 
     const Location *loc = bestRouteFound(req.uri, server);
     if (!loc)
-        return new ErrorHandler(404);
+        return new ErrorHandler(loc, 404);
 
-    // std::string finalPath = resolvePath(&loc, req.uri);
+    std::string finalPath = resolvePath(loc, req.uri);
+    if (finalPath.empty())
+        return new ErrorHandler(loc, 403);
+
     if (!methodImplemented(req.method))
-        return new ErrorHandler(501);
-    // tant qu'on demande des files qui n'existent pas sort en erreur
-    // if (!fileFound(req.uri, req.method))
-    //     return new ErrorHandler(404);
+        return new ErrorHandler(loc, 501);
 
-    // if (forbiddenAccess(req.uri, req.method))
-    //     return new ErrorHandler(403);
+    if (!fileFound(finalPath, req.method))
+        return new ErrorHandler(loc, 404);
 
-    // if (methodAllowed(&loc, req.method))
-    //     return new ErrorHandler(405);
+    if (forbiddenAccess(finalPath, req.method))
+        return new ErrorHandler(403);
+
+    if (!methodAllowed(req.method, loc))
+        return new ErrorHandler(405);
 
 	//if (isCgi())
-    return new StaticHandler();
+    
+    return new StaticHandler(req, *loc);
 }
 
-// const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
+const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
+    std::string path = loc->root + uri;
+    std::string newpath = path;
+    if (path[path.length() - 1] == '/') {
+        if (!loc->index.empty())
+            newpath = path + loc->index;
+        else {
+            if (loc->autoindex == 1)
+                // regarder comment on renvoie la liste
+                std::cout << "throw list" << std::endl;
+            else
+                return "";
+        }
+    }
+    return newpath;
+}
 
-// }
-
-int Router::fileFound(const std::string& uri, const std::string& method) {
+int Router::fileFound(const std::string& path, const std::string& method) {
     struct stat forbuf;
-
+    
     if (method == "POST")
         return 1;
-    if (stat(uri.c_str(), &forbuf) == -1)
+    if (stat(path.c_str(), &forbuf) == -1)
         return 0;
     return 1;
 }
@@ -85,8 +102,11 @@ bool Router::methodImplemented(const std::string& method) {
     return (method == "GET" || method == "DELETE" || method == "POST");
 }
 
-// int Router::methodAllowed(const std::string& method, const std::string& uri) {
-//     std::cout << "\n\n\nIN methodAllowed" << uri << method << std::endl;
-//     // need config oops
-//     return 1;
-// }
+int Router::methodAllowed(const std::string& method, const Location *loc) {
+    if (loc->allowed_methods.size() == 0)
+        return 1;
+    for (size_t i = 0; i < loc->allowed_methods.size(); i++)
+        if (method == loc->allowed_methods[i])
+            return 1;
+    return 0;
+}
