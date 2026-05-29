@@ -1,19 +1,21 @@
 #include "../../includes/http/StaticHandler.hpp"
 #include <sstream>
+#include <fstream>
 
-StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc): _req(&req), _loc(&loc) {
-	// const char *method = req.method.c_str();
-	// switch(method) {
-	// 	case("GET"):
-	// 		handleGet();
-	// 	case("POST"):
-	// 		handlePost();
-	// 	case("DELETE"):
-	// 		handleDelete();
-	// }
+std::map<std::string, std::string> mime_types = init_mime_types();
+
+StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _type(""), _path(path) {
+
 	// if (!loc->return.empty())
 	// 		_ncode = loc->return;
-	(void)req;
+		
+	if (req.method == "GET")
+		handleGet();
+	else if (req.method == "POST")
+		handlePost();
+	else if (req.method == "DELETE")
+		handleDelete();
+
 	(void)loc;
 	_ncode = 200;
 }
@@ -32,14 +34,49 @@ std::string	StaticHandler::getReason() {
 }
 
 std::string StaticHandler::buildResponse() {
-    std::string body = "static handler response";
 	std::ostringstream oss;
 	oss << "HTTP/1.1 " << _ncode << " " << getReason() << "\r\n"
-		<< "Content-Type: text/plain\r\n"
-		<< "Content-Length: " << body.size() << "\r\n"
+		<< "Content-Type: " << _type << "\r\n"
+		<< "Content-Length: " << _body.size() << "\r\n"
 		<< "Connection: close\r\n"
 		<< "\r\n"
-		<< body;
+		<< _body;
 	return oss.str();
 }
 
+std::string StaticHandler::getType(const std::string& path) {
+	std::string	ext;
+
+	size_t pos = path.rfind(".");
+	if (pos == std::string::npos)
+		return "application/octet-stream";
+
+	ext = path.substr(pos);
+	
+	if (mime_types.count(ext))
+		return mime_types[ext];
+
+	return "application/octet-stream";
+}
+
+void	StaticHandler::handleGet() {
+
+	_type = getType(_path);
+
+	std::ifstream file(_path.c_str());
+	if (!file.is_open())
+		return ;
+
+	std::stringstream ss;
+	ss << file.rdbuf();
+	_body = ss.str();
+	file.close();
+}
+
+void	StaticHandler::handlePost() {
+	std::cout << "handle post" << std::endl;
+}
+
+void	StaticHandler::handleDelete() {
+	std::cout << "handle delete" << std::endl;
+}

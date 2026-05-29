@@ -15,17 +15,17 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (!loc)
         return new ErrorHandler(loc, 404);
 
-    std::string finalPath = resolvePath(loc, req.uri);
-    if (finalPath.empty())
+    std::string path = resolvePath(loc, req.uri);
+    if (path.empty())
         return new ErrorHandler(loc, 403);
 
     if (!methodImplemented(req.method))
         return new ErrorHandler(loc, 501);
 
-    if (!fileFound(finalPath, req.method))
+    if (!fileFound(path, req.method))
         return new ErrorHandler(loc, 404);
 
-    if (forbiddenAccess(finalPath, req.method))
+    if (forbiddenAccess(path, req.method))
         return new ErrorHandler(403);
 
     if (!methodAllowed(req.method, loc))
@@ -33,7 +33,7 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
 
 	//if (isCgi())
     
-    return new StaticHandler(req, *loc);
+    return new StaticHandler(req, *loc, path);
 }
 
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
