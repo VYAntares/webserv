@@ -18,6 +18,7 @@ class StaticHandler : public IRequestHandler {
 		void		handleGet();
 		void		handlePost();
 		void		handleDelete();
+		void		handleReturn();
 
 	private:
 		const HttpRequest*	_req;
