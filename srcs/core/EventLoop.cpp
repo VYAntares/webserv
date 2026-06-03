@@ -67,7 +67,11 @@ void EventLoop::register_handler(IEventHandler* h, EventType type) {
 	struct epoll_event ev;
 	ev.events	= to_epoll_flags(type);
 	ev.data.ptr	= entry;
-	epoll_ctl(_epfd, EPOLL_CTL_ADD, h->getFd(), &ev);
+	if (epoll_ctl(_epfd, EPOLL_CTL_ADD, h->getFd(), &ev) == -1) {
+		_table.erase(h);
+		delete entry;
+		throw std::runtime_error("epoll_ctl(ADD) failed: " + std::string(strerror(errno)));
+	}
 }
 
 // Met à jour le type d'événement surveillé pour un handler déjà enregistré.
@@ -83,7 +87,8 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 	struct epoll_event ev;
 	ev.events	= to_epoll_flags(newType);
 	ev.data.ptr	= it->second;
-	epoll_ctl(_epfd, EPOLL_CTL_MOD, h->getFd(), &ev);
+	if (epoll_ctl(_epfd, EPOLL_CTL_MOD, h->getFd(), &ev) == -1)
+		std::cerr << "epoll_ctl(MOD) failed fd=" << h->getFd() << ": " << strerror(errno) << "\n";
 }
 
 // Retire le fd d epoll puis supprime l'entrée de la table interne.
@@ -91,7 +96,8 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 // Le handler lui-même n est pas delete ici — c'est à l appelant de le faire
 // pour éviter un double-free (handle_events() appelle remove_handler puis delete h).
 void EventLoop::remove_handler(IEventHandler* h) {
-	epoll_ctl(_epfd, EPOLL_CTL_DEL, h->getFd(), NULL);
+	if (epoll_ctl(_epfd, EPOLL_CTL_DEL, h->getFd(), NULL) == -1)
+		std::cerr << "epoll_ctl(DEL) failed fd=" << h->getFd() << ": " << strerror(errno) << "\n";
 
 	std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.find(h);
 	if (it != _table.end()) {
