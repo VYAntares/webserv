@@ -12,43 +12,32 @@
 #include <sstream>
 
 
-static std::string	sizeToStr(size_t n) {
-	std::ostringstream oss;
-	oss << n;
-	return oss.str();
-}
+// static std::string	sizeToStr(size_t n) {
+// 	std::ostringstream oss;
+// 	oss << n;
+// 	return oss.str();
+// }
 
-static void	printBase(const BaseBlock& b, const std::string& pad) {
-	if (!b.root.empty())
-		std::cout << pad << "root            : " << b.root << "\n";
-	if (!b.index.empty())
-		std::cout << pad << "index           : " << b.index << "\n";
-	if (b.autoindex != -1)
-		std::cout << pad << "autoindex       : " << (b.autoindex ? "on" : "off") << "\n";
-	if (b.max_body_client != SIZE_MAX)
-		std::cout << pad << "max_body_client : " << sizeToStr(b.max_body_client) << " bytes\n";
-	if (b.return_path.first != -1)
-		std::cout << pad << "return          : " << b.return_path.first << " " << b.return_path.second << "\n";
-	for (std::map<int, str>::const_iterator it = b.error_page.begin(); it != b.error_page.end(); ++it)
-		std::cout << pad << "error_page      : " << it->first << " -> " << it->second << "\n";
-}
+// static void	printBase(const BaseBlock& b, const std::string& pad) {
+// 	if (!b.root.empty())
+// 		std::cout << pad << "root            : " << b.root << "\n";
+// 	if (!b.index.empty())
+// 		std::cout << pad << "index           : " << b.index << "\n";
+// 	if (b.autoindex != -1)
+// 		std::cout << pad << "autoindex       : " << (b.autoindex ? "on" : "off") << "\n";
+// 	if (b.max_body_client != SIZE_MAX)
+// 		std::cout << pad << "max_body_client : " << sizeToStr(b.max_body_client) << " bytes\n";
+// 	if (b.return_path.first != -1)
+// 		std::cout << pad << "return          : " << b.return_path.first << " " << b.return_path.second << "\n";
+// 	for (std::map<int, str>::const_iterator it = b.error_page.begin(); it != b.error_page.end(); ++it)
+// 		std::cout << pad << "error_page      : " << it->first << " -> " << it->second << "\n";
+// }
 
 void	ServerHandler::printServer() const {
 	for (size_t i = 0; i < _server.server_name.size(); i++)
 		std::cout << "│  server_name   : " << _server.server_name[i] << "\n";
-	printBase(_server, "│  ");
-	for (size_t i = 0; i < _server.locations.size(); i++) {
-		const Location& l = _server.locations[i];
-		std::cout << "│  ┌─ location   : " << l.path << "\n";
-		printBase(l, "│  │  ");
-		for (size_t j = 0; j < l.allowed_methods.size(); j++)
-			std::cout << "│  │  methods    : " << l.allowed_methods[j] << "\n";
-		if (!l.upload_store.empty())
-			std::cout << "│  │  upload     : " << l.upload_store << "\n";
-		for (std::map<str, str>::const_iterator it = l.cgi_pass.begin(); it != l.cgi_pass.end(); ++it)
-			std::cout << "│  │  cgi_pass   : " << it->first << " -> " << it->second << "\n";
-		std::cout << "│  └─\n";
-	}
+	for (size_t i = 0; i < _server.locations.size(); i++)
+		std::cout << "│  location      : " << _server.locations[i].path << "\n";
 	std::cout << "└─\n";
 }
 
@@ -109,7 +98,7 @@ int ServerHandler::handle_accept() {
 	int client_fd = accept(_fd, (struct sockaddr*)&client_addr, &len);
 	if (client_fd == -1)
 		return -1;
-	new ClientHandler(client_fd, _server);
+	new ClientHandler(client_fd, _server, client_addr);
 	return 0;
 }
 

@@ -4,12 +4,14 @@
 #include "../config/ConfigStruct.hpp"
 #include "../http/HttpParser.hpp"
 #include "../http/IRequestHandler.hpp"
+#include <string>
+#include <netinet/in.h>
 
 class ClientHandler : public IEventHandler {
 	public:
-		ClientHandler(int clientFd, const Server& server);
+		ClientHandler(int clientFd, const Server& server, const struct sockaddr_in& peerAddr);
 		~ClientHandler();
-		
+
 		int getFd() const;
 		int handle_input();
 		int handle_output();
@@ -19,5 +21,12 @@ class ClientHandler : public IEventHandler {
 		size_t				_sent;
 		Server				_server;
 		HttpParser			_parser;
-		IRequestHandler*	_rh;
+		IRequestHandler*	_rh;        // owned — deleted after response is sent
+		std::string			_response;  // cached once per request, avoids re-building on each send
+		std::string			_peerAddr;  // "ip:port" — used for logs and CGI REMOTE_ADDR
+
+		bool				_keepAlive; // false → close after send
+
+		void				_reset();   // resets per-request state for keep-alive
+		std::string			_buildPeerStr(const struct sockaddr_in& addr) const;
 };

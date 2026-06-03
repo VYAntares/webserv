@@ -15,8 +15,7 @@ std::string	ErrorHandler::getReason() {
 		case 413: return "Body size too large";
         case 500: return "Internal Server Error";
 		case 501: return "Method not implemented";
-		case 
-        default:  return "Unknown";
+		default:  return "Unknown";
 	}
 }
 

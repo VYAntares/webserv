@@ -1,71 +1,114 @@
 #include "../../includes/handlers/ClientHandler.hpp"
 #include "../../includes/core/EventLoop.hpp"
-#include "../../includes/http/HttpParser.hpp"
-#include "../../includes/http/HttpRequest.hpp"
 #include "../../includes/http/Router.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
-#include <cstring>
+#include <arpa/inet.h>
 #include <iostream>
 #include <sstream>
 
-// static std::string make_response() {
-// 	std::string body(1024, 'B'); // 10MB de 'A'
-// 	std::ostringstream oss;
-// 	oss << "HTTP/1.1 200 OK\r\n"
-// 		<< "Content-Type: text/plain\r\n"
-// 		<< "Content-Length: " << body.size() << "\r\n"
-// 		<< "Connection: close\r\n"
-// 		<< "\r\n"
-// 		<< body;
-// 	return oss.str();
-// }
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// static const std::string response = make_response();
-
-ClientHandler::ClientHandler(int clientFd, const Server& server)
-							 : _fd(clientFd), _sent(0), _server(server), 
-							   _parser(server.max_body_client) {
-	EventLoop::instance()->register_handler(this, READ_EVENT);
+std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
+	std::ostringstream oss;
+	oss << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port);
+	return oss.str();
 }
 
-ClientHandler::~ClientHandler() { close(_fd); }
+// Appelé après chaque requête complète (keep-alive) pour préparer le prochain cycle.
+// _response est vidée explicitement pour libérer la mémoire allouée par la string.
+void ClientHandler::_reset() {
+	delete _rh;
+	_rh = NULL;
+	_response.clear();
+	_sent = 0;
+	_parser.reset();
+}
+
+// ─── Cycle de vie ─────────────────────────────────────────────────────────────
+
+ClientHandler::ClientHandler(int clientFd, const Server& server,
+                             const struct sockaddr_in& peerAddr)
+							: _fd(clientFd),
+							_sent(0),
+							_server(server),
+							_parser(server.max_body_client),
+							_rh(NULL),
+							_keepAlive(false) {
+	_peerAddr = _buildPeerStr(peerAddr);
+	EventLoop::instance()->register_handler(this, READ_EVENT);
+	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] connected\n";
+}
+
+// Le destructeur ne delete pas _rh via _reset() pour éviter de rappeler
+// EventLoop depuis un contexte de destruction. On delete directement.
+ClientHandler::~ClientHandler() {
+	delete _rh;
+	close(_fd);
+	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] disconnected\n";
+}
 
 int ClientHandler::getFd() const { return _fd; }
 
+// ─── handle_input ─────────────────────────────────────────────────────────────
 int ClientHandler::handle_input() {
 	char buf[4096];
-	ssize_t n = recv(_fd, buf, sizeof(buf) - 1, 0);
+	ssize_t n = recv(_fd, buf, sizeof(buf), 0);
+
 	if (n <= 0)
 		return -1;
-	buf[n] = '\0';
 
 	std::string data(buf, n);
-	_parser.runParsing(data, n);
+	_parser.runParsing(data, static_cast<size_t>(n));
+
 	if (_parser.getState() == HttpParser::COMPLETE) {
-		HttpRequest request = _parser.getReq();
-    	_rh = Router::route(request, _server);
-    	_parser.reset();
+		HttpRequest req = _parser.getReq();
+
+		// Décider keep-alive avant de construire la réponse :
+		// HTTP/1.1 est keep-alive par défaut, HTTP/1.0 est close par défaut.
+		std::map<std::string, std::string>::const_iterator it =
+		    req.headers.find("connection");
+		if (it != req.headers.end())
+			_keepAlive = (it->second == "keep-alive");
+		else
+			_keepAlive = (req.version == "HTTP/1.1");
+
+		_rh = Router::route(req, _server);
+		_response = _rh->buildResponse();
+
+		std::cout << "[client " << _peerAddr << "] "
+		          << req.method << " " << req.uri << "\n";
+
 		EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 		return 0;
 	}
-	else if (_parser.getState() == HttpParser::ERROR)
+
+	if (_parser.getState() == HttpParser::ERROR)
 		return -1;
-	
-	return 0;
+
+	return 0; // parser accumule, pas encore complet
 }
 
+// ─── handle_output ────────────────────────────────────────────────────────────
 int ClientHandler::handle_output() {
-	std::string resp = _rh->buildResponse();
-	ssize_t n = send(_fd, resp.c_str() + _sent, resp.size() - _sent, 0);
+	const char*  data = _response.c_str() + _sent;
+	size_t       left = _response.size() - _sent;
+
+	ssize_t n = send(_fd, data, left, MSG_NOSIGNAL);
+
 	if (n <= 0)
 		return -1;
-	_sent += n;
-	if (_sent >= resp.size()) {
-		_sent = 0;
-		_parser.reset();
-		EventLoop::instance()->modify_handler(this, READ_EVENT);
-		return 0;
+
+	_sent += static_cast<size_t>(n);
+
+	if (_sent >= _response.size()) {
+		if (_keepAlive) {
+			_reset();
+			EventLoop::instance()->modify_handler(this, READ_EVENT);
+			return 0;
+		}
+		return -1; // Connection: close → EventLoop détruira ce handler
 	}
-	return 0;
+
+	return 0; // envoi partiel, on reviendra sur le prochain EPOLLOUT
 }
