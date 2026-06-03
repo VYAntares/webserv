@@ -29,12 +29,9 @@ void ClientHandler::_reset() {
 
 ClientHandler::ClientHandler(int clientFd, const Server& server,
                              const struct sockaddr_in& peerAddr)
-							: _fd(clientFd),
-							_sent(0),
-							_server(server),
-							_parser(server.max_body_client),
-							_rh(NULL),
-							_keepAlive(false) {
+											: _fd(clientFd), _sent(0), _server(server),
+											_parser(server.max_body_client), _rh(NULL),
+											_keepAlive(false) {
 	_peerAddr = _buildPeerStr(peerAddr);
 	EventLoop::instance()->register_handler(this, READ_EVENT);
 	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] connected\n";
@@ -67,7 +64,7 @@ int ClientHandler::handle_input() {
 		// Décider keep-alive avant de construire la réponse :
 		// HTTP/1.1 est keep-alive par défaut, HTTP/1.0 est close par défaut.
 		std::map<std::string, std::string>::const_iterator it =
-		    req.headers.find("connection");
+		    req.headers.find("Connection");
 		if (it != req.headers.end())
 			_keepAlive = (it->second == "keep-alive");
 		else
@@ -76,6 +73,7 @@ int ClientHandler::handle_input() {
 		_rh = Router::route(req, _server);
 		_response = _rh->buildResponse();
 
+		// debugger
 		std::cout << "[client " << _peerAddr << "] "
 		          << req.method << " " << req.uri << "\n";
 
@@ -83,8 +81,14 @@ int ClientHandler::handle_input() {
 		return 0;
 	}
 
-	if (_parser.getState() == HttpParser::ERROR)
-		return -1;
+	if (_parser.getState() == HttpParser::ERROR) {
+		HttpRequest req = _parser.getReq();		// contient req.error
+		_keepAlive = false;
+		_rh = Router::route(req, _server);
+		_response = _rh->buildResponse();
+		EventLoop::instance()->modify_handler(this, WRITE_EVENT);
+		return 0;
+	}
 
 	return 0; // parser accumule, pas encore complet
 }
