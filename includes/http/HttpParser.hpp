@@ -14,7 +14,7 @@ class HttpParser {
 		enum State {
 			R_HEADERS,
 			R_BODY,
-			R_CHUNCKED,
+			R_CHUNKED,
 			COMPLETE,
 			ERROR
 		};
@@ -28,6 +28,7 @@ class HttpParser {
 		void		checkFirstLine();
 		void		runParsing(std::string& buffer, size_t n);
 		void		headerParser();
+		void		readChunked();
 		void		reset();
 
 	private:
