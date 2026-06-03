@@ -6,15 +6,17 @@
 #include "../http/IRequestHandler.hpp"
 #include <string>
 #include <netinet/in.h>
+#include <ctime>
 
 class ClientHandler : public IEventHandler {
 	public:
 		ClientHandler(int clientFd, const Server& server, const struct sockaddr_in& peerAddr);
 		~ClientHandler();
 
-		int getFd() const;
-		int handle_input();
-		int handle_output();
+		int		getFd()				const;
+		int		handle_input();
+		int		handle_output();
+		time_t	getLastActivity()	const;
 
 	private:
 		int					_fd;
@@ -25,7 +27,8 @@ class ClientHandler : public IEventHandler {
 		std::string			_response;  // cached once per request, avoids re-building on each send
 		std::string			_peerAddr;  // "ip:port" — used for logs and CGI REMOTE_ADDR
 
-		bool				_keepAlive; // false → close after send
+		bool				_keepAlive;   // false → close after send
+		time_t				_lastActivity;
 
 		void				_reset();   // resets per-request state for keep-alive
 		std::string			_buildPeerStr(const struct sockaddr_in& addr) const;

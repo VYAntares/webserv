@@ -4,6 +4,10 @@
 #include <sys/epoll.h>
 #include <errno.h>
 #include <signal.h>
+#include <ctime>
+#include <vector>
+
+static const int CLIENT_TIMEOUT = 30; // secondes
 
 // Drapeau d'arrêt levé par le signal handler.
 // volatile : force la relecture depuis la mémoire à chaque tour (pas de cache registre).
@@ -128,7 +132,7 @@ void EventLoop::handle_events() {
 			IEventHandler* h	= entry->handler;
 
 			int ret = 0;
-			if (entry->type == ACCEPT_EVENT) 
+			if (entry->type == ACCEPT_EVENT)
 				ret = h->handle_accept();
 			else if (entry->type == READ_EVENT)
 				ret = h->handle_input();
@@ -140,6 +144,29 @@ void EventLoop::handle_events() {
 				delete h;
 			}
 		}
+		checkTimeOut();
+	}
+}
+
+// Collecte les handlers inactifs depuis plus de CLIENT_TIMEOUT secondes.
+// On collecte d'abord dans un vecteur separé car remove_handler() appelle
+// _table.erase(), ce qui invaliderait les index si on supprimait en plein scan.
+// getLastActivity() retourne 0 pour ServerHandler → jamais timedout.
+void EventLoop::checkTimeOut() {
+	time_t now = time(NULL);
+	
+	std::vector<IEventHandler*> timedOut;
+	for (size_t i = 0; i < _table.size(); i++) {
+		time_t last = _table[i]->handler->getLastActivity();
+		if (last != 0 && (now - last) > CLIENT_TIMEOUT)
+			timedOut.push_back(_table[i]->handler);
+	}
+
+	for (size_t i = 0; i < timedOut.size(); i++) {
+		std::cout << "[timeout] fd=" << timedOut[i]->getFd() << " closed after "
+		          << CLIENT_TIMEOUT << "s of inactivity\n";
+		remove_handler(timedOut[i]);
+		delete timedOut[i];
 	}
 }
 

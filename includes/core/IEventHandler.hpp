@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <ctime>
 
 // --- EventType ---
 // Les valeurs sont des puissances de 2 écrites en octal (préfixe 0).
@@ -45,11 +46,12 @@ enum EventType {
 // EventLoop ne change jamais.
 class IEventHandler {
 	public:
-		virtual int getFd()	const = 0;
-		virtual int handle_accept()	{ return 0; }	// AcceptHandler.hpp
-		virtual int handle_input()	{ return 0; }	// ClientHandler.hpp, CGIReadHandler.hpp
-		virtual int handle_output()	{ return 0; }	// ClientHandler.hpp, CGIWriteHandler.hpp
-		virtual int handle_close()	{ return 0; }
-		virtual	~IEventHandler() {}
+		virtual int		getFd()				const = 0;
+		virtual int		handle_accept()		{ return 0; }
+		virtual int		handle_input()		{ return 0; }
+		virtual int		handle_output()		{ return 0; }
+		virtual int		handle_close()		{ return 0; }
+		virtual time_t	getLastActivity()	const { return 0; }
+		virtual			~IEventHandler() {}
 };
 

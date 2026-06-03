@@ -36,6 +36,7 @@ class EventLoop {
 		void modify_handler(IEventHandler* h, EventType newType);
 		void remove_handler(IEventHandler* h);
 		void handle_events();
+		void checkTimeOut();
 
 	private:
 		EventLoop();
