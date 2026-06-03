@@ -29,4 +29,6 @@ class ClientHandler : public IEventHandler {
 
 		void				_reset();   // resets per-request state for keep-alive
 		std::string			_buildPeerStr(const struct sockaddr_in& addr) const;
+		void				_handleComplete();
+		void				_handleError();
 };
