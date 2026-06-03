@@ -45,6 +45,7 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 }
 
 void HttpParser::setError(int errorCode) {
+	std::cout << "setting error" << errorCode << std::endl;
 	_req.error = errorCode; 
 	_errorCode = errorCode;
 	if (_state != R_CHUNKED)
@@ -113,17 +114,17 @@ void HttpParser::readChunked() {
 		size_t size = std::strtol(sizeStr.c_str(), &end, 16);
 
 		if (end == sizeStr.c_str())
-			return setError(400);
+			setError(400);
 
 		while(*end == ' ' || *end == '\t')
 			(*end)++;
 
 		if (*end != '\0')
-			return setError(400);
+			setError(400);
 
 		_bodyReceived += size;
 		if (_bodyReceived > _maxBodySize)
-			return setError(413);
+			setError(413);
 
 		if (size == 0) {
 			if (_errorCode == 413 || _errorCode == 400)
@@ -137,10 +138,9 @@ void HttpParser::readChunked() {
 		if (_buffer.size() < needed)
     		return;
 
-		if (_errorCode != 413 && _errorCode != 400) {
+		if (_errorCode != 413 && _errorCode != 400)
 			_body.append(_buffer, pos + 2, size);
-			_buffer.erase(0, needed);			
-		}
+		_buffer.erase(0, needed);
 	}
 }
 
