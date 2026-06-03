@@ -134,10 +134,12 @@ void EventLoop::handle_events() {
 			int ret = 0;
 			if (entry->type == ACCEPT_EVENT)
 				ret = h->handle_accept();
-			else if (entry->type == READ_EVENT)
-				ret = h->handle_input();
-			else if (entry->type == WRITE_EVENT)
-				ret = h->handle_output();
+			else {
+				if (events[i].events & EPOLLIN)
+					ret = h->handle_input();
+				if (ret != -1 && events[i].events & EPOLLOUT)
+					ret = h->handle_output();
+			}
 
 			if (ret == -1) {
 				remove_handler(h);
