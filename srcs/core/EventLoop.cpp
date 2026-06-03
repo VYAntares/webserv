@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <ctime>
-#include <vector>
+#include <map>
 
 static const int CLIENT_TIMEOUT = 30; // secondes
 
@@ -62,7 +62,7 @@ void EventLoop::register_handler(IEventHandler* h, EventType type) {
 	HandlerEntry* entry	= new HandlerEntry();
 	entry->handler		= h;
 	entry->type			= type;
-	_table.push_back(entry);
+	_table[h]			= entry;
 
 	struct epoll_event ev;
 	ev.events	= to_epoll_flags(type);
@@ -74,20 +74,15 @@ void EventLoop::register_handler(IEventHandler* h, EventType type) {
 // Cherche l'entrée dans la table, met à jour son type, puis recalcule les flags
 // et appelle EPOLL_CTL_MOD pour que epoll surveille le nouveau masque.
 void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
-	HandlerEntry* entry = NULL;
-	for (size_t i = 0; i < _table.size(); i++) {
-		if (_table[i]->handler == h) {
-			_table[i]->type = newType;
-			entry = _table[i];
-			break;
-		}
-	}
-	if (!entry)
+	std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.find(h);
+	if (it == _table.end())
 		return;
+
+	it->second->type = newType;
 
 	struct epoll_event ev;
 	ev.events	= to_epoll_flags(newType);
-	ev.data.ptr	= entry;
+	ev.data.ptr	= it->second;
 	epoll_ctl(_epfd, EPOLL_CTL_MOD, h->getFd(), &ev);
 }
 
@@ -98,12 +93,10 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 void EventLoop::remove_handler(IEventHandler* h) {
 	epoll_ctl(_epfd, EPOLL_CTL_DEL, h->getFd(), NULL);
 
-	for (size_t i = 0; i < _table.size(); i++) {
-		if (_table[i]->handler == h) {
-			delete _table[i];
-			_table.erase(_table.begin() + i);
-			break;
-		}
+	std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.find(h);
+	if (it != _table.end()) {
+		delete it->second;
+		_table.erase(it);
 	}
 }
 
@@ -156,12 +149,13 @@ void EventLoop::handle_events() {
 // getLastActivity() retourne 0 pour ServerHandler → jamais timedout.
 void EventLoop::checkTimeOut() {
 	time_t now = time(NULL);
-	
+
 	std::vector<IEventHandler*> timedOut;
-	for (size_t i = 0; i < _table.size(); i++) {
-		time_t last = _table[i]->handler->getLastActivity();
+	for (std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.begin();
+			it != _table.end(); ++it) {
+		time_t last = it->first->getLastActivity();
 		if (last != 0 && (now - last) > CLIENT_TIMEOUT)
-			timedOut.push_back(_table[i]->handler);
+			timedOut.push_back(it->first);
 	}
 
 	for (size_t i = 0; i < timedOut.size(); i++) {
@@ -175,9 +169,10 @@ void EventLoop::checkTimeOut() {
 void EventLoop::destroy() { delete _instance; }
 
 EventLoop::~EventLoop() {
-	for (size_t i = 0; i < _table.size(); i++) {
-		delete _table[i]->handler;
-		delete _table[i];
+	for (std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.begin();
+			it != _table.end(); ++it) {
+		delete it->first;
+		delete it->second;
 	}
 	_instance = NULL;
 }

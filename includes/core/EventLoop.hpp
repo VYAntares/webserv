@@ -2,7 +2,7 @@
 
 #include "../config/ConfigStruct.hpp"
 #include "IEventHandler.hpp"
-#include <vector>
+#include <map>
 #include <sys/epoll.h>
 
 #define MAX_EVENTS 128
@@ -49,7 +49,7 @@ class EventLoop {
 		// Liste de tous les HandlerEntry* enregistrés. EventLoop en est propriétaire :
 		// les entries sont détruits dans remove_handler et dans le destructeur.
 		// Les handlers eux-mêmes sont détruits par handle_events quand ils retournent -1.
-		std::vector<HandlerEntry*>	_table;
+		std::map<IEventHandler*, HandlerEntry*>	_table;
 
 		//   _instance est un pointeur statique initialisé à NULL.
 		//   instance() le crée au premier appel (lazy initialization), puis retourne
