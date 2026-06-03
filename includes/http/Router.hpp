@@ -17,7 +17,7 @@ class Router {
         static bool 			        methodImplemented(const std::string& method);
         static int                fileFound(const std::string& uri, const std::string& method);
         static int                forbiddenAccess(const std::string& uri, const std::string& method);
-        // static const std::string  resolvePath(const Location *loc, const std::string& uri);
-
+        static const std::string  resolvePath(const Location *loc, const std::string& uri);
+        static int 			          methodAllowed(const std::string& method, const Location *loc);
 };
 
