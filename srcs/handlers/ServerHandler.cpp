@@ -69,8 +69,10 @@ int ServerHandler::createSocket() {
 		throw std::runtime_error("socket() failed:" + std::string(strerror(errno)));
 
 	int opt = 1;
-	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1)
+   		throw std::runtime_error("setsockopt() failed: " + std::string(strerror(errno)));
+	if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) == -1)
+		throw std::runtime_error("fcntl() failed: " + std::string(strerror(errno)));
 
 	return fd;
 }
