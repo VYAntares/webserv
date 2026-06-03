@@ -11,6 +11,7 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 	(void)n;
 	_req.error = 200;
     _buffer += buffer;
+
     if (_state == R_HEADERS) {
         size_t pos = _buffer.find("\r\n\r\n");
         if (pos == std::string::npos) 
@@ -21,7 +22,8 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
         headerParser();
 		if (_state == ERROR)
 			return;
-        _state = (_bodyExcepted > 0) ? R_BODY : COMPLETE;
+		if (_state != R_CHUNKED)
+        	_state = (_bodyExcepted > 0) ? R_BODY : COMPLETE;
     }
 
 	if (_state == R_BODY) {
@@ -36,12 +38,18 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 			_state = COMPLETE;
 		}
 	}
+	if (_state == R_CHUNKED)
+		readChunked();
+	if (_state == ERROR)
+		return;
 }
 
 void HttpParser::setError(int errorCode) {
+	std::cout << "setting error" << errorCode << std::endl;
 	_req.error = errorCode; 
 	_errorCode = errorCode;
-	_state = ERROR;
+	if (_state != R_CHUNKED)
+		_state = ERROR;
 }
 
 void HttpParser::checkFirstLine() {
@@ -85,10 +93,55 @@ void HttpParser::headerParser() {
 				return setError(400);
 			_bodyExcepted = strtoull(cl.c_str(), NULL, 10);
 		}
+		if (it->second == "chunked")
+			_state = R_CHUNKED;
 	}
 
 	if (_bodyExcepted > _maxBodySize)
 		return setError(413);
+}
+
+void HttpParser::readChunked() {
+	while (true) {
+
+		size_t pos = _buffer.find("\r\n");
+		if (pos == std::string::npos)
+			return ;
+
+		std::string sizeStr = _buffer.substr(0, pos);
+
+		char* end = NULL;
+		size_t size = std::strtol(sizeStr.c_str(), &end, 16);
+
+		if (end == sizeStr.c_str())
+			setError(400);
+
+		while(*end == ' ' || *end == '\t')
+			(*end)++;
+
+		if (*end != '\0')
+			setError(400);
+
+		_bodyReceived += size;
+		if (_bodyReceived > _maxBodySize)
+			setError(413);
+
+		if (size == 0) {
+			if (_errorCode == 413 || _errorCode == 400)
+				_state = ERROR;
+			else
+				_state = COMPLETE;
+            _req.body = _body;
+            return;
+		}
+		size_t needed = pos + 2 + size + 2;
+		if (_buffer.size() < needed)
+    		return;
+
+		if (_errorCode != 413 && _errorCode != 400)
+			_body.append(_buffer, pos + 2, size);
+		_buffer.erase(0, needed);
+	}
 }
 
 HttpParser::State	HttpParser::getState() {
@@ -102,9 +155,6 @@ HttpRequest	HttpParser::getReq() {
 void HttpParser::reset() {
 	_errorCode = 0;
 	_state = R_HEADERS;
-	// _buffer.clear();
-	// _body.clear();
-	// _header.clear();
 	_bodyExcepted = 0;
 	_bodyReceived = 0;
 }

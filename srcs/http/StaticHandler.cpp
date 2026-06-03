@@ -82,6 +82,7 @@ void	StaticHandler::handleGet() {
 
 void	StaticHandler::handlePost() {
 	std::cout << "handle post" << std::endl;
+	std::cout << _req->body << std::endl;
 }
 
 void	StaticHandler::handleDelete() {
