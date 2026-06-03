@@ -44,7 +44,7 @@ class EventLoop {
 
 		// fd de l'instance epoll unique, créée dans le constructeur via epoll_create1.
 		// Tous les fds du serveur (sockets, pipes CGI) sont surveillés via ce seul epfd.
-		int							_epfd;
+		int										_epfd;
 
 		// Liste de tous les HandlerEntry* enregistrés. EventLoop en est propriétaire :
 		// les entries sont détruits dans remove_handler et dans le destructeur.
@@ -55,6 +55,6 @@ class EventLoop {
 		//   instance() le crée au premier appel (lazy initialization), puis retourne
 		//   toujours le même objet. Le ctor/dtor sont privés : impossible de créer
 		//   ou détruire EventLoop depuis l'extérieur.
-		static EventLoop* 			_instance;
+		static EventLoop* 						_instance;
 };
 

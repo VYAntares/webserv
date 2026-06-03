@@ -123,8 +123,14 @@ void EventLoop::handle_events() {
 		for (int i = 0; i < n; i++) {
 			HandlerEntry* entry	= static_cast<HandlerEntry*>(events[i].data.ptr);
 			IEventHandler* h	= entry->handler;
-
 			int ret = 0;
+			
+			if (events[i].events & (EPOLLHUP | EPOLLERR | EPOLLRDHUP)) {
+				remove_handler(h);
+				delete h;
+				continue;
+			}
+
 			if (entry->type == ACCEPT_EVENT)
 				ret = h->handle_accept();
 			else {
