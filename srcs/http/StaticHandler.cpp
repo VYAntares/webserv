@@ -2,12 +2,12 @@
 #include <sstream>
 #include <fstream>
 
-std::map<std::string, std::string> mime_types = init_mime_types();
+static std::map<std::string, std::string> mime_types = init_mime_types();
 
 StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _type(""), _path(path) {
 	_ncode = 200;
 
-	if (!loc.return_path.first || !loc.return_path.second.empty()) {
+	if (loc.return_path.first != -1 || !loc.return_path.second.empty()) {
 		handleReturn();
 		return ;
 	}
@@ -42,12 +42,17 @@ std::string	StaticHandler::getReason() {
 
 std::string StaticHandler::buildResponse() {
 	std::ostringstream oss;
-	oss << "HTTP/1.1 " << _ncode << " " << getReason() << "\r\n"
-		<< "Content-Type: " << _type << "\r\n"
+	oss << "HTTP/1.1 " << _ncode << " " << getReason() << "\r\n";
+
+	if ((_ncode >= 300 && _ncode < 400 ) && !_location.empty())
+		oss << "Location: " << _location << "\r\n";
+
+	oss	<< "Content-Type: " << _type << "\r\n"
 		<< "Content-Length: " << _body.size() << "\r\n"
 		<< "Connection: close\r\n"
 		<< "\r\n"
 		<< _body;
+
 	return oss.str();
 }
 
@@ -92,5 +97,10 @@ void	StaticHandler::handleDelete() {
 void    StaticHandler::handleReturn() {
     _ncode = _loc->return_path.first;
     _type = getType(".html");
-    _body = "<html><body><h1>Redirecting to " + _loc->return_path.second + "</html></body></h1>";
+	if (!_loc->return_path.second.empty()) {
+		_body = "<html><body><h1>Redirecting to " + _loc->return_path.second + "</html></body></h1>";
+		_location = _loc->return_path.second;
+	}
+	else
+		_body = "<html><body><h1>Redirecting</html></body></h1>";
 }

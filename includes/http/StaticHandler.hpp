@@ -27,5 +27,6 @@ class StaticHandler : public IRequestHandler {
 		std::string			_type;
 		std::string			_body;
 		std::string			_path;
+		std::string			_location;
 };
 

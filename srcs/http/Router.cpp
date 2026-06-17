@@ -9,30 +9,30 @@
 
 IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (req.error != 200)
-		return new ErrorHandler(req.error);
+		return new ErrorHandler(server, req.error);
 
     const Location *loc = bestRouteFound(req.uri, server);
     if (!loc)
-        return new ErrorHandler(loc, 404);
+        return new ErrorHandler(server, 404);
 
     std::string path = resolvePath(loc, req.uri);
     if (path.empty())
-        return new ErrorHandler(loc, 403);
+        return new ErrorHandler(*loc, 403);
 
     if (!methodImplemented(req.method))
-        return new ErrorHandler(loc, 501);
+        return new ErrorHandler(*loc, 501);
 
     if (!fileFound(path, req.method))
-        return new ErrorHandler(loc, 404);
+        return new ErrorHandler(*loc, 404);
 
     if (forbiddenAccess(path, req.method))
-        return new ErrorHandler(403);
+        return new ErrorHandler(*loc, 403);
 
     if (!methodAllowed(req.method, loc))
-        return new ErrorHandler(405);
+        return new ErrorHandler(*loc, 405);
 
 	//if (isCgi())
-    
+
     return new StaticHandler(req, *loc, path);
 }
 
@@ -43,11 +43,12 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
         if (!loc->index.empty())
             newpath = path + loc->index;
         else {
-            if (loc->autoindex == 1)
-                // regarder comment on renvoie la liste
-                std::cout << "throw list" << std::endl;
-            else
-                return "";
+            return "";
+            // if (loc->autoindex != 1)
+            //     return "";//     // regarder comment on renvoie la liste
+            //     std::cout << "throw list" << std::endl;
+            // else
+                
         }
     }
     return newpath;
@@ -81,7 +82,7 @@ const Location* Router::bestRouteFound(const std::string& uri, const Server& ser
     int len = -1;
     if (uri[0] != '/')
         return NULL;
-    while (shorturi.length() != 0) {
+    while (true) {
         for (size_t i = 0; i < server.locations.size(); i++) {
             if (server.locations[i].path.find(shorturi) == 0 && 
                 server.locations[i].path == shorturi && 
@@ -92,8 +93,14 @@ const Location* Router::bestRouteFound(const std::string& uri, const Server& ser
         }
         if (len != -1)
             break;
+
+        if (shorturi.empty())
+            break;
+
         size_t i = shorturi.rfind('/');
         shorturi.erase(i);
+        if (shorturi.empty())
+            shorturi = "/";
     }
     return loc;
 }
