@@ -16,8 +16,10 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
         return new ErrorHandler(server, 404);
 
     std::string path = resolvePath(loc, req.uri);
-    if (path.empty())
+    if (path.empty() && loc->autoindex == 0)
         return new ErrorHandler(*loc, 403);
+    else if (path.empty() && loc->autoindex == 1)
+        return new StaticHandler(req, *loc, "");
 
     if (!methodImplemented(req.method))
         return new ErrorHandler(*loc, 501);
@@ -42,14 +44,8 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
     if (path[path.length() - 1] == '/') {
         if (!loc->index.empty())
             newpath = path + loc->index;
-        else {
+        else
             return "";
-            // if (loc->autoindex != 1)
-            //     return "";//     // regarder comment on renvoie la liste
-            //     std::cout << "throw list" << std::endl;
-            // else
-                
-        }
     }
     return newpath;
 }

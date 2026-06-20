@@ -19,6 +19,8 @@ class StaticHandler : public IRequestHandler {
 		void		handlePost();
 		void		handleDelete();
 		void		handleReturn();
+		void		throwList();
+		void		headerListe(std::string& path);
 
 	private:
 		const HttpRequest*	_req;
@@ -30,3 +32,4 @@ class StaticHandler : public IRequestHandler {
 		std::string			_location;
 };
 
+bool isDir(const std::string& path);

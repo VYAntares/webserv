@@ -1,11 +1,18 @@
 #include "../../includes/http/StaticHandler.hpp"
 #include <sstream>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <fstream>
 
 static std::map<std::string, std::string> mime_types = init_mime_types();
 
 StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _type(""), _path(path) {
 	_ncode = 200;
+
+	if (path.empty()) {
+		throwList();
+		return ;
+	}
 
 	if (loc.return_path.first != -1 || !loc.return_path.second.empty()) {
 		handleReturn();
@@ -103,4 +110,52 @@ void    StaticHandler::handleReturn() {
 	}
 	else
 		_body = "<html><body><h1>Redirecting</html></body></h1>";
+}
+
+void	StaticHandler::throwList() {
+	std::string path = _loc->root + _req->uri;
+	std::string html;
+	DIR* dir = opendir(path.c_str());
+	if (!dir)
+		return ;
+	headerListe(path);
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL) {
+		std::string listing = entry->d_name;
+		if (listing == "." || listing == "..")
+			continue ;
+		if (isDir(path + listing))
+			html += "<li><a class=\"directory\" href=\"" + listing + "/\">" + listing + "</a><br>\n";
+		else
+			html += "<li><a class=\"file\" href=\"" + listing + "\">" + listing + "</a><br>\n";
+	}
+	closedir(dir);
+	if (html.empty())
+		_body += "<html><body>Empty directory";
+	else
+		_body += html + "</ul>\n";
+	html += "</body>\n</html>\n";
+	_type = getType(".html");
+}
+
+bool isDir(const std::string& path) {
+	struct stat st;
+
+	if (stat(path.c_str(), &st) == -1)
+		return false;
+	return S_ISDIR(st.st_mode);
+}
+
+void StaticHandler::headerListe(std::string& path) {
+
+	_body += "<!DOCTYPE html>\n";
+	_body += "<html>\n";
+	_body += "<head>\n";
+	_body += "<link rel=\"stylesheet\" href=\"/css/style.css\">";
+	_body += "<title>Index of " + path + "</title>\n";
+	_body += "<link rel=\"stylesheet\" href=\"/style.css\">\n";
+	_body += "</head>\n";
+	_body += "<body>\n";
+	_body += "<h1>Index of " + path + "</h1>\n";
+	_body += "<ul>\n";
 }
