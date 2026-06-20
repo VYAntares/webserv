@@ -21,3 +21,4 @@ class Router {
         static int 			          methodAllowed(const std::string& method, const Location *loc);
 };
 
+std::string getParentDirectory(const std::string& path);

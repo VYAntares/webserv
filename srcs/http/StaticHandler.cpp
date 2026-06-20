@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <fstream>
+#include <unistd.h> 
 
 static std::map<std::string, std::string> mime_types = init_mime_types();
 
@@ -23,6 +24,7 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 		handleGet();
 	else if (req.method == "POST")
 		handlePost();
+		
 	else if (req.method == "DELETE")
 		handleDelete();
 }
@@ -54,8 +56,10 @@ std::string StaticHandler::buildResponse() {
 	if ((_ncode >= 300 && _ncode < 400 ) && !_location.empty())
 		oss << "Location: " << _location << "\r\n";
 
-	oss	<< "Content-Type: " << _type << "\r\n"
-		<< "Content-Length: " << _body.size() << "\r\n"
+	if (!_type.empty())
+		oss	<< "Content-Type: " << _type << "\r\n";
+
+	oss << "Content-Length: " << _body.size() << "\r\n"
 		<< "Connection: close\r\n"
 		<< "\r\n"
 		<< _body;
@@ -93,12 +97,23 @@ void	StaticHandler::handleGet() {
 }
 
 void	StaticHandler::handlePost() {
-	std::cout << "handle post" << std::endl;
-	std::cout << _req->body << std::endl;
+	bool exist = fileFound(_path);
+
+	std::ofstream file(_path.c_str());
+
+	file << _req->body;
+
+	if (!exist)
+		_ncode = 201;
 }
 
 void	StaticHandler::handleDelete() {
-	std::cout << "handle delete" << std::endl;
+	int res = unlink(_path.c_str());
+
+	if (res == -1)
+		_ncode = 404;
+	else
+		_ncode = 204;
 }
 
 void    StaticHandler::handleReturn() {
@@ -146,7 +161,7 @@ bool isDir(const std::string& path) {
 	return S_ISDIR(st.st_mode);
 }
 
-void StaticHandler::headerListe(std::string& path) {
+void StaticHandler::headerListe(const std::string& path) {
 
 	_body += "<!DOCTYPE html>\n";
 	_body += "<html>\n";
@@ -158,4 +173,12 @@ void StaticHandler::headerListe(std::string& path) {
 	_body += "<body>\n";
 	_body += "<h1>Index of " + path + "</h1>\n";
 	_body += "<ul>\n";
+}
+
+bool	fileFound(const std::string& path) {
+	struct stat forbuf;
+
+	if (stat(path.c_str(), &forbuf) == -1)
+		return false;
+	return true;
 }

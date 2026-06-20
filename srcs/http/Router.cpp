@@ -61,13 +61,16 @@ int Router::fileFound(const std::string& path, const std::string& method) {
 }
 
 int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
-    int mode = 0; 
+    int mode = 0;
+    std::string pathtoaccess = uri;
 
-    if (method == "DELETE" || method == "POST")
+    if (method == "DELETE")
         mode = W_OK;
     else if (method == "GET")
         mode = R_OK;
-    if (access(uri.c_str(), mode) == -1)
+    else if (method == "POST")
+        pathtoaccess = getParentDirectory(uri);
+    if (access(pathtoaccess.c_str(), mode) == -1)
         return 1;
     return 0;
 }
@@ -112,4 +115,13 @@ int Router::methodAllowed(const std::string& method, const Location *loc) {
         if (method == loc->allowed_methods[i])
             return 1;
     return 0;
+}
+
+std::string getParentDirectory(const std::string& path) {
+    size_t pos = path.rfind('/');
+    if (pos == std::string::npos)
+        return path;
+    if (pos == 0)
+        return "/";
+    return path.substr(0, pos);
 }
