@@ -1,20 +1,18 @@
 #pragma once
 
-#include "IRequestHandler.hpp"
 #include "../config/ConfigStruct.hpp"
-#include "../utils/vectors.hpp"
-#include <string>
+#include "IRequestHandler.hpp"
+#include "../utils/utils.hpp"
 #include <iostream>
+#include <fstream>
 #include <sstream>
 
 class ErrorHandler : public IRequestHandler {
 	public:
 		ErrorHandler(const Server& server, int code);
 		ErrorHandler(const Location& loc, int code);
-		~ErrorHandler();
+		~ErrorHandler() {};
 		std::string	buildResponse();
-		std::string	getReason();
-		std::string	getType(const std::string& path);
 		void		getErrorPage();
 		void 		handleReturn(const std::pair<int, str>& return_path);
 	

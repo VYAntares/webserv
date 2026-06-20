@@ -1,7 +1,4 @@
 #include "../../includes/http/HttpParser.hpp"
-#include <sstream>
-#include <string>
-#include <cstdlib>
 
 HttpParser::HttpParser(size_t maxBodyClient) : _errorCode(0), _state(R_HEADERS), _bodyExcepted(0), _bodyReceived(0), _maxBodySize(maxBodyClient) {}
 

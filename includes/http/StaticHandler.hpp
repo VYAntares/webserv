@@ -1,20 +1,18 @@
 #pragma once
 
-#include "IRequestHandler.hpp"
-#include "HttpRequest.hpp"
 #include "../config/ConfigStruct.hpp"
-#include "../utils/vectors.hpp"
-#include <string>
+#include "IRequestHandler.hpp"
+#include "../utils/utils.hpp"
+#include "HttpRequest.hpp"
+#include <unistd.h> 
 #include <iostream>
-#include <map>
+#include <fstream>
 
 class StaticHandler : public IRequestHandler {
 	public:
 		StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path);
-		~StaticHandler();
+		~StaticHandler() {};
 		std::string buildResponse();
-		std::string	getReason();
-		std::string	getType(const std::string& path);
 		void		handleGet();
 		void		handlePost();
 		void		handleDelete();
@@ -31,6 +29,3 @@ class StaticHandler : public IRequestHandler {
 		std::string			_path;
 		std::string			_location;
 };
-
-bool isDir(const std::string& path);
-bool fileFound(const std::string& path);

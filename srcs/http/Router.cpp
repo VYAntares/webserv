@@ -1,11 +1,4 @@
 #include "../../includes/http/Router.hpp"
-#include "../../includes/http/CGIHandler.hpp"
-#include "../../includes/http/StaticHandler.hpp"
-#include "../../includes/http/ErrorHandler.hpp"
-#include <unistd.h>
-#include <cstring>
-#include <sys/stat.h>
-#include <cstdio>
 
 IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (req.error != 200)
@@ -24,7 +17,7 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (!methodImplemented(req.method))
         return new ErrorHandler(*loc, 501);
 
-    if (!fileFound(path, req.method))
+    if (!fileExist(path, req.method))
         return new ErrorHandler(*loc, 404);
 
     if (forbiddenAccess(path, req.method))
@@ -50,12 +43,9 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
     return newpath;
 }
 
-int Router::fileFound(const std::string& path, const std::string& method) {
-    struct stat forbuf;
-    
-    if (method == "POST")
-        return 1;
-    if (stat(path.c_str(), &forbuf) == -1)
+int Router::fileExist(const std::string& path, const std::string& method) {
+
+    if (fileFound(path) == false && method != "POST")
         return 0;
     return 1;
 }
@@ -115,13 +105,4 @@ int Router::methodAllowed(const std::string& method, const Location *loc) {
         if (method == loc->allowed_methods[i])
             return 1;
     return 0;
-}
-
-std::string getParentDirectory(const std::string& path) {
-    size_t pos = path.rfind('/');
-    if (pos == std::string::npos)
-        return path;
-    if (pos == 0)
-        return "/";
-    return path.substr(0, pos);
 }

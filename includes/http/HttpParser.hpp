@@ -8,6 +8,8 @@
 
 #include "HttpRequest.hpp"
 #include <iostream>
+#include <sstream>
+#include <cstdlib>
 
 class HttpParser {
 	public:
