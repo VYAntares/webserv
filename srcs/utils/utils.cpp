@@ -91,3 +91,43 @@ std::string getParentDirectory(const std::string& path) {
         return "/";
     return path.substr(0, pos);
 }
+
+static int hexaToStr(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    else if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    else if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    return -1;
+}
+
+std::string decodeHexa(const std::string& uri, bool plus) {
+    std::string newuri;
+
+    for (size_t i = 0; i < uri.length(); i++) {
+
+        if (plus == 1 && uri[i] == '+')
+            newuri += ' ';
+        else if (uri[i] == '%' && i + 2 < uri.length()) {
+            int first = hexaToStr(uri[i + 1]);
+            int second = hexaToStr(uri[i + 2]);
+            if (first != -1 && second != -1) {
+                newuri += static_cast<char>(first * 16 + second);
+                i += 2;
+            } else {
+                newuri += uri[i];
+            }
+        } else
+            newuri += uri[i];
+    }
+    std::cout << "newu" << newuri << std::endl;
+    return newuri;
+}
+
+bool isEncoded(const std::string& uri) {
+    size_t pos = uri.find('%');
+    if (pos != std::string::npos)
+        return true;
+    return false;
+}

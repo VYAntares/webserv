@@ -55,11 +55,17 @@ void	StaticHandler::handleGet() {
 }
 
 void	StaticHandler::handlePost() {
-	bool exist = fileFound(_path);
+	std::ofstream	file(_path.c_str());
+	std::string 	body = _req->body;
+	bool			exist = fileFound(_path);
 
-	std::ofstream file(_path.c_str());
+	size_t pos = _req->body.find('+');
+	size_t pos2 = _req->body.find('%');
 
-	file << _req->body;
+	if (pos != std::string::npos || pos2 != std::string::npos)
+		body = decodeHexa(_req->body, 1);
+	
+	file << body;
 
 	if (!exist)
 		_ncode = 201;

@@ -1,4 +1,5 @@
 #include "../../includes/http/HttpParser.hpp"
+#include "../../includes/utils/utils.hpp"
 
 HttpParser::HttpParser(size_t maxBodyClient) : _errorCode(0), _state(R_HEADERS), _bodyExcepted(0), _bodyReceived(0), _maxBodySize(maxBodyClient) {}
 
@@ -42,7 +43,6 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 }
 
 void HttpParser::setError(int errorCode) {
-	std::cout << "setting error" << errorCode << std::endl;
 	_req.error = errorCode; 
 	_errorCode = errorCode;
 	if (_state != R_CHUNKED)
@@ -55,6 +55,9 @@ void HttpParser::checkFirstLine() {
 
 	if (_req.uri.empty() || _req.uri[0] != '/') 
 		return setError(400);
+
+	if (isEncoded(_req.uri))
+		_req.uri = decodeHexa(_req.uri, 0);
 
 	if (_req.version != "HTTP/1.1" && _req.version != "HTTP/1.0") 
 		return setError(400);
