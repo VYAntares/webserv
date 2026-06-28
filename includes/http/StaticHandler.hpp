@@ -20,6 +20,8 @@ class StaticHandler : public IRequestHandler {
 		void		throwList();
 		void		headerListe(const std::string& path);
 
+		bool		isMultipart();
+
 	private:
 		const HttpRequest*	_req;
 		const Location*		_loc;

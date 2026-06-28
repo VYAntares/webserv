@@ -26,11 +26,14 @@ class HttpParser {
 
 		enum State	getState();
 		HttpRequest	getReq();
+
+		void		runParsing(std::string& buffer, size_t n);
+		void		setBoundary(const std::string& boundary);
 		void		setError(int errorCode);
 		void		checkFirstLine();
-		void		runParsing(std::string& buffer, size_t n);
 		void		headerParser();
 		void		readChunked();
+		void 		getMp();
 		void		reset();
 
 	private:

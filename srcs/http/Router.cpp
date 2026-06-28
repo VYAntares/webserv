@@ -26,7 +26,11 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (!methodAllowed(req.method, loc))
         return new ErrorHandler(*loc, 405);
 
+    // if (req.method == "POST" && req.mp.isMultipart == true)
+    //     return new MultipartHandler();
+
 	//if (isCgi())
+        // return new CGIHandler();
 
     return new StaticHandler(req, *loc, path);
 }

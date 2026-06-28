@@ -1,3 +1,4 @@
+#include "../../includes/http/MultipartParser.hpp"
 #include "../../includes/http/HttpParser.hpp"
 #include "../../includes/utils/utils.hpp"
 
@@ -11,6 +12,7 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
     _buffer += buffer;
 
     if (_state == R_HEADERS) {
+		_req.isMultipart = false;
         size_t pos = _buffer.find("\r\n\r\n");
         if (pos == std::string::npos) 
             return ;
@@ -33,6 +35,8 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 		else if (_bodyReceived == _bodyExcepted) {
 			_req.error = 200;
 			_req.body = _body;
+			if (_req.isMultipart == true)
+				getMp();
 			_state = COMPLETE;
 		}
 	}
@@ -47,6 +51,11 @@ void HttpParser::setError(int errorCode) {
 	_errorCode = errorCode;
 	if (_state != R_CHUNKED)
 		_state = ERROR;
+}
+
+void HttpParser::getMp() {
+	MultipartParser mp(_req.boundary, _req.body);
+	_req.mp = mp.parsePart();
 }
 
 void HttpParser::checkFirstLine() {
@@ -95,10 +104,23 @@ void HttpParser::headerParser() {
 		}
 		if (it->second == "chunked")
 			_state = R_CHUNKED;
+		if (it->second.find("multipart/form-data") != std::string::npos)
+			setBoundary(it->second);
 	}
 
 	if (_bodyExcepted > _maxBodySize)
 		return setError(413);
+}
+
+void HttpParser::setBoundary(const std::string& boundary) {
+	size_t pos = boundary.find("boundary=");
+
+	if (pos != std::string::npos) {
+		for (size_t i = pos + 9; i < boundary.length(); i++)
+			_req.boundary += boundary[i];
+	}
+
+	_req.isMultipart = true;
 }
 
 void HttpParser::readChunked() {
