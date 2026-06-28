@@ -131,3 +131,9 @@ bool isEncoded(const std::string& uri) {
         return true;
     return false;
 }
+
+bool    isError(int code) {
+    if (code >= 400 && code < 600)
+        return true;
+    return false;
+}

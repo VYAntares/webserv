@@ -1,15 +1,20 @@
 #include "../../includes/http/StaticHandler.hpp"
 
-StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _type(""), _path(path) {
+StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _path(path) {
 	_ncode = 200;
+	_type = "";
 
 	if (path.empty()) {
 		throwList();
 		return ;
 	}
 
-	if (loc.return_path.first != -1 || !loc.return_path.second.empty()) {
-		handleReturn();
+	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
+    if (it != loc.error_page.end()) {
+     	_errorpage = it->second;
+	}
+	if (loc.return_path.first != -1) {
+		handleReturn(loc.return_path);
 		return ;
 	}
 
@@ -17,27 +22,8 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 		handleGet();
 	else if (req.method == "POST")
 		handlePost();
-		
 	else if (req.method == "DELETE")
 		handleDelete();
-}
-
-std::string StaticHandler::buildResponse() {
-	std::ostringstream oss;
-	oss << "HTTP/1.1 " << _ncode << " " << getReason(_ncode) << "\r\n";
-
-	if ((_ncode >= 300 && _ncode < 400 ) && !_location.empty())
-		oss << "Location: " << _location << "\r\n";
-
-	if (!_type.empty())
-		oss	<< "Content-Type: " << _type << "\r\n";
-
-	oss << "Content-Length: " << _body.size() << "\r\n"
-		<< "Connection: close\r\n"
-		<< "\r\n"
-		<< _body;
-
-	return oss.str();
 }
 
 void	StaticHandler::handleGet() {
@@ -80,18 +66,6 @@ void	StaticHandler::handleDelete() {
 		_ncode = 204;
 }
 
-void    StaticHandler::handleReturn() {
-    _ncode = _loc->return_path.first;
-    _type = getType(".html");
-
-	if (!_loc->return_path.second.empty()) {
-		_body = "<html><body><h1>Redirecting to " + _loc->return_path.second + "</html></body></h1>";
-		_location = _loc->return_path.second;
-	}
-	else
-		_body = "<html><body><h1>Redirecting</html></body></h1>";
-}
-
 void	StaticHandler::throwList() {
 	std::string path = _loc->root + _req->uri;
 	std::string html;
@@ -123,9 +97,8 @@ void StaticHandler::headerListe(const std::string& path) {
 	_body += "<!DOCTYPE html>\n";
 	_body += "<html>\n";
 	_body += "<head>\n";
-	_body += "<link rel=\"stylesheet\" href=\"/css/style.css\">";
+	// _body += "<link rel=\"stylesheet\" href=\"/css/style.css\">";
 	_body += "<title>Index of " + path + "</title>\n";
-	_body += "<link rel=\"stylesheet\" href=\"/style.css\">\n";
 	_body += "</head>\n";
 	_body += "<body>\n";
 	_body += "<h1>Index of " + path + "</h1>\n";

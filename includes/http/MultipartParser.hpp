@@ -25,8 +25,3 @@ class MultipartParser {
         std::string     _boundary;
         std::string     _body;
 };
-
-// inline std::ostream& operator<<(std::ostream& out, const Part& p) {
-//     out << "c : " << p.content << std::endl << "ct : " << p.contentType << std::endl << "fn : " << p.filename << std::endl << "n : " << p.name << std::endl;
-//     return out;
-// }

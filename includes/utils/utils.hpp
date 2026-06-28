@@ -6,6 +6,7 @@
 #include <sstream>
 #include <map>
 
+bool                                isError(int code);
 bool                                isDir(const std::string& path);
 bool	                            fileFound(const std::string& path);
 bool                                isEncoded(const std::string& path);
