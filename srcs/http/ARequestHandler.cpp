@@ -1,7 +1,7 @@
-#include "../../includes/http/IRequestHandler.hpp"
+#include "../../includes/http/ARequestHandler.hpp"
 #include <string>
 
-void IRequestHandler::handleReturn(const std::pair<int, std::string>& return_path) {
+void ARequestHandler::handleReturn(const std::pair<int, std::string>& return_path) {
 	_ncode = return_path.first;
 	_type = getType(".html");
 
@@ -13,7 +13,7 @@ void IRequestHandler::handleReturn(const std::pair<int, std::string>& return_pat
 		_body = "<html><body><h1>Redirecting</html></body></h1>";
 }
 
-void	IRequestHandler::getErrorPage() {
+void	ARequestHandler::getErrorPage() {
 	_type = getType(_errorpage);
 
 	std::ifstream file(_errorpage.c_str());
@@ -26,7 +26,7 @@ void	IRequestHandler::getErrorPage() {
 	file.close();
 }
 
-std::string IRequestHandler::buildResponse() {
+std::string ARequestHandler::buildResponse() {
     if (isError(_ncode) && _location.empty()) {
         if (_errorpage.length() > 0)
             getErrorPage();

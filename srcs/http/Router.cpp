@@ -1,6 +1,6 @@
 #include "../../includes/http/Router.hpp"
 
-IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
+ARequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
 
@@ -28,11 +28,24 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
 
     // if (req.method == "POST" && req.mp.isMultipart == true)
     //     return new MultipartHandler();
-
-	//if (isCgi())
-        // return new CGIHandler();
+	
+	std::string interpreter = isCgi(req.uri, loc);
+	if (!interpreter.empty())
+        return new CGIHandler(req, *loc, path, interpreter);
 
     return new StaticHandler(req, *loc, path);
+}
+
+const std::string Router::isCgi(const std::string& uri, const Location* loc) {
+	size_t pos = uri.rfind('.');
+	std::string ext;
+	if (pos == std::string::npos)
+		return "";
+	else 
+		ext = uri.substr(pos);
+	if (loc->cgi_pass.find(ext) != loc->cgi_pass.end())
+		return loc->cgi_pass.find(ext)->second;
+	return "";
 }
 
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {

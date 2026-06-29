@@ -1,14 +1,14 @@
 #pragma once
 
 #include "../config/ConfigStruct.hpp"
-#include "IRequestHandler.hpp"
+#include "ARequestHandler.hpp"
 #include "../utils/utils.hpp"
 #include "HttpRequest.hpp"
 #include <unistd.h> 
 #include <iostream>
 #include <fstream>
 
-class StaticHandler : public IRequestHandler {
+class StaticHandler : public ARequestHandler {
 	public:
 		StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path);
 		~StaticHandler() {};

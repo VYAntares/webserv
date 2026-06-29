@@ -1,8 +1,8 @@
 #pragma once
 
-#include "IRequestHandler.hpp"
+#include "ARequestHandler.hpp"
 
-class Multiparthandler : public IRequestHandler {
+class Multiparthandler : public ARequestHandler {
 	public:
 		MultipartHandler();
 		~MultipartHandler();

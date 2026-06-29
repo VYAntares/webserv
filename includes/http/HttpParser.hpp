@@ -1,6 +1,6 @@
 #pragma once
 
-// HTTPParser   →   HTTPRequest   →   Router   →   IRequestHandler
+// HTTPParser   →   HTTPRequest   →   Router   →   ARequestHandler
 // (stateful,       (pure data,       (choisit       (Static, CGI,
 //  accumule,        méthode,          le bon          Error...)
 //  parse)           uri, headers,     handler)

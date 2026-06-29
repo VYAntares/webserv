@@ -1,8 +1,8 @@
 #pragma once
 
-#include "IRequestHandler.hpp"
+#include "ARequestHandler.hpp"
 
-class CGIHandler : public IRequestHandler {
+class CGIHandler : public ARequestHandler {
 	public:
 		CGIHandler();
 		~CGIHandler();
