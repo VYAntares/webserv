@@ -1,0 +1,8 @@
+
+
+class CGIReadHandler {
+	public:
+
+	private:
+
+};

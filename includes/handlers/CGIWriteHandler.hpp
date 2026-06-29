@@ -1,0 +1,8 @@
+
+
+class CGIWriteHandler {
+	public:
+
+	private:
+
+};

@@ -3,6 +3,7 @@
 #include "ARequestHandler.hpp"
 #include "HttpRequest.hpp"
 #include "../config/ConfigStruct.hpp"
+#include "../cgi/CGIProcess.hpp"
 
 class CGIHandler : public ARequestHandler {
 	public:
@@ -19,4 +20,5 @@ class CGIHandler : public ARequestHandler {
 		std::string&		_path;
 		std::string&		_interpreter;
 		const std::string&	_peerAddr;
+		CGIProcess			_process;
 };
