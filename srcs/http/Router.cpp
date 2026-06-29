@@ -1,6 +1,8 @@
 #include "../../includes/http/Router.hpp"
+#include "../../includes/http/CGIHandler.hpp"
 
-ARequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
+ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
+									const std::string& peerAddr) {
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
 
@@ -31,12 +33,12 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
 	
 	std::string interpreter = isCgi(req.uri, loc);
 	if (!interpreter.empty())
-        return new CGIHandler(req, *loc, path, interpreter);
+        return new CGIHandler(req, loc, path, interpreter, peerAddr);
 
     return new StaticHandler(req, *loc, path);
 }
 
-const std::string Router::isCgi(const std::string& uri, const Location* loc) {
+std::string Router::isCgi(const std::string& uri, const Location* loc) {
 	size_t pos = uri.rfind('.');
 	std::string ext;
 	if (pos == std::string::npos)

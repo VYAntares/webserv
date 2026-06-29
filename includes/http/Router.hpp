@@ -11,7 +11,8 @@
 
 class Router {
     public:
-		static ARequestHandler* route(const HttpRequest& req, const Server& server);
+		static ARequestHandler* route(const HttpRequest& req, const Server& server,
+										const std::string& peerAddr);
 
     private:
         Router() {};
