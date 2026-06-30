@@ -16,9 +16,12 @@ class CGIProcess {
 		pid_t	getPid()	 const;
 
 	private:
-		void	CGIFork(int* pipe_stdout, int* pipe_stdin, 
+		void	CGIFork(int* pipe_stdout, int* pipe_stdin,
 						std::string& interpreter, std::string& path);
-		pid_t	_pid;
-		int 	_write_fd;
-		int 	_read_fd;
+		const HttpRequest&	_req;
+		const Location*		_loc;
+		const std::string&	_peerAddr;
+		pid_t				_pid;
+		int 				_write_fd;
+		int 				_read_fd;
 };

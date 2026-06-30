@@ -20,5 +20,5 @@ class CGIHandler : public ARequestHandler {
 		std::string&		_path;
 		std::string&		_interpreter;
 		const std::string&	_peerAddr;
-		CGIProcess			_process;
+		CGIProcess*			_process;
 };

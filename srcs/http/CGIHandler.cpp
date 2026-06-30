@@ -1,5 +1,8 @@
 #include "../../includes/http/CGIHandler.hpp"
-#include "../../includes/"
+#include "../../includes/cgi/CGIProcess.hpp"
+#include "../../includes/core/EventLoop.hpp"
+#include "../../includes/handlers/CGIWriteHandler.hpp"
+#include "../../includes/handlers/CGIReadHandler.hpp"
 #include <sstream>
 
 CGIHandler::CGIHandler(const HttpRequest& req, const Location* loc,
@@ -13,12 +16,14 @@ CGIHandler::CGIHandler(const HttpRequest& req, const Location* loc,
 	
 	// brancher les pipes
 	EventLoop::instance()->register_handler(
-			new CGIWriteHandler(), WRITE_EVENT);
+			new CGIWriteHandler(_process->getWriteFd()), WRITE_EVENT);
 	EventLoop::instance()->register_handler(
-			new CGIReadHandler(), READ_EVENT);
+			new CGIReadHandler(_process->getReadFd()), READ_EVENT);
 }
 
-CGIHandler::~CGIHandler() {}
+CGIHandler::~CGIHandler() {
+	delete _process;
+}
 
 // std::string CGIHandler::buildResponse() {
 // }
