@@ -28,20 +28,16 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     if (forbiddenAccess(path, req.method))
         return new ErrorHandler(*loc, 403);
 
-    if (!methodAllowed(req.method, loc))
+    if (!methodAllowed(req.method, loc)) {
         return new ErrorHandler(*loc, 405);
-
-    // if (req.method == "POST" && req.mp.isMultipart == true)
-    //     return new MultipartHandler();
+    }
 	
 	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty())
         return new CGIHandler(req, loc, path, interpreter, peerAddr);
+
     if (req.method == "POST" && req.isMultipart == true)
         return new MultipartHandler(req, *loc, path);
-
-	// if (isCgi())
-    //     return new CGIHandler();
 
     return new StaticHandler(req, *loc, path);
 }
