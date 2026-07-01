@@ -104,7 +104,7 @@ curl -s -o /dev/null -X POST "$BASE/upload" -F "file=@/tmp/todelete.txt" > /dev/
 
 code=$(curl -s -o /dev/null -w "%{http_code}" \
     -X DELETE "$BASE/upload/todelete.txt")
-check "DELETE fichier existant -> 200 ou 204" "200" "$code"
+check "DELETE fichier existant -> 200 ou 204" "204" "200" "$code"
 
 code=$(curl -s -o /dev/null -w "%{http_code}" \
     -X DELETE "$BASE/upload/fichier_qui_nexiste_pas.txt")
