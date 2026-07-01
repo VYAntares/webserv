@@ -10,7 +10,9 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     if (!loc)
         return new ErrorHandler(server, 404);
 
-    std::string path = resolvePath(loc, req.uri);
+    std::string uriPath = req.uri.substr(0, req.uri.find('?'));
+
+    std::string path = resolvePath(loc, uriPath);
     if (path.empty() && loc->autoindex == 0)
         return new ErrorHandler(*loc, 403);
     else if (path.empty() && loc->autoindex == 1)
@@ -31,7 +33,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     // if (req.method == "POST" && req.mp.isMultipart == true)
     //     return new MultipartHandler();
 	
-	std::string interpreter = isCgi(req.uri, loc);
+	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty())
         return new CGIHandler(req, loc, path, interpreter, peerAddr);
 
