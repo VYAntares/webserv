@@ -1,3 +1,0 @@
-- Considération des alias dans la config ? Ne semble pas obligatoire, mais utile.
-- Changer dans static handlers le return code selon config, a implementer avant la reponse car on a pas de "config->loc dans IRequestHandler
-- Dans autointex : comment on renvoie la reponse (liste des files dans dossier)
