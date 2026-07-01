@@ -1,10 +1,10 @@
 #pragma once
 
 #include "HttpRequest.hpp"
-#include "IRequestHandler.hpp"
+#include "ARequestHandler.hpp"
 #include "../config/ConfigStruct.hpp"
 
-class MultipartHandler : public IRequestHandler {
+class MultipartHandler : public ARequestHandler {
 	public:
 		MultipartHandler(const HttpRequest& req, const Location& loc, const std::string& path);
 		~MultipartHandler() {};

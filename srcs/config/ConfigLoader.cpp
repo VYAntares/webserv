@@ -1,12 +1,10 @@
 #include "../../includes/config/ConfigLoader.hpp"
 #include "../../includes/config/Parser.hpp"
 #include "../../includes/config/ConfigStruct.hpp"
-#include "../../includes/config/Token.hpp"
 #include "../../includes/config/Validator.hpp"
 #include "../../includes/config/Lexer.hpp"
 
 #include <sstream>
-#include <iomanip>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>

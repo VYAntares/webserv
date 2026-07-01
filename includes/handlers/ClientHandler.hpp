@@ -3,7 +3,7 @@
 #include "../core/IEventHandler.hpp"
 #include "../config/ConfigStruct.hpp"
 #include "../http/HttpParser.hpp"
-#include "../http/IRequestHandler.hpp"
+#include "../http/ARequestHandler.hpp"
 #include <string>
 #include <netinet/in.h>
 
@@ -21,7 +21,7 @@ class ClientHandler : public IEventHandler {
 		size_t				_sent;
 		Server				_server;
 		HttpParser			_parser;
-		IRequestHandler*	_rh;        // owned — deleted after response is sent
+		ARequestHandler*	_rh;        // owned — deleted after response is sent
 		std::string			_response;  // cached once per request, avoids re-building on each send
 		std::string			_peerAddr;  // "ip:port" — used for logs and CGI REMOTE_ADDR
 

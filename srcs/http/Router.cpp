@@ -1,6 +1,8 @@
 #include "../../includes/http/Router.hpp"
+#include "../../includes/http/CGIHandler.hpp"
 
-IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
+ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
+									const std::string& peerAddr) {
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
 
@@ -8,7 +10,9 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (!loc)
         return new ErrorHandler(server, 404);
 
-    std::string path = resolvePath(loc, req.uri);
+    std::string uriPath = req.uri.substr(0, req.uri.find('?'));
+
+    std::string path = resolvePath(loc, uriPath);
     if (path.empty() && loc->autoindex == 0)
         return new ErrorHandler(*loc, 403);
 
@@ -24,6 +28,15 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     if (forbiddenAccess(path, req.method))
         return new ErrorHandler(*loc, 403);
 
+    if (!methodAllowed(req.method, loc))
+        return new ErrorHandler(*loc, 405);
+
+    // if (req.method == "POST" && req.mp.isMultipart == true)
+    //     return new MultipartHandler();
+	
+	std::string interpreter = isCgi(uriPath, loc);
+	if (!interpreter.empty())
+        return new CGIHandler(req, loc, path, interpreter, peerAddr);
     if (req.method == "POST" && req.isMultipart == true)
         return new MultipartHandler(req, *loc, path);
 
@@ -31,6 +44,18 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     //     return new CGIHandler();
 
     return new StaticHandler(req, *loc, path);
+}
+
+std::string Router::isCgi(const std::string& uri, const Location* loc) {
+	size_t pos = uri.rfind('.');
+	std::string ext;
+	if (pos == std::string::npos)
+		return "";
+	else 
+		ext = uri.substr(pos);
+	if (loc->cgi_pass.find(ext) != loc->cgi_pass.end())
+		return loc->cgi_pass.find(ext)->second;
+	return "";
 }
 
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
