@@ -28,10 +28,9 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     if (forbiddenAccess(path, req.method))
         return new ErrorHandler(*loc, 403);
 
-    if (!methodAllowed(req.method, loc)) {
-        return new ErrorHandler(*loc, 405);
-    }
-	
+    if (!methodAllowed(req.method, loc))
+		return new ErrorHandler(*loc, 405);
+
 	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty())
         return new CGIHandler(req, loc, path, interpreter, peerAddr);
