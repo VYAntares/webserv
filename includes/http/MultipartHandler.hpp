@@ -6,5 +6,8 @@ class Multiparthandler : public IRequestHandler {
 	public:
 		MultipartHandler();
 		~MultipartHandler();
-		std::string buildResponse();
+
+	// private:
+	// 	const HttpRequest*	_req;
+	// 	const Location*		_loc;
 };

@@ -1,10 +1,5 @@
 #include "../includes/http/MultipartParser.hpp"
 
-MultipartParser::MultipartParser(std::string& boundary, std::string& body): _boundary(boundary), _body(body) {
-    std::cout << "in MPparser" << std::endl;
-    std::cout << body << std::endl;
-}
-
 Multipart MultipartParser::parsePart() {
     Multipart mp;
     std::vector<Part> prts = parseMultiPart();

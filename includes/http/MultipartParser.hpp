@@ -13,7 +13,7 @@ struct Part {
 
 class MultipartParser {
     public:
-        MultipartParser(std::string& boundary, std::string& body);
+        MultipartParser(std::string& boundary, std::string& body): _boundary(boundary), _body(body) {}
         ~MultipartParser() {}
         Multipart parsePart();
 
