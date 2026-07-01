@@ -11,26 +11,24 @@ IRequestHandler*	Router::route(const HttpRequest& req, const Server& server) {
     std::string path = resolvePath(loc, req.uri);
     if (path.empty() && loc->autoindex == 0)
         return new ErrorHandler(*loc, 403);
-    else if (path.empty() && loc->autoindex == 1)
-        return new StaticHandler(req, *loc, "");
 
     if (!methodImplemented(req.method))
         return new ErrorHandler(*loc, 501);
 
     if (!fileExist(path, req.method))
         return new ErrorHandler(*loc, 404);
+    
+    if (!methodAllowed(req.method, loc))
+        return new ErrorHandler(*loc, 405);
 
     if (forbiddenAccess(path, req.method))
         return new ErrorHandler(*loc, 403);
 
-    if (!methodAllowed(req.method, loc))
-        return new ErrorHandler(*loc, 405);
-
     if (req.method == "POST" && req.isMultipart == true)
         return new MultipartHandler(req, *loc, path);
 
-	//if (isCgi())
-        // return new CGIHandler();
+	// if (isCgi())
+    //     return new CGIHandler();
 
     return new StaticHandler(req, *loc, path);
 }
@@ -41,7 +39,7 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
     if (path[path.length() - 1] == '/') {
         if (!loc->index.empty())
             newpath = path + loc->index;
-        else
+        else if (!isDir(newpath))
             return "";
     }
     return newpath;

@@ -32,7 +32,7 @@ std::string IRequestHandler::buildResponse() {
         else
             _body = "<html><body><h1>" + itos(_ncode) + " " + getReason(_ncode) + "</h1></body></html>";
     }
-
+	std::cout << "NCODE" << _ncode << std::endl;
 	std::ostringstream oss;
 	oss << "HTTP/1.1 " << _ncode << " " << getReason(_ncode) << "\r\n";
 
@@ -46,9 +46,6 @@ std::string IRequestHandler::buildResponse() {
 		<< "Connection: close\r\n"
 		<< "\r\n"
 		<< _body;
-
-    std::cout << oss.str() << std::endl;
-
 
 	return oss.str();
 }

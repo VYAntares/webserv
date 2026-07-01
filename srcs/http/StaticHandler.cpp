@@ -4,11 +4,6 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 	_ncode = 200;
 	_type = "";
 
-	if (path.empty()) {
-		throwList();
-		return ;
-	}
-
 	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
     if (it != loc.error_page.end()) {
      	_errorpage = it->second;
@@ -17,7 +12,14 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 		handleReturn(loc.return_path);
 		return ;
 	}
-
+	if (isDir(path) && req.method != "POST") {
+		if (path[path.length() - 1] != '/') {
+			const std::pair<int, std::string> toreturn(301,path + '/');
+			handleReturn(toreturn);
+		} else
+			throwList();
+		return ;
+	}
 	if (req.method == "GET")
 		handleGet();
 	else if (req.method == "POST")
@@ -68,6 +70,9 @@ void	StaticHandler::handleDelete() {
 
 void	StaticHandler::throwList() {
 	std::string path = _loc->root + _req->uri;
+	if (path[path.length() - 1] != '/')
+		path = path + '/';
+
 	std::string html;
 	DIR* dir = opendir(path.c_str());
 	if (!dir)
