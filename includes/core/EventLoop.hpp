@@ -2,7 +2,7 @@
 
 #include "../config/ConfigStruct.hpp"
 #include "IEventHandler.hpp"
-#include <vector>
+#include <map>
 #include <sys/epoll.h>
 
 #define MAX_EVENTS 128
@@ -36,6 +36,7 @@ class EventLoop {
 		void modify_handler(IEventHandler* h, EventType newType);
 		void remove_handler(IEventHandler* h);
 		void handle_events();
+		void checkTimeOut();
 
 	private:
 		EventLoop();
@@ -43,17 +44,17 @@ class EventLoop {
 
 		// fd de l'instance epoll unique, créée dans le constructeur via epoll_create1.
 		// Tous les fds du serveur (sockets, pipes CGI) sont surveillés via ce seul epfd.
-		int							_epfd;
+		int										_epfd;
 
 		// Liste de tous les HandlerEntry* enregistrés. EventLoop en est propriétaire :
 		// les entries sont détruits dans remove_handler et dans le destructeur.
 		// Les handlers eux-mêmes sont détruits par handle_events quand ils retournent -1.
-		std::vector<HandlerEntry*>	_table;
+		std::map<IEventHandler*, HandlerEntry*>	_table;
 
 		//   _instance est un pointeur statique initialisé à NULL.
 		//   instance() le crée au premier appel (lazy initialization), puis retourne
 		//   toujours le même objet. Le ctor/dtor sont privés : impossible de créer
 		//   ou détruire EventLoop depuis l'extérieur.
-		static EventLoop* 			_instance;
+		static EventLoop* 						_instance;
 };
 

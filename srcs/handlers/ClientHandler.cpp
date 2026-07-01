@@ -25,7 +25,8 @@ void ClientHandler::_reset() {
 	_parser.reset();
 }
 
-int ClientHandler::getFd() const { return _fd; }
+int		ClientHandler::getFd()			 const { return _fd; }
+time_t	ClientHandler::getLastActivity() const { return _lastActivity; }
 
 // ─── Cycle de vie ─────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ ClientHandler::ClientHandler(int clientFd, const Server& server,
                              const struct sockaddr_in& peerAddr)
 											: _fd(clientFd), _sent(0), _server(server),
 											_parser(server.max_body_client), _rh(NULL),
-											_keepAlive(false) {
+											_keepAlive(false), _lastActivity(time(NULL)) {
 	_peerAddr = _buildPeerStr(peerAddr);
 	EventLoop::instance()->register_handler(this, READ_EVENT);
 	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] connected\n";
@@ -81,6 +82,8 @@ void	ClientHandler::_handleError() {
 
 // ─── handle_input ─────────────────────────────────────────────────────────────
 int ClientHandler::handle_input() {
+	_lastActivity = time(NULL);
+
 	char buf[4096];
 	ssize_t n = recv(_fd, buf, sizeof(buf), 0);
 
@@ -101,6 +104,8 @@ int ClientHandler::handle_input() {
 
 // ─── handle_output ────────────────────────────────────────────────────────────
 int ClientHandler::handle_output() {
+	_lastActivity = time(NULL);
+
 	const char*  data = _response.c_str() + _sent;
 	size_t       left = _response.size() - _sent;
 

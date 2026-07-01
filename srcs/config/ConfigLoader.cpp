@@ -9,40 +9,42 @@
 #include <iostream>
 #include <sys/stat.h>
 
+static const std::string DEFAULT_CONFIG_PATH = "./conf/default.conf";
+
 ConfigLoader::ConfigLoader(int argc, char **argv) {
-	if (argc != 2)
-		throw std::runtime_error("Too many arguments, usage: <configFile path>");
+	if (argc > 2)
+		throw std::runtime_error("Too many arguments, usage: ./webserv [configFile path]");
 
-	size_t colon = std::string(argv[1]).find(".conf");
-	if (colon == std::string::npos) 
-		throw std::runtime_error("Can not open config file: " + std::string(argv[1])
+	std::string path = (argc == 2) ? std::string(argv[1]) : DEFAULT_CONFIG_PATH;
+
+	if (argc == 1)
+		std::cerr << "No config file provided, using default: " << DEFAULT_CONFIG_PATH << std::endl;
+
+	if (path.find(".conf") == std::string::npos)
+		throw std::runtime_error("Can not open config file: " + path
 								+ "\nConfig file must have: .conf extension.");
-	else {
-		// stat() remplit la struct avec les infos du chemin
-		// S_ISREG verifie que c'est un fichier regulier (pas un dossier, socket, etc.)
-		struct stat st;
-		if (stat(argv[1], &st) != 0 || !S_ISREG(st.st_mode))
-			throw std::runtime_error("Not a regular file: " + std::string(argv[1]));
 
-		std::ifstream file(argv[1]);
-		if (!file.is_open())
-			throw std::runtime_error("Can not open config file: " + std::string(argv[1]));
+	struct stat st;
+	if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+		throw std::runtime_error("Not a regular file: " + path);
 
-		std::ostringstream ss;
-		ss << file.rdbuf();
-		_input = ss.str();
-		if (_input.empty())
-			throw std::runtime_error("Config file: '" + std::string(argv[1]) 
-									+ "' is empty. No server will run like that..");
+	std::ifstream file(path.c_str());
+	if (!file.is_open())
+		throw std::runtime_error("Can not open config file: " + path);
 
-		try {
-			startLexer();
-			startParser();
-			startValidator();
-		} catch (std::exception &e) {
-			throw std::runtime_error(std::string(e.what()) + "\nparser: configuration file "
-									+ std::string(argv[1]) + " failed.");
-		}
+	std::ostringstream ss;
+	ss << file.rdbuf();
+	_input = ss.str();
+	if (_input.empty())
+		throw std::runtime_error("Config file: '" + path + "' is empty. No server will run like that..");
+
+	try {
+		startLexer();
+		startParser();
+		startValidator();
+	} catch (std::exception &e) {
+		throw std::runtime_error(std::string(e.what()) + "\nparser: configuration file "
+								+ path + " failed.");
 	}
 }
 
