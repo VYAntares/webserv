@@ -1,6 +1,4 @@
-#include "../../includes/http/MultipartParser.hpp"
 #include "../../includes/http/HttpParser.hpp"
-#include "../../includes/utils/utils.hpp"
 
 HttpParser::HttpParser(size_t maxBodyClient) : _errorCode(0), _state(R_HEADERS), _bodyExcepted(0), _bodyReceived(0), _maxBodySize(maxBodyClient) {}
 
@@ -149,11 +147,13 @@ void HttpParser::readChunked() {
 			setError(413);
 
 		if (size == 0) {
+			_req.body = _body;
+			if (_req.isMultipart == true)
+				getMp();
 			if (_errorCode == 413 || _errorCode == 400)
 				_state = ERROR;
 			else
 				_state = COMPLETE;
-            _req.body = _body;
             return;
 		}
 		size_t needed = pos + 2 + size + 2;

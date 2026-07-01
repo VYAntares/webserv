@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include "../../includes/http/MultipartHandler.hpp"
 #include "../../includes/config/ConfigStruct.hpp"
 #include "../../includes/http/StaticHandler.hpp"
 #include "../../includes/http/ErrorHandler.hpp"

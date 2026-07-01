@@ -9,8 +9,8 @@ Multipart MultipartParser::parsePart() {
         else {
             UploadedFile f;
             f.data        = it->content;
-            f.contentType = it->contentType;
             f.filename    = it->filename;
+            f.contentType = it->contentType;
             f.size        = it->content.size();
             mp.uploadedFiles[it->name] = f;
         }

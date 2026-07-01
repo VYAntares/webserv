@@ -1,5 +1,4 @@
 #include "../../includes/http/IRequestHandler.hpp"
-#include <string>
 
 void IRequestHandler::handleReturn(const std::pair<int, std::string>& return_path) {
 	_ncode = return_path.first;

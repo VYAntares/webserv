@@ -7,6 +7,8 @@
 //                   body)
 
 #include "HttpRequest.hpp"
+#include "../../includes/http/MultipartParser.hpp"
+#include "../../includes/utils/utils.hpp"
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
