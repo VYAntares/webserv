@@ -5,6 +5,7 @@
 #include "../config/ConfigStruct.hpp"
 
 class MultipartHandler : public IRequestHandler {
+
 	public:
 		MultipartHandler(const HttpRequest& req, const Location& loc, const std::string& path);
 		~MultipartHandler() {};

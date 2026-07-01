@@ -19,10 +19,12 @@ struct HttpRequest {
 	int									error;
 
 	std::string							uri;
+	std::string							req;
 	std::string							body;	
 	std::string							method;
 	std::string							version;
 	std::map<std::string, std::string>	headers;
+	
 
 	//Multipart
 	Multipart							mp;
