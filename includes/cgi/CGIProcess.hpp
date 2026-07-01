@@ -18,6 +18,13 @@ class CGIProcess {
 	private:
 		void	CGIFork(int* pipe_stdout, int* pipe_stdin,
 						std::string& interpreter, std::string& path);
+		char**	buildEnvp(std::string& path);
+		void	addUri(std::vector<std::string>* envp);
+		void	addHost(std::vector<std::string>* envp);
+		void	addHeaders(std::vector<std::string>* envp);
+		char**	convertToCharStarStarBabyyy(std::vector<std::string>* envp);
+		void	addRemoteAddr(std::vector<std::string>* envp);
+
 		const HttpRequest&	_req;
 		const Location*		_loc;
 		const std::string&	_peerAddr;
