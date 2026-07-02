@@ -77,7 +77,7 @@ void	CGIProcess::CGIFork(int* pipe_stdout, int* pipe_stdin,
 		close(pipe_stdout[1]);
 		close(pipe_stdin[1]);
 		close(pipe_stdout[0]);
-		
+
 		char* av[] = { (char*)interpreter.c_str(), (char*)path.c_str(), NULL };
 		// path = "/var/www/site/scripts/hello.py"
 		std::string dir = path.substr(0, path.rfind('/'));

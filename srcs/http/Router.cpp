@@ -21,7 +21,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
     if (!fileExist(path, req.method))
         return new ErrorHandler(*loc, 404);
-    
+
     if (!methodAllowed(req.method, loc))
         return new ErrorHandler(*loc, 405);
 
