@@ -33,10 +33,10 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
 	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty())
-        return new CGIHandler(req, loc, path, interpreter, peerAddr);
+        return new CGIHandler(req, path, interpreter, peerAddr);
 
     if (req.method == "POST" && req.isMultipart == true)
-        return new MultipartHandler(req, *loc, path);
+        return new MultipartHandler(req, path);
 
     return new StaticHandler(req, *loc, path);
 }

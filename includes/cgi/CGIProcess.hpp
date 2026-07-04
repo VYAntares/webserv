@@ -6,9 +6,8 @@
 
 class CGIProcess {
 	public:
-		CGIProcess(const HttpRequest& req, const Location* loc,
-					std::string& path, std::string& interpreter,
-					const std::string& peerAddr);
+		CGIProcess(const HttpRequest& req, std::string& path, 
+						std::string& interpreter, const std::string& peerAddr);
 		~CGIProcess();
 
 		int 	getWriteFd() const;
@@ -26,7 +25,6 @@ class CGIProcess {
 		void	addRemoteAddr(std::vector<std::string>* envp);
 
 		const HttpRequest&	_req;
-		const Location*		_loc;
 		const std::string&	_peerAddr;
 		pid_t				_pid;
 		int 				_write_fd;

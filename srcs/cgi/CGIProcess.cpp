@@ -36,10 +36,9 @@
 // │ HTTP_*            │ tous les autres headers, transformés : tirets → underscores, MAJUSCULES │
 // └───────────────────┴─────────────────────────────────────────────────────────────────────────┘
 
-CGIProcess::CGIProcess(const HttpRequest& req, const Location* loc,
-						std::string& path, std::string& interpreter,
-						const std::string& peerAddr) 
-						: _req(req), _loc(loc), _peerAddr(peerAddr),
+CGIProcess::CGIProcess(const HttpRequest& req, std::string& path, 
+						std::string& interpreter, const std::string& peerAddr) 
+						: _req(req), _peerAddr(peerAddr),
 						  _pid(-1), _write_fd(-1), _read_fd(-1) {
 	// Un pipe() crée 2 fd : [0] pour lire, [1] pour écrire. On en crée deux :
 	// pipe_stdin[0]  → enfant lit  (son STDIN)

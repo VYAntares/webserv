@@ -1,6 +1,6 @@
 #include "../../includes/http/MultipartHandler.hpp"
 
-MultipartHandler::MultipartHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _path(path) {
+MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& path): _req(&req), _path(path) {
     _ncode = 200;
     std::string body;
     std::map<std::string, UploadedFile>::const_iterator i;
