@@ -137,3 +137,29 @@ bool    isError(int code) {
         return true;
     return false;
 }
+
+std::string normalizePath(const std::string& p, const std::string& root) {
+    std::vector<std::string>    sgmt;
+    std::string                 seg;
+    std::stringstream           ss(p);
+
+    while(std::getline(ss, seg, '/')){
+        if (seg == "." || seg.empty())
+            continue ;
+        else if (seg == "..") {
+            if (!sgmt.empty())
+                sgmt.pop_back();
+            else 
+                sgmt.push_back(seg);
+        }
+        else
+            sgmt.push_back(seg);
+    }
+    std::string result;
+    for (size_t i = 0; i < sgmt.size(); i++)
+        result += "/" + sgmt[i];
+
+    if (result.find(root) != 0)
+        return "";
+    return result;
+}
