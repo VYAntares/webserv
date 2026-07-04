@@ -31,7 +31,7 @@ Compilation : `make` passe **sans warning** avec `-Wall -Wextra -Werror -std=c++
 | Test | Requête | Résultat observé | Verdict |
 |------|---------|------------------|---------|
 | GET simple | `GET / HTTP/1.1` | `200 OK` | ✅ OK (contredit l'ancien AUDIT P1 : **pas** de bug `\r`) |
-| **Path traversal** | `GET /../../../../../../../../etc/passwd` | `200 OK` + **contenu de /etc/passwd** | 🔴 **FAILLE** |
+| **Path traversal**  | `GET /../../../../../../../../etc/passwd` | `200 OK` + **contenu de /etc/passwd** | 🔴 **FAILLE** |
 | Upload multipart | `POST /up -F file=@f.txt` | `201`, fichier écrit sur disque | ✅ OK |
 | DELETE existant | `DELETE /up/f.txt` | `204` | ✅ OK |
 | DELETE manquant | `DELETE /up/nope.txt` | `404` | ✅ OK |

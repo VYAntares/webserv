@@ -1,19 +1,20 @@
 #pragma once
 
 #include <iostream>
-#include "../../includes/http/MultipartHandler.hpp"
-#include "../../includes/config/ConfigStruct.hpp"
-#include "../../includes/http/StaticHandler.hpp"
-#include "../../includes/http/ErrorHandler.hpp"
-#include "../../includes/http/HttpRequest.hpp"
-#include "../../includes/http/CGIHandler.hpp"
-#include "../../includes/utils/utils.hpp"
+#include "../http/MultipartHandler.hpp"
+#include "../handlers/ClientHandler.hpp"
+#include "../config/ConfigStruct.hpp"
+#include "../http/StaticHandler.hpp"
+#include "../http/ErrorHandler.hpp"
+#include "../http/HttpRequest.hpp"
+#include "../http/CGIHandler.hpp"
+#include "../utils/utils.hpp"
 #include "ARequestHandler.hpp"
 
 class Router {
     public:
 		static ARequestHandler* route(const HttpRequest& req, const Server& server,
-										const std::string& peerAddr);
+										const std::string& peerAddr, IResponseSink* sink);
 
     private:
         Router() {};

@@ -60,7 +60,9 @@ void	ClientHandler::_handleComplete() {
 	else
 		_keepAlive = (req.version == "HTTP/1.1");
 
-	_rh = Router::route(req, _server, _peerAddr);
+	_rh = Router::route(req, _server, _peerAddr, this);
+	if (_rh->isAsync())
+		return;
 	_response = _rh->buildResponse();
 
 	// debugger
@@ -74,9 +76,14 @@ void	ClientHandler::_handleError() {
 	HttpRequest req = _parser.getReq();		// contient req.error
 
 	_keepAlive = false;
-	_rh = Router::route(req, _server, _peerAddr);
+	_rh = Router::route(req, _server, _peerAddr, this);
 	_response = _rh->buildResponse();
 
+	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
+}
+
+void	ClientHandler::onCgiDone(const std::string& rawHttpResp) {
+	_response = rawHttpResp;
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
 

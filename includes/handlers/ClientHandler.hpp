@@ -8,7 +8,13 @@
 #include <netinet/in.h>
 #include <ctime>
 
-class ClientHandler : public IEventHandler {
+class IResponseSink {
+	public:
+		virtual void onCgiDone(const std::string& rawHttpResp) = 0;
+		virtual ~IResponseSink() {}
+};
+
+class ClientHandler : public IEventHandler, public IResponseSink {
 	public:
 		ClientHandler(int clientFd, const Server& server, const struct sockaddr_in& peerAddr);
 		~ClientHandler();
@@ -17,6 +23,7 @@ class ClientHandler : public IEventHandler {
 		int		handle_input();
 		int		handle_output();
 		time_t	getLastActivity()	const;
+		void	onCgiDone(const std::string& rawHttpResp);
 
 	private:
 		int					_fd;

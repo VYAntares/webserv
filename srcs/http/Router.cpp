@@ -1,8 +1,9 @@
 #include "../../includes/http/Router.hpp"
 #include "../../includes/http/CGIHandler.hpp"
+#include "../../includes/handlers/ClientHandler.hpp"
 
 ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
-									const std::string& peerAddr) {
+									const std::string& peerAddr, IResponseSink* sink) {
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
 
@@ -33,7 +34,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
 	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty())
-        return new CGIHandler(req, path, interpreter, peerAddr);
+        return new CGIHandler(req, path, interpreter, peerAddr, sink);
 
     if (req.method == "POST" && req.isMultipart == true)
         return new MultipartHandler(req, path);

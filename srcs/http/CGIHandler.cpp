@@ -3,10 +3,12 @@
 #include "../../includes/core/EventLoop.hpp"
 #include "../../includes/handlers/CGIWriteHandler.hpp"
 #include "../../includes/handlers/CGIReadHandler.hpp"
+#include "../../includes/handlers/ClientHandler.hpp"
 #include <sstream>
 
 CGIHandler::CGIHandler(const HttpRequest& req, std::string& path,
-						std::string& interpreter, const std::string& peerAddr)
+						std::string& interpreter, const std::string& peerAddr,
+						IResponseSink* sink)
 						: _req(req), _path(path), _interpreter(interpreter), 
 						_peerAddr(peerAddr) {
 	// Processus CGI (fork + exec + pipes)
@@ -14,9 +16,9 @@ CGIHandler::CGIHandler(const HttpRequest& req, std::string& path,
 	
 	// brancher les pipes
 	EventLoop::instance()->register_handler(
-			new CGIWriteHandler(_process->getWriteFd()), WRITE_EVENT);
+			new CGIWriteHandler(_process->getWriteFd(), _req.body), WRITE_EVENT);
 	EventLoop::instance()->register_handler(
-			new CGIReadHandler(_process->getReadFd()), READ_EVENT);
+			new CGIReadHandler(_process->getReadFd(), _process->getPid(), sink), READ_EVENT);
 }
 
 CGIHandler::~CGIHandler() {

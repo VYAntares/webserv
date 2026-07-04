@@ -1,15 +1,18 @@
 #pragma once
 
 #include "../core/IEventHandler.hpp"
+#include "../handlers/ClientHandler.hpp"
 
 class CGIReadHandler : public IEventHandler {
 	public:
-		CGIReadHandler(int fd) : _fd(fd) {}
+		CGIReadHandler(int fd, pid_t pid, IResponseSink* sink);
 		~CGIReadHandler() {}
 
 		int getFd()		 const { return _fd; }
-		int handle_input()	 { return 0; }
+		int handle_input();
 
 	private:
-		int _fd;
+		int				_fd;
+		pid_t			_pid;
+		IResponseSink*	_sink; // lie au client originel qui a lancer le cgi
 };
