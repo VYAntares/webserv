@@ -55,6 +55,8 @@ std::string Router::isCgi(const std::string& uri, const Location* loc) {
 
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
     std::string path = normalizePath(loc->root + uri, loc->root);
+    if (path.empty())
+        return "";
     std::string newpath = path;
     if (path[path.length() - 1] == '/') {
         if (!loc->index.empty())
