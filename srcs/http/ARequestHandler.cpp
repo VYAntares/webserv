@@ -1,4 +1,8 @@
 #include "../../includes/http/ARequestHandler.hpp"
+#include "../../includes/utils/utils.hpp"
+#include <fstream>
+#include <sstream>
+#include <iostream>
 
 void ARequestHandler::handleReturn(const std::pair<int, std::string>& return_path) {
 	_ncode = return_path.first;

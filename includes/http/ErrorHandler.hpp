@@ -2,10 +2,6 @@
 
 #include "../config/ConfigStruct.hpp"
 #include "ARequestHandler.hpp"
-#include "../utils/utils.hpp"
-#include <iostream>
-#include <fstream>
-#include <sstream>
 
 class ErrorHandler : public ARequestHandler {
 	public:

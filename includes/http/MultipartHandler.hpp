@@ -2,7 +2,6 @@
 
 #include "HttpRequest.hpp"
 #include "ARequestHandler.hpp"
-#include "../config/ConfigStruct.hpp"
 
 class MultipartHandler : public ARequestHandler {
 	public:

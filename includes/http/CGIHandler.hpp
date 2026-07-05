@@ -12,9 +12,5 @@ class CGIHandler {
 		~CGIHandler();
 
 	private:
-		const HttpRequest&	_req;
-		std::string&		_path;
-		std::string&		_interpreter;
-		const std::string&	_peerAddr;
 		CGIProcess*			_process;
 };

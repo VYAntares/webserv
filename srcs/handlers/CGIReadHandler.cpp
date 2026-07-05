@@ -1,8 +1,12 @@
 #include "../../includes/handlers/CGIReadHandler.hpp"
 #include <unistd.h>
+#include <sstream>
+#include <iostream>
 
-CGIReadHandler::CGIReadHandler(int fd, pid_t pid, IResponseSink* sink) : _fd(fd), _pid(pid), _sink(sink) {
+CGIReadHandler::CGIReadHandler(int fd, pid_t pid, IResponseSink* sink) 
+							: _fd(fd), _pid(pid), _sink(sink) {
 }
+
 
 int CGIReadHandler::handle_input() {
 	// read()

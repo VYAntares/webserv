@@ -1,4 +1,9 @@
 #include "../../includes/http/StaticHandler.hpp"
+#include "../../includes/utils/utils.hpp"
+#include <unistd.h>
+#include <fstream>
+#include <sstream>
+#include <dirent.h>
 
 StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _path(path) {
 	_ncode = 200;

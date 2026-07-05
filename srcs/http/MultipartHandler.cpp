@@ -1,4 +1,6 @@
 #include "../../includes/http/MultipartHandler.hpp"
+#include "../../includes/utils/utils.hpp"
+#include <fstream>
 
 MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& path): _req(&req), _path(path) {
     _ncode = 200;

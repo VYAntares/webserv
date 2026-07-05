@@ -1,6 +1,10 @@
 #include "../../includes/http/Router.hpp"
 #include "../../includes/http/CGIHandler.hpp"
 #include "../../includes/handlers/ClientHandler.hpp"
+#include "../../includes/http/MultipartHandler.hpp"
+#include "../../includes/http/StaticHandler.hpp"
+#include "../../includes/http/ErrorHandler.hpp"
+#include "../../includes/http/CGIHandler.hpp"
 
 ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 									const std::string& peerAddr, IResponseSink* sink) {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <iostream>
 #include "HttpRequest.hpp"
 #include <vector>
 
