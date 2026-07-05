@@ -56,8 +56,16 @@ EventLoop::EventLoop() {
 // Crée une entrée dans la table : associe le handler à son type d'événement.
 // C'est ce pointeur (entry) qu epoll nous rendra dans events[i].data.ptr
 // lors du prochain epoll_wait — on sait ainsi quel handler appeler.
+//
+// _table est un std::map<IEventHandler*, HandlerEntry*> indexé par pointeur :
+// modify_handler et remove_handler doivent pouvoir retrouver une entrée en
+// O(log n), même avec beaucoup de fd enregistrés (clients + pipes CGI).
+//
 // Enregistre le fd auprès d epoll avec le masque d'événements calculé.
 // EPOLL_CTL_ADD : premier enregistrement de ce fd (utiliser MOD si déjà présent).
+// Si epoll_ctl échoue (fd invalide, limite système de fd atteinte...), on
+// annule l'insertion dans _table avant de throw : on ne laisse jamais une
+// entrée qui prétend surveiller un fd alors que le noyau, lui, l'ignore.
 void EventLoop::register_handler(IEventHandler* h, EventType type) {
 	HandlerEntry* entry	= new HandlerEntry();
 	entry->handler		= h;
@@ -75,8 +83,12 @@ void EventLoop::register_handler(IEventHandler* h, EventType type) {
 }
 
 // Met à jour le type d'événement surveillé pour un handler déjà enregistré.
-// Cherche l'entrée dans la table, met à jour son type, puis recalcule les flags
-// et appelle EPOLL_CTL_MOD pour que epoll surveille le nouveau masque.
+// _table.find(h) : recherche par pointeur dans la map, en O(log n).
+// Met à jour son type, recalcule les flags, puis appelle EPOLL_CTL_MOD pour
+// que epoll surveille le nouveau masque.
+// L'échec de epoll_ctl est seulement loggé (pas de throw) : cette fonction est
+// appelée depuis un handler en train de traiter un événement — une erreur sur
+// un seul fd ne doit pas faire planter toute la boucle epoll.
 void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 	std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.find(h);
 	if (it == _table.end())
@@ -93,6 +105,9 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 
 // Retire le fd d epoll puis supprime l'entrée de la table interne.
 // EPOLL_CTL_DEL n'a pas besoin de struct epoll_event (dernier arg NULL).
+// L'échec de epoll_ctl est seulement loggé, pour la même raison que dans
+// modify_handler : une erreur sur un seul fd ne doit pas interrompre la boucle.
+// La recherche dans _table se fait par pointeur, en O(log n).
 // Le handler lui-même n est pas delete ici — c'est à l appelant de le faire
 // pour éviter un double-free (handle_events() appelle remove_handler puis delete h).
 void EventLoop::remove_handler(IEventHandler* h) {
@@ -130,7 +145,10 @@ void EventLoop::handle_events() {
 			HandlerEntry* entry	= static_cast<HandlerEntry*>(events[i].data.ptr);
 			IEventHandler* h	= entry->handler;
 			int ret = 0;
-			
+
+			// Le fd est mort ou en erreur (client qui reset la connexion,
+			// pipe CGI cassé côté enfant...) : on le nettoie tout de suite,
+			// sans passer par handle_input/handle_output.
 			if (events[i].events & (EPOLLHUP | EPOLLERR | EPOLLRDHUP)) {
 				remove_handler(h);
 				delete h;
@@ -140,6 +158,11 @@ void EventLoop::handle_events() {
 			if (entry->type == ACCEPT_EVENT)
 				ret = h->handle_accept();
 			else {
+				// On teste avec & les bits réellement renvoyés par epoll
+				// (events[i].events) : un même fd surveillé pour plusieurs
+				// événements combinés (ex: READ_EVENT|WRITE_EVENT) peut donc
+				// déclencher les deux handlers dans le même passage, si les
+				// deux sont prêts en même temps.
 				if (events[i].events & EPOLLIN)
 					ret = h->handle_input();
 				if (ret != -1 && events[i].events & EPOLLOUT)
@@ -155,7 +178,9 @@ void EventLoop::handle_events() {
 	}
 }
 
-// Collecte les handlers inactifs depuis plus de CLIENT_TIMEOUT secondes.
+// Collecte les handlers inactifs depuis plus de CLIENT_TIMEOUT secondes et
+// les ferme, pour ne pas garder indéfiniment un fd enregistré si le client
+// ne renvoie plus jamais rien.
 // On collecte d'abord dans un vecteur separé car remove_handler() appelle
 // _table.erase(), ce qui invaliderait les index si on supprimait en plein scan.
 // getLastActivity() retourne 0 pour ServerHandler → jamais timedout.

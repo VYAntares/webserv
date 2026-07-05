@@ -179,4 +179,7 @@ void HttpParser::reset() {
 	_state = R_HEADERS;
 	_bodyExcepted = 0;
 	_bodyReceived = 0;
+	_body.clear();
+	_header.clear();
+	_req = HttpRequest();
 }
