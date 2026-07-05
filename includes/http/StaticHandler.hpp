@@ -3,7 +3,6 @@
 #include "../config/ConfigStruct.hpp"
 #include "ARequestHandler.hpp"
 #include "HttpRequest.hpp"
-#include <unistd.h> 
 
 class StaticHandler : public ARequestHandler {
 	public:
