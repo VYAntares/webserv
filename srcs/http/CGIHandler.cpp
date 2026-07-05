@@ -25,6 +25,3 @@ CGIHandler::~CGIHandler() {
 	delete _process;
 }
 
-// std::string CGIHandler::buildResponse() {
-// }
-

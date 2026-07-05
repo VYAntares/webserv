@@ -13,7 +13,6 @@ class ARequestHandler {
 		// devrait etre que dans staticHandler.hpp et errorHandler.hpp
 		void				getErrorPage();
 		void 				handleReturn(const std::pair<int, std::string>& return_path);
-		virtual bool		isAsync() const { return false; }
 
 	protected:
 		int					_ncode;

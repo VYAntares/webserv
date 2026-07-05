@@ -61,7 +61,7 @@ void	ClientHandler::_handleComplete() {
 		_keepAlive = (req.version == "HTTP/1.1");
 
 	_rh = Router::route(req, _server, _peerAddr, this);
-	if (_rh->isAsync())
+	if (!_rh) // CGI -> async
 		return;
 	_response = _rh->buildResponse();
 
@@ -93,16 +93,13 @@ int ClientHandler::handle_input() {
 
 	char buf[4096];
 	ssize_t n = recv(_fd, buf, sizeof(buf), 0);
-
 	if (n <= 0)
 		return -1;
-
 	std::string data(buf, n);
-	_parser.runParsing(data, static_cast<size_t>(n));
 
+	_parser.runParsing(data, static_cast<size_t>(n));
 	if (_parser.getState() == HttpParser::COMPLETE)
 		_handleComplete();
-
 	else if (_parser.getState() == HttpParser::ERROR)
 		_handleError();
 
@@ -117,12 +114,10 @@ int ClientHandler::handle_output() {
 	size_t       left = _response.size() - _sent;
 
 	ssize_t n = send(_fd, data, left, MSG_NOSIGNAL);
-
 	if (n <= 0)
 		return -1;
 
 	_sent += static_cast<size_t>(n);
-
 	if (_sent >= _response.size()) {
 		if (_keepAlive) {
 			_reset();
@@ -131,6 +126,5 @@ int ClientHandler::handle_output() {
 		}
 		return -1; // Connection: close → EventLoop détruira ce handler
 	}
-
 	return 0;
 }
