@@ -4,15 +4,10 @@
 #include "../config/ConfigStruct.hpp"
 #include "../http/HttpParser.hpp"
 #include "../http/ARequestHandler.hpp"
+#include "../core/IResponseSink.hpp"
 #include <string>
 #include <netinet/in.h>
 #include <ctime>
-
-class IResponseSink {
-	public:
-		virtual void onCgiDone(const std::string& rawHttpResp) = 0;
-		virtual ~IResponseSink() {}
-};
 
 class ClientHandler : public IEventHandler, public IResponseSink {
 	public:

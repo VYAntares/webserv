@@ -1,6 +1,6 @@
 #pragma once
 
-#include "HttpRequest.hpp"
+#include "../http/HttpRequest.hpp"
 #include "../handlers/ClientHandler.hpp"
 #include "../cgi/CGIProcess.hpp"
 
