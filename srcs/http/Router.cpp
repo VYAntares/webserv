@@ -5,6 +5,7 @@
 #include "../../includes/http/StaticHandler.hpp"
 #include "../../includes/http/ErrorHandler.hpp"
 #include "../../includes/http/CGIHandler.hpp"
+#include <unistd.h>
 
 ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 									const std::string& peerAddr, IResponseSink* sink) {
