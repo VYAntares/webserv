@@ -14,4 +14,5 @@ class CGIWriteHandler : public IEventHandler {
 	private:
 		int 				_fd;
 		const std::string	_body;
+		size_t				_sent;
 };

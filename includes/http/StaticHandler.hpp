@@ -6,6 +6,7 @@
 
 class StaticHandler : public ARequestHandler {
 	public:
+		StaticHandler(const Location& loc, int code, const std::string& body);
 		StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path);
 		~StaticHandler() {};
 		void		handleGet();

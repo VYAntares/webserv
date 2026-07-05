@@ -33,6 +33,16 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 		handleDelete();
 }
 
+StaticHandler::StaticHandler(const Location& loc, int code, const std::string& body) {
+	_ncode = code;
+	_body = body;
+
+	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
+    if (it != loc.error_page.end()) {
+     	_errorpage = it->second;
+	}
+}
+
 void	StaticHandler::handleGet() {
 
 	_type = getType(_path);

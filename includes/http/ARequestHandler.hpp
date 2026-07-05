@@ -4,6 +4,7 @@
 
 class ARequestHandler {
 	public:
+		
 		std::string			buildResponse();
 		virtual				~ARequestHandler() {}
 

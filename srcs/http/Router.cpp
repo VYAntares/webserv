@@ -38,7 +38,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
 	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty()) {
-        CGIHandler cgi(req, path, interpreter, peerAddr, sink);
+        CGIHandler cgi(req, path, interpreter, peerAddr, loc, sink);
 		return NULL;
 	}
 
