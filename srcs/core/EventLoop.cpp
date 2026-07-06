@@ -147,15 +147,6 @@ void EventLoop::handle_events() {
 			IEventHandler* h	= entry->handler;
 			int ret = 0;
 
-			// Le fd est mort ou en erreur (client qui reset la connexion,
-			// pipe CGI cassé côté enfant...) : on le nettoie tout de suite,
-			// sans passer par handle_input/handle_output.
-			if (events[i].events & (EPOLLHUP | EPOLLERR | EPOLLRDHUP)) {
-				remove_handler(h);
-				delete h;
-				continue;
-			}
-
 			if (entry->type == ACCEPT_EVENT)
 				ret = h->handle_accept();
 			else {
@@ -164,8 +155,8 @@ void EventLoop::handle_events() {
 				// événements combinés (ex: READ_EVENT|WRITE_EVENT) peut donc
 				// déclencher les deux handlers dans le même passage, si les
 				// deux sont prêts en même temps.
-				if (events[i].events & EPOLLIN)
-					ret = h->handle_input();
+				if (events[i].events & (EPOLLIN | EPOLLHUP | EPOLLERR))
+             		ret = h->handle_input();
 				if (ret != -1 && events[i].events & EPOLLOUT)
 					ret = h->handle_output();
 			}

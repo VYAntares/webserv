@@ -10,30 +10,36 @@ CGIReadHandler::CGIReadHandler(int fd, pid_t pid, const Location* loc, IResponse
 							: _fd(fd), _pid(pid), _loc(loc), _sink(sink) {
 }
 
-
 int CGIReadHandler::handle_input() {
-	int status;
-	std::string raw;
-	ARequestHandler *a = NULL;
+	char buf[4096];
+	ssize_t n = read(_fd, buf, sizeof(buf));
 
-	waitpid(_pid, &status, 0);
-	int sig = 0;
-	if (WIFEXITED(status)) {
-		sig = WEXITSTATUS(status);
-		if (sig != 0) // code 500
-			a = new ErrorHandler(*_loc, 500);
-	} else if (WIFSIGNALED(status))
-		a = new ErrorHandler(*_loc, 500);
-		
-	if (!a) {
-		std::string	out;
-		char buf[4096];
-		while (read(_fd, buf, sizeof(buf)) > 0)
-		out.append(buf);
-		a = new StaticHandler(*_loc, 200, out);
+	if (n > 0) {
+		_out.append(buf, n);
+		return 0;								// pas fini : epoll nous rappellera
 	}
-	close(_fd);
-	raw = a->buildResponse();
+	if (n < 0) {								// erreur réelle (epoll a dit "lisible")
+		ErrorHandler err(*_loc, 502);
+		_sink->onCgiDone(err.buildResponse());	// ne pas laisser le client sans réponse
+		return -1;
+	}
+
+	// n == 0 : EOF — le CGI a fermé son stdout, _out est complet
+	int status = 0;
+	waitpid(_pid, &status, 0);
+
+	ARequestHandler* a = NULL;
+	if (WIFSIGNALED(status))
+			a = new ErrorHandler(*_loc, 502);
+	else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+			a = new ErrorHandler(*_loc, 500, _out);
+	else
+			a = new StaticHandler(*_loc, 200, _out);
+
+	std::string raw = a->buildResponse();
+	delete a;
 	_sink->onCgiDone(raw);
-	return 0;
+	return -1;									// EventLoop nous retire et nous delete
 }
+
+CGIReadHandler::~CGIReadHandler() { close(_fd); }

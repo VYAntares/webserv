@@ -17,6 +17,7 @@ std::string getReason(int code) {
 		case 413: return "Body size too large";
         case 500: return "Internal Server Error";
 		case 501: return "Method not implemented";
+        case 502: return "Bad Gateway";
         default:  return "Unknown";
 	}
 }
