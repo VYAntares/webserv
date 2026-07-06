@@ -1,14 +1,14 @@
 #pragma once
 
 #include "../core/IEventHandler.hpp"
-#include <iostream>
+#include <string>
 
 class CGIWriteHandler : public IEventHandler {
 	public:
-		CGIWriteHandler(int fd, const std::string& body) : _fd(fd), _body(body) {}
-		~CGIWriteHandler() {}
+		CGIWriteHandler(int fd, const std::string& body);
+		~CGIWriteHandler();
 
-		int getFd()		  const { return _fd; }
+		int getFd()	const;
 		int handle_output();
 
 	private:

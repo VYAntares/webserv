@@ -131,6 +131,7 @@ void EventLoop::handle_events() {
 	signal(SIGINT, handle_sigint);
 	signal(SIGTERM, handle_sigint);
 	signal(SIGQUIT, handle_sigint);
+	signal(SIGPIPE, SIG_IGN);
 
 	std::cout << "Server listening.." << std::endl;
 	struct epoll_event events[MAX_EVENTS];
