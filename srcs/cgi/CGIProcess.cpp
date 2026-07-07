@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <cerrno>
 
+
+
 // Un pipe() crée 2 fd : [0] pour lire, [1] pour écrire. On en crée deux :
 // pipe_stdin[0]  → enfant lit  (son STDIN)
 // pipe_stdin[1]  → parent écrit le body dedans
@@ -28,6 +30,8 @@ CGIProcess::CGIProcess(const HttpRequest& req, std::string& path,
 	}
 	CGIFork(pipe_stdout, pipe_stdin, interpreter, path);
 }
+
+
 
 // fork() duplique le processus courant : les deux copies partagent à cet
 // instant les 4 fd de pipe. Chacune ne garde que ce qui la concerne et ferme
@@ -84,6 +88,8 @@ void	CGIProcess::CGIFork(int* pipe_stdout, int* pipe_stdin,
 	}
 }
 
+
+
 // execve() attend un char** terminé par NULL, mais on ne connaît pas à
 // l'avance le nombre de variables d'environnement. On les accumule d'abord
 // dans un vector<string> (taille dynamique), puis on convertit une seule fois
@@ -109,6 +115,8 @@ char** CGIProcess::buildEnvp(std::string& path) {
 	return convertToCharStarStarBabyyy(&envp);
 }
 
+
+
 // Convertit le vector<string> en char** NULL-terminated attendu par execve().
 // strdup() alloue chaque chaîne séparément ; ces allocations ne sont jamais
 // libérées explicitement, mais ça n'a pas d'importance ici : soit execve()
@@ -130,6 +138,8 @@ char** CGIProcess::convertToCharStarStarBabyyy(std::vector<std::string>* envp) {
 	return env;
 }
 
+
+
 // REMOTE_ADDR/REMOTE_PORT : adresse du client qui a fait la requête HTTP
 // (rien à voir avec les pipes CGI). _peerAddr arrive déjà formaté "ip:port" ;
 // si jamais le ':' est absent, on retombe sur l'adresse seule sans port.
@@ -142,6 +152,8 @@ void CGIProcess::addRemoteAddr(std::vector<std::string>* envp) {
     	envp->push_back("REMOTE_ADDR=" + _peerAddr);
 	}
 }
+
+
 
 // SCRIPT_NAME = chemin avant le '?', QUERY_STRING = ce qui suit.
 // Exemple : "/cgi-bin/multiply.py?a=4&b=7"
@@ -159,6 +171,8 @@ void CGIProcess::addUri(std::vector<std::string>* envp) {
 		envp->push_back("QUERY_STRING=");
 	}
 }
+
+
 
 // SERVER_NAME/SERVER_PORT extraits du header "Host: nom[:port]".
 // Port 80 par défaut si absent du header — un choix arbitraire : le vrai port
@@ -179,6 +193,8 @@ void CGIProcess::addHost(std::vector<std::string>* envp) {
 		envp->push_back("SERVER_PORT=" + serverPort);
 	}
 }
+
+
 
 // Convertit chaque header restant en variable HTTP_<NOM_EN_MAJUSCULES>,
 // tirets remplacés par underscores (convention CGI/1.1, RFC 3875) :
@@ -209,9 +225,13 @@ void CGIProcess::addHeaders(std::vector<std::string>* envp) {
 	}
 }
 
+
+
 int		CGIProcess::getWriteFd()	const { return _write_fd; }
 int		CGIProcess::getReadFd()		const { return _read_fd; }
 pid_t	CGIProcess::getPid()		const { return _pid; }
+
+
 
 CGIProcess::~CGIProcess() {}
 

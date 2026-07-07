@@ -1,8 +1,16 @@
 #include "../../includes/http/HttpParser.hpp"
 
-HttpParser::HttpParser(size_t maxBodyClient) : _errorCode(0), _state(R_HEADERS), _bodyExcepted(0), _bodyReceived(0), _maxBodySize(maxBodyClient) {}
+
+
+HttpParser::HttpParser(size_t maxBodyClient) : _errorCode(0), _state(R_HEADERS),
+											   _bodyExcepted(0), _bodyReceived(0),
+											   _maxBodySize(maxBodyClient) {}
+
+
 
 HttpParser::~HttpParser() {}
+
+
 
 void HttpParser::runParsing(std::string& buffer, size_t n) {
 	(void)n;
@@ -44,6 +52,8 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 		return;
 }
 
+
+
 void HttpParser::setError(int errorCode) {
 	_req.error = errorCode; 
 	_errorCode = errorCode;
@@ -51,10 +61,14 @@ void HttpParser::setError(int errorCode) {
 		_state = ERROR;
 }
 
+
+
 void HttpParser::getMp() {
 	MultipartParser mp(_req.boundary, _req.body);
 	_req.mp = mp.parsePart();
 }
+
+
 
 void HttpParser::checkFirstLine() {
 	if (_req.method.empty() || _req.method.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ") != std::string::npos)
@@ -69,6 +83,8 @@ void HttpParser::checkFirstLine() {
 	if (_req.version != "HTTP/1.1" && _req.version != "HTTP/1.0") 
 		return setError(400);
 }
+
+
 
 void HttpParser::headerParser() {
 	std::istringstream	iss(_header);
@@ -110,6 +126,8 @@ void HttpParser::headerParser() {
 		return setError(413);
 }
 
+
+
 void HttpParser::setBoundary(const std::string& boundary) {
 	size_t pos = boundary.find("boundary=");
 
@@ -120,6 +138,8 @@ void HttpParser::setBoundary(const std::string& boundary) {
 
 	_req.isMultipart = true;
 }
+
+
 
 void HttpParser::readChunked() {
 	while (true) {
@@ -166,13 +186,19 @@ void HttpParser::readChunked() {
 	}
 }
 
+
+
 HttpParser::State	HttpParser::getState() {
     return _state;
 }
 
+
+
 HttpRequest	HttpParser::getReq() {
     return _req;
 }
+
+
 
 void HttpParser::reset() {
 	_errorCode = 0;
@@ -183,3 +209,4 @@ void HttpParser::reset() {
 	_header.clear();
 	_req = HttpRequest();
 }
+

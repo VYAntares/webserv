@@ -6,7 +6,10 @@
 #include <netdb.h>
 #include <netinet/in.h>
 
+
+
 Validator::Validator(Config c) : _c(c) {}
+
 
 
 void Validator::propogateServerToLocations(Server& s) {
@@ -29,6 +32,7 @@ void Validator::propogateServerToLocations(Server& s) {
 			}
 	}
 }
+
 
 
 void Validator::checkLocationConfig(Location& l) {
@@ -88,6 +92,7 @@ void Validator::checkLocationConfig(Location& l) {
 }
 
 
+
 void	Validator::checkDuplicateIntraServer(Server& s, size_t& i) {
 	for (size_t k = i + 1; k < _c.cfg.size(); k++) {
 				Server& s2 = _c.cfg[k];
@@ -103,6 +108,7 @@ void	Validator::checkDuplicateIntraServer(Server& s, size_t& i) {
 		}
 	}
 }
+
 
 
 Config Validator::validate() {
@@ -123,3 +129,4 @@ Config Validator::validate() {
 	}
 	return _c;
 }
+

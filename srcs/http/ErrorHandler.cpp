@@ -1,5 +1,8 @@
 #include "../../includes/http/ErrorHandler.hpp"
 #include <iostream>
+
+
+
 ErrorHandler::ErrorHandler(const Location& loc, int code) {
 	_ncode = code;
 	if (loc.return_path.first != -1) { 
@@ -12,6 +15,8 @@ ErrorHandler::ErrorHandler(const Location& loc, int code) {
     	_errorpage = it->second;
 }
 
+
+
 ErrorHandler::ErrorHandler(const Location& loc, int code, std::string& body) {
 	_ncode = code;
 	_body = body;
@@ -21,6 +26,8 @@ ErrorHandler::ErrorHandler(const Location& loc, int code, std::string& body) {
 		return ;
 	}
 }
+
+
 
 ErrorHandler::ErrorHandler(const Server& server, int code) {
 	_ncode = code;
@@ -33,5 +40,4 @@ ErrorHandler::ErrorHandler(const Server& server, int code) {
 	if (it != server.error_page.end())
 		_errorpage = it->second;
 }
-
 

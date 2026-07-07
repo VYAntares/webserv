@@ -9,7 +9,11 @@
 #include <iostream>
 #include <sys/stat.h>
 
+
+
 static const std::string DEFAULT_CONFIG_PATH = "./conf/default.conf";
+
+
 
 ConfigLoader::ConfigLoader(int argc, char **argv) {
 	if (argc > 2)
@@ -48,21 +52,29 @@ ConfigLoader::ConfigLoader(int argc, char **argv) {
 	}
 }
 
+
+
 void ConfigLoader::startLexer() {
 	Lexer	l(_input);
 	_tokens = l.tokenize();
 }
+
+
 
 void ConfigLoader::startParser() {
 	Parser	p(_tokens);
 	_c = p.parse();
 }
 
+
+
 void ConfigLoader::startValidator() {
 	Validator v(_c);
 
 	_c = v.validate();
 }
+
+
 
 Config	ConfigLoader::getConfig() { return _c; }
 

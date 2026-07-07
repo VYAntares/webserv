@@ -4,13 +4,21 @@
 #include <iostream>
 #include <iomanip>
 
+
+
 Lexer::Lexer(const std::string& input) : _input(input), _pos(0), _line(1), _col(1) {}
+
+
 
 // retourne vrai si on est à la fin
 bool	Lexer::atEnd() { return _pos >= _input.size(); }
 
+
+
 // renvoie le char actuel
 char	Lexer::current() { return _input[_pos]; }
+
+
 
 // entier vers string
 static std::string toString(size_t n) {
@@ -19,12 +27,16 @@ static std::string toString(size_t n) {
 	return ss.str();
 }
 
+
+
 // avance et met à jour line et col selon la présence d'un \n
 void	Lexer::advance() {
 	if (current() == '\n')	{ _line++; _col = 1; }
 	else					{ _col++; }
 	_pos++;
 }
+
+
 
 // le nom de la fonction ne pourrait mieux expliquer son fonctionnement
 void	Lexer::skipWhitespacesAndComments() {
@@ -41,6 +53,8 @@ void	Lexer::skipWhitespacesAndComments() {
 	}
 }
 
+
+
 // pareil ici, makeToken en français : créeToken
 Token	Lexer::makeToken(TokenType type, const std::string& value) {
 	Token t;
@@ -51,6 +65,8 @@ Token	Lexer::makeToken(TokenType type, const std::string& value) {
 
 	return t;
 }
+
+
 
 // tokenize ce qu'il y a à l'intérieur des quotes
 // throw une exception si la quote fermante n'est pas trouvée
@@ -87,6 +103,8 @@ Token	Lexer::readQuote(char quote) {
 	return t;
 }
 
+
+
 // tokenize un mot
 Token	Lexer::readWord() {
 	size_t	startLine	= _line;
@@ -113,6 +131,8 @@ Token	Lexer::readWord() {
 	return t;
 }
 
+
+
 // Debug
 // static std::string tokenTypeToString(TokenType type) {
 //     switch (type) {
@@ -124,6 +144,8 @@ Token	Lexer::readWord() {
 //         default:         return "UNKNOWN";
 //     }
 // }
+
+
 
 // prend l'input et retourne un vecteur de tokens.
 std::vector<Token> Lexer::tokenize() {

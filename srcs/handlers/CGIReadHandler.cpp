@@ -6,9 +6,13 @@
 #include <iostream>
 #include <sys/wait.h>
 
+
+
 CGIReadHandler::CGIReadHandler(int fd, pid_t pid, const Location* loc, IResponseSink* sink) 
 							: _fd(fd), _pid(pid), _loc(loc), _sink(sink) {
 }
+
+
 
 int CGIReadHandler::handle_input() {
 	char buf[4096];
@@ -41,5 +45,7 @@ int CGIReadHandler::handle_input() {
 	_sink->onCgiDone(raw);
 	return -1;									// EventLoop nous retire et nous delete
 }
+
+
 
 CGIReadHandler::~CGIReadHandler() { close(_fd); }

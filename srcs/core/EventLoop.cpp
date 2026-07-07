@@ -7,16 +7,24 @@
 #include <ctime>
 #include <map>
 
+
+
 static const int CLIENT_TIMEOUT = 30; // secondes
+
+
 
 // Drapeau d'arrêt levé par le signal handler.
 // volatile : force la relecture depuis la mémoire à chaque tour (pas de cache registre).
 // sig_atomic_t : lecture/écriture atomique, sans risque de valeur à moitié écrite par un signal.
 static volatile sig_atomic_t g_stop = 0;
 
+
+
 // Handler SIGINT/SIGTERM : lève g_stop pour que handle_events() sorte proprement.
 // Seules les fonctions async-signal-safe sont autorisées ici — donc pas de malloc/cout.
 static void handle_sigint(int) { g_stop = 1; }
+
+
 
 // Traduit notre EventType en flags epoll.
 // EventType et les flags epoll sont deux systèmes de constantes différents —
@@ -36,9 +44,13 @@ static uint32_t to_epoll_flags(EventType type) {
 	return flags;
 }
 
+
+
 // Une seule instance existe dans tout le programme, accessible via instance().
 // Voir commentaire EventLoop.hpp pour plus de détails.
 EventLoop* EventLoop::_instance = NULL;
+
+
 
 EventLoop* EventLoop::instance() {
 	if (!_instance)
@@ -46,12 +58,16 @@ EventLoop* EventLoop::instance() {
 	return _instance;
 }
 
+
+
 // Crée l'instance epoll unique qui surveillera tous les fd de la boucle.
 EventLoop::EventLoop() {
 	_epfd = epoll_create1(0);
 	if (_epfd == -1)
 		throw std::runtime_error("epoll_create() failed: " + std::string(strerror(errno)));
 }
+
+
 
 // Crée une entrée dans la table : associe le handler à son type d'événement.
 // C'est ce pointeur (entry) qu epoll nous rendra dans events[i].data.ptr
@@ -82,6 +98,8 @@ void EventLoop::register_handler(IEventHandler* h, EventType type) {
 	}
 }
 
+
+
 // Met à jour le type d'événement surveillé pour un handler déjà enregistré.
 // _table.find(h) : recherche par pointeur dans la map, en O(log n).
 // Met à jour son type, recalcule les flags, puis appelle EPOLL_CTL_MOD pour
@@ -103,6 +121,8 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 		std::cerr << "epoll_ctl(MOD) failed fd=" << h->getFd() << ": " << strerror(errno) << "\n";
 }
 
+
+
 // Retire le fd d epoll puis supprime l'entrée de la table interne.
 // EPOLL_CTL_DEL n'a pas besoin de struct epoll_event (dernier arg NULL).
 // L'échec de epoll_ctl est seulement loggé, pour la même raison que dans
@@ -120,6 +140,8 @@ void EventLoop::remove_handler(IEventHandler* h) {
 		_table.erase(it);
 	}
 }
+
+
 
 // epoll_wait retourne :
 //   > 0 : n événements prêts → on traite le for ci-dessous
@@ -170,6 +192,8 @@ void EventLoop::handle_events() {
 	}
 }
 
+
+
 // Collecte les handlers inactifs depuis plus de CLIENT_TIMEOUT secondes et
 // les ferme, pour ne pas garder indéfiniment un fd enregistré si le client
 // ne renvoie plus jamais rien.
@@ -195,7 +219,11 @@ void EventLoop::checkTimeOut() {
 	}
 }
 
+
+
 void EventLoop::destroy() { delete _instance; }
+
+
 
 EventLoop::~EventLoop() {
 	for (std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.begin();

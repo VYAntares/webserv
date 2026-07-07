@@ -8,6 +8,8 @@
 #include <iostream>
 #include <sstream>
 
+
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
@@ -15,6 +17,8 @@ std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
 	oss << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port);
 	return oss.str();
 }
+
+
 
 // Appelé après chaque requête complète (keep-alive) pour préparer le prochain cycle.
 // _response est vidée explicitement pour libérer la mémoire allouée par la string.
@@ -26,8 +30,12 @@ void ClientHandler::_reset() {
 	_parser.reset();
 }
 
+
+
 int		ClientHandler::getFd()			 const { return _fd; }
 time_t	ClientHandler::getLastActivity() const { return _lastActivity; }
+
+
 
 // ─── Cycle de vie ─────────────────────────────────────────────────────────────
 
@@ -42,6 +50,8 @@ ClientHandler::ClientHandler(int clientFd, const Server& server,
 	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] connected\n";
 }
 
+
+
 // Le destructeur ne delete pas _rh via _reset() pour éviter de rappeler
 // EventLoop depuis un contexte de destruction. On delete directement.
 ClientHandler::~ClientHandler() {
@@ -51,6 +61,8 @@ ClientHandler::~ClientHandler() {
 	close(_fd);
 	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] disconnected\n";
 }
+
+
 
 void	ClientHandler::_handleComplete() {
 	HttpRequest req = _parser.getReq();
@@ -84,6 +96,8 @@ void	ClientHandler::_handleComplete() {
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
 
+
+
 void	ClientHandler::_handleError() {
 	HttpRequest req = _parser.getReq();		// contient req.error
 
@@ -94,9 +108,13 @@ void	ClientHandler::_handleError() {
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
 
+
+
 void	ClientHandler::onCgiStart(CGIReadHandler* rd) {
 	_cgiRead = rd;
 }
+
+
 
 void	ClientHandler::onCgiDone(const std::string& rawHttpResp) {
 	_cgiRead = NULL;
@@ -104,6 +122,7 @@ void	ClientHandler::onCgiDone(const std::string& rawHttpResp) {
 	_sent = 0;
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
+
 
 
 // ─── handle_input ─────────────────────────────────────────────────────────────
@@ -124,6 +143,8 @@ int ClientHandler::handle_input() {
 
 	return 0;
 }
+
+
 
 // ─── handle_output ────────────────────────────────────────────────────────────
 int ClientHandler::handle_output() {

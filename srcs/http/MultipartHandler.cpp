@@ -2,6 +2,8 @@
 #include "../../includes/utils/utils.hpp"
 #include <fstream>
 
+
+
 MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& path): _req(&req), _path(path) {
     _ncode = 200;
     std::string body;
@@ -19,6 +21,8 @@ MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& pa
     if (!body.empty())
         setBody(body);
 }
+
+
 
 void    MultipartHandler::setBody(const std::string& b) {
     _body += "<!DOCTYPE html>\n";

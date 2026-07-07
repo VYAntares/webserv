@@ -1,8 +1,12 @@
 #include "../../includes/handlers/CGIWriteHandler.hpp"
 #include <unistd.h>
 
+
+
 CGIWriteHandler::CGIWriteHandler(int fd, const std::string& body)
 								: _fd(fd), _body(body), _sent(0) {}
+
+
 
 int CGIWriteHandler::handle_output() {
     if (_sent >= _body.size())          // body vide : rien à envoyer
@@ -16,6 +20,10 @@ int CGIWriteHandler::handle_output() {
     return (_sent >= _body.size()) ? -1 : 0;
 }
 
+
+
 int	CGIWriteHandler::getFd() const { return _fd; }
+
+
 
 CGIWriteHandler::~CGIWriteHandler() { close(_fd); }

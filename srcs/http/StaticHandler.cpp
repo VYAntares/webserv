@@ -5,6 +5,8 @@
 #include <sstream>
 #include <dirent.h>
 
+
+
 StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _path(path) {
 	_ncode = 200;
 	_type = "";
@@ -33,6 +35,8 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 		handleDelete();
 }
 
+
+
 StaticHandler::StaticHandler(const Location& loc, int code, const std::string& body) {
 	_ncode = code;
 	_body = body;
@@ -42,6 +46,8 @@ StaticHandler::StaticHandler(const Location& loc, int code, const std::string& b
      	_errorpage = it->second;
 	}
 }
+
+
 
 void	StaticHandler::handleGet() {
 
@@ -56,6 +62,8 @@ void	StaticHandler::handleGet() {
 	_body = ss.str();
 	file.close();
 }
+
+
 
 void	StaticHandler::handlePost() {
 	std::ofstream	file(_path.c_str());
@@ -74,6 +82,8 @@ void	StaticHandler::handlePost() {
 		_ncode = 201;
 }
 
+
+
 void	StaticHandler::handleDelete() {
 	int res = unlink(_path.c_str());
 
@@ -82,6 +92,8 @@ void	StaticHandler::handleDelete() {
 	else
 		_ncode = 204;
 }
+
+
 
 void	StaticHandler::throwList() {
 	std::string path = _loc->root + _req->uri;
@@ -112,6 +124,8 @@ void	StaticHandler::throwList() {
 	_type = getType(".html");
 }
 
+
+
 void StaticHandler::headerListe(const std::string& path) {
 
 	_body += "<!DOCTYPE html>\n";
@@ -124,3 +138,4 @@ void StaticHandler::headerListe(const std::string& path) {
 	_body += "<h1>Index of " + path + "</h1>\n";
 	_body += "<ul>\n";
 }
+

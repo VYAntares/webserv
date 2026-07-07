@@ -1,5 +1,7 @@
 #include "../../includes/http/MultipartParser.hpp"
 
+
+
 Multipart MultipartParser::parsePart() {
     Multipart mp;
     std::vector<Part> prts = parseMultiPart();
@@ -17,6 +19,8 @@ Multipart MultipartParser::parsePart() {
     }
     return mp;
 }
+
+
 
 std::vector<Part> MultipartParser::parseMultiPart() {
 	std::vector<Part> parts;
@@ -50,6 +54,8 @@ std::vector<Part> MultipartParser::parseMultiPart() {
     return parts;
 }
 
+
+
 Part MultipartParser::parsePart(std::string& inside) {
     Part p;
     size_t sep = inside.find("\r\n\r\n");
@@ -75,6 +81,8 @@ Part MultipartParser::parsePart(std::string& inside) {
     }
     return p;
 }
+
+
 
 void MultipartParser::setPart(const std::string& line, Part& p) {
     if (line.find("Content-Disposition:") != std::string::npos) {
@@ -102,3 +110,4 @@ void MultipartParser::setPart(const std::string& line, Part& p) {
         p.contentType = line.substr(pos);
     }
 }
+

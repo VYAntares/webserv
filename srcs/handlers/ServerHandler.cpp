@@ -58,6 +58,8 @@ ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(ser
 	printServer();
 }
 
+
+
 // Crée un socket TCP non bloquant.
 // SO_REUSEADDR évite "Address already in use" lors d'un redémarrage rapide du serveur.
 // O_NONBLOCK est requis pour que la boucle événementielle ne se bloque pas sur accept().
@@ -82,6 +84,8 @@ int ServerHandler::createSocket() {
 	return fd;
 }
 
+
+
 // Associe l'adresse IP et le port fournis au fd du socket.
 // htons() convertit le port en ordre réseau (big-endian).
 void ServerHandler::bindAddress(int serverFd, addrport listen) {
@@ -95,6 +99,8 @@ void ServerHandler::bindAddress(int serverFd, addrport listen) {
 	if (bind(serverFd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
 		throw std::runtime_error("bind() failed:" + std::string(strerror(errno)));
 }
+
+
 
 // Accepte une connexion entrante et crée un ClientHandler dynamique.
 // Le ClientHandler s'enregistre lui-même dans l'EventLoop via son constructeur.
@@ -129,6 +135,8 @@ int ServerHandler::handle_accept() {
 	}
 	return 0;
 }
+
+
 
 int ServerHandler::getFd() const { return this->_fd; }
 

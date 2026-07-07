@@ -1,6 +1,10 @@
 #include "../../includes/utils/utils.hpp"
 
+
+
 static std::map<std::string, std::string> mime_types = init_mime_types();
+
+
 
 std::string getReason(int code) {
     
@@ -22,6 +26,8 @@ std::string getReason(int code) {
 	}
 }
 
+
+
 std::string getType(const std::string& path) {
 	std::string	ext;
 
@@ -37,6 +43,8 @@ std::string getType(const std::string& path) {
 	return "application/octet-stream";
 }
 
+
+
 bool isDir(const std::string& path) {
 	struct stat st;
 
@@ -44,6 +52,8 @@ bool isDir(const std::string& path) {
 		return false;
 	return S_ISDIR(st.st_mode);
 }
+
+
 
 std::map<std::string, std::string> init_mime_types() {
     std::map<std::string, std::string> ext;
@@ -69,6 +79,8 @@ std::map<std::string, std::string> init_mime_types() {
     return ext;
 }
 
+
+
 bool	fileFound(const std::string& path) {
 	struct stat forbuf;
 
@@ -77,12 +89,15 @@ bool	fileFound(const std::string& path) {
 	return true;
 }
 
-std::string itos(int n)
-{
+
+
+std::string itos(int n) {
     std::stringstream ss;
     ss << n;
     return ss.str();
 }
+
+
 
 std::string getParentDirectory(const std::string& path) {
     size_t pos = path.rfind('/');
@@ -93,6 +108,8 @@ std::string getParentDirectory(const std::string& path) {
     return path.substr(0, pos);
 }
 
+
+
 static int hexaToStr(char c) {
     if (c >= '0' && c <= '9')
         return c - '0';
@@ -102,6 +119,8 @@ static int hexaToStr(char c) {
         return c - 'a' + 10;
     return -1;
 }
+
+
 
 std::string decodeHexa(const std::string& uri, bool plus) {
     std::string newuri;
@@ -126,6 +145,8 @@ std::string decodeHexa(const std::string& uri, bool plus) {
     return newuri;
 }
 
+
+
 bool isEncoded(const std::string& uri) {
     size_t pos = uri.find('%');
     if (pos != std::string::npos)
@@ -133,11 +154,15 @@ bool isEncoded(const std::string& uri) {
     return false;
 }
 
+
+
 bool    isError(int code) {
     if (code >= 400 && code < 600)
         return true;
     return false;
 }
+
+
 
 std::string normalizePath(const std::string& p, const std::string& root) {
     std::vector<std::string>    sgmt;
@@ -164,3 +189,4 @@ std::string normalizePath(const std::string& p, const std::string& root) {
         return "";
     return result;
 }
+

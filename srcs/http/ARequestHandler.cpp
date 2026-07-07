@@ -4,6 +4,8 @@
 #include <sstream>
 #include <iostream>
 
+
+
 void ARequestHandler::handleReturn(const std::pair<int, std::string>& return_path) {
 	_ncode = return_path.first;
 	_type = getType(".html");
@@ -15,6 +17,8 @@ void ARequestHandler::handleReturn(const std::pair<int, std::string>& return_pat
 	else
 		_body = "<html><body><h1>Redirecting</html></body></h1>";
 }
+
+
 
 void	ARequestHandler::getErrorPage() {
 	_type = getType(_errorpage);
@@ -28,6 +32,8 @@ void	ARequestHandler::getErrorPage() {
 	_body = ss.str();
 	file.close();
 }
+
+
 
 std::string ARequestHandler::buildResponse() {
     if (isError(_ncode) && _location.empty() && _body.empty()) {
@@ -53,3 +59,4 @@ std::string ARequestHandler::buildResponse() {
 
 	return oss.str();
 }
+
