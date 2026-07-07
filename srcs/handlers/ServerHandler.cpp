@@ -80,7 +80,7 @@ int ServerHandler::createSocket() {
 		throw std::runtime_error("fcntl() failed: " + std::string(strerror(errno)));
 	}
 	// l'enfant CGI ne doit pas hériter du socket d'écoute
-	fcntl(fd, F_SETFL, FD_CLOEXEC);
+	fcntl(fd, F_SETFD, FD_CLOEXEC);
 	return fd;
 }
 
@@ -125,7 +125,7 @@ int ServerHandler::handle_accept() {
 	// FD_CLOEXEC : si un CGI est fork+execvé plus tard, le kernel
 	// ferme ce fd automatiquement dans l'enfant pendant l'execve().
 	// Le parent continue de l'utiliser normalement (keep-alive, etc.).
-	fcntl(client_fd, F_SETFL, FD_CLOEXEC);
+	fcntl(client_fd, F_SETFD, FD_CLOEXEC);
 	
 	try {
 		new ClientHandler(client_fd, _server, client_addr);

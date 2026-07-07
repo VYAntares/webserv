@@ -4,6 +4,8 @@
 #include <sys/epoll.h>
 #include <errno.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <ctime>
 #include <map>
 
@@ -61,10 +63,12 @@ EventLoop* EventLoop::instance() {
 
 
 // Crée l'instance epoll unique qui surveillera tous les fd de la boucle.
+// FD_CLOEXEC : les enfants CGI (fork+execve) ne doivent pas hériter du fd epoll.
 EventLoop::EventLoop() {
 	_epfd = epoll_create1(0);
 	if (_epfd == -1)
 		throw std::runtime_error("epoll_create() failed: " + std::string(strerror(errno)));
+	fcntl(_epfd, F_SETFD, FD_CLOEXEC);
 }
 
 
