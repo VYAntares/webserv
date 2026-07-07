@@ -1,4 +1,5 @@
 #include "../../includes/handlers/ClientHandler.hpp"
+#include "../../includes/handlers/CGIReadHandler.hpp"
 #include "../../includes/core/EventLoop.hpp"
 #include "../../includes/http/Router.hpp"
 #include <unistd.h>
