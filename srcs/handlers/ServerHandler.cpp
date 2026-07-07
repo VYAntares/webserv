@@ -43,7 +43,7 @@ void	ServerHandler::printServer() const {
 
 // Initialise le socket serveur puis s'enregistre auprès du singleton EventLoop
 // pour recevoir les événements ACCEPT. En cas d'échec, ferme le fd (RAII).
-ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(server) {
+ServerHandler::ServerHandler(addrport addrs, const Server& server) : _server(server), _fd(-1) {
 	try {
 		_fd = createSocket();
 		std::cout << "┌─ [SERVER fd=" << _fd << "] addr: " << addrToStr(addrs.first) << ":" << addrs.second << std::endl;
@@ -66,12 +66,19 @@ int ServerHandler::createSocket() {
 	if (fd == -1)
 		throw std::runtime_error("socket() failed:" + std::string(strerror(errno)));
 
+	// fermer fd avant de throw : à ce stade _fd n'est pas encore assigné,
+	// le catch du constructeur ne peut donc pas le fermer pour nous.
 	int opt = 1;
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1)
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+		close(fd);
    		throw std::runtime_error("setsockopt() failed: " + std::string(strerror(errno)));
-	if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) == -1)
+	}
+	if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) == -1) {
+		close(fd);
 		throw std::runtime_error("fcntl() failed: " + std::string(strerror(errno)));
-
+	}
+	// l'enfant CGI ne doit pas hériter du socket d'écoute
+	fcntl(fd, F_SETFL, FD_CLOEXEC);
 	return fd;
 }
 
@@ -91,14 +98,35 @@ void ServerHandler::bindAddress(int serverFd, addrport listen) {
 
 // Accepte une connexion entrante et crée un ClientHandler dynamique.
 // Le ClientHandler s'enregistre lui-même dans l'EventLoop via son constructeur.
-// Retourne 0 en succès, -1 si accept() échoue (EventLoop supprimera ce handler).
+// Retourne toujours 0 : un échec d'accept() (connexion annulée, plus de fd
+// disponibles...) est transitoire et ne doit surtout pas détruire le socket
+// d'écoute — retourner -1 ici ferait supprimer ce ServerHandler par EventLoop
+// et le port ne répondrait plus jamais.
 int ServerHandler::handle_accept() {
 	struct sockaddr_in client_addr;
 	socklen_t len = sizeof(client_addr);
 	int client_fd = accept(_fd, (struct sockaddr*)&client_addr, &len);
 	if (client_fd == -1)
-		return -1;
-	new ClientHandler(client_fd, _server, client_addr);
+		return 0;
+
+	// Le fd client n'hérite PAS de O_NONBLOCK du socket d'écoute (Linux) :
+	// il faut le poser explicitement, sinon un send() vers un client lent
+	// peut bloquer toute la boucle (interdit par le sujet).
+	if (fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL) | O_NONBLOCK) == -1) {
+		close(client_fd);
+		return 0;
+	}
+	// FD_CLOEXEC : si un CGI est fork+execvé plus tard, le kernel
+	// ferme ce fd automatiquement dans l'enfant pendant l'execve().
+	// Le parent continue de l'utiliser normalement (keep-alive, etc.).
+	fcntl(client_fd, F_SETFL, FD_CLOEXEC);
+	
+	try {
+		new ClientHandler(client_fd, _server, client_addr);
+	} catch (std::exception& e) {
+		std::cerr << "accept: " << e.what() << std::endl;
+		close(client_fd);
+	}
 	return 0;
 }
 
