@@ -11,10 +11,15 @@ class CGIReadHandler : public IEventHandler {
 		int getFd()		 const { return _fd; }
 		int handle_input();
 
+		time_t	getLastActivity() const { return _lastActivity; }
+
+		void	detachSink() { _sink = NULL; }
+
 	private:
 		int				_fd;
 		pid_t			_pid;
 		std::string		_out;
 		const Location*	_loc;
 		IResponseSink*	_sink; // lie au client originel qui a lancer le cgi
+		time_t			_lastActivity;
 };
