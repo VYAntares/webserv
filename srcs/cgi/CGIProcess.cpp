@@ -67,13 +67,13 @@ void	CGIProcess::CGIFork(int* pipe_stdout, int* pipe_stdin,
 		// être le SEUL nom de fichier : passer "www/cgi-bin/hello.py" après
 		// un chdir dans "www/cgi-bin" ferait chercher un chemin dédoublé.
 		size_t slash = path.rfind('/');
-		std::string dir = (slash == std::string::npos) ? "." : path.substr(0, slash);
+		std::string dir  = (slash == std::string::npos) ? "." : path.substr(0, slash);
 		std::string file = (slash == std::string::npos) ? path : path.substr(slash + 1);
 		if (chdir(dir.c_str()) == -1)
 			exit(1);
 
 		char** envp = buildEnvp(path);
-		char* av[] = { (char*)interpreter.c_str(), (char*)path.c_str(), NULL };
+		char* av[] = { (char*)interpreter.c_str(), (char*)file.c_str(), NULL };
 		execve(interpreter.c_str(), av, envp);
 		exit(1);
 

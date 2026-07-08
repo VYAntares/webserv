@@ -165,26 +165,40 @@ void EventLoop::handle_events() {
 	while (!g_stop) {
 		int n = epoll_wait(_epfd, events, MAX_EVENTS, 500);
 
-		if (n <= 0)
-			continue;
-
 		for (int i = 0; i < n; i++) {
 			HandlerEntry* entry	= static_cast<HandlerEntry*>(events[i].data.ptr);
 			IEventHandler* h	= entry->handler;
 			int ret = 0;
 
-			if (entry->type == ACCEPT_EVENT)
-				ret = h->handle_accept();
-			else {
-				// On teste avec & les bits réellement renvoyés par epoll
-				// (events[i].events) : un même fd surveillé pour plusieurs
-				// événements combinés (ex: READ_EVENT|WRITE_EVENT) peut donc
-				// déclencher les deux handlers dans le même passage, si les
-				// deux sont prêts en même temps.
-				if (events[i].events & (EPOLLIN | EPOLLHUP | EPOLLERR))
-             		ret = h->handle_input();
-				if (ret != -1 && events[i].events & EPOLLOUT)
-					ret = h->handle_output();
+			// Une exception levée par un handler ne doit jamais sortir de la
+			// boucle : le sujet impose que le serveur ne s'arrête sous aucune
+			// circonstance. On sacrifie seulement le handler fautif.
+			try {
+				if (entry->type == ACCEPT_EVENT)
+					ret = h->handle_accept();
+				else {
+					// On teste avec & les bits réellement renvoyés par epoll
+					// (events[i].events) : un même fd surveillé pour plusieurs
+					// événements combinés (ex: READ_EVENT|WRITE_EVENT) peut donc
+					// déclencher les deux handlers dans le même passage, si les
+					// deux sont prêts en même temps.
+					if (events[i].events & (EPOLLIN | EPOLLHUP | EPOLLERR))
+						ret = h->handle_input();
+					if (ret != -1 && events[i].events & EPOLLOUT)
+						ret = h->handle_output();
+					// EPOLLERR/EPOLLHUP sans EPOLLIN ni EPOLLOUT : aucun des
+					// deux handlers ci-dessus n'a pu constater l'erreur — on
+					// ferme, sinon epoll re-signale en boucle (busy loop).
+					if (ret != -1 && (events[i].events & (EPOLLHUP | EPOLLERR))
+						&& !(events[i].events & (EPOLLIN | EPOLLOUT)))
+						ret = -1;
+				}
+			} catch (std::exception& e) {
+				std::cerr << "[handler error] fd=" << h->getFd() << ": " << e.what() << "\n";
+				ret = -1;
+			} catch (...) {
+				std::cerr << "[handler error] fd=" << h->getFd() << ": unknown exception\n";
+				ret = -1;
 			}
 
 			if (ret == -1) {
@@ -192,6 +206,8 @@ void EventLoop::handle_events() {
 				delete h;
 			}
 		}
+		// Hors du if (n > 0) : les timeouts doivent aussi tomber quand le
+		// serveur est inactif (epoll_wait qui expire sans événement).
 		checkTimeOut();
 	}
 }
@@ -235,6 +251,7 @@ EventLoop::~EventLoop() {
 		delete it->first;
 		delete it->second;
 	}
+	close(_epfd);
 	_instance = NULL;
 }
 
