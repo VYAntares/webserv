@@ -8,8 +8,8 @@ class CGIReadHandler : public IEventHandler {
 		CGIReadHandler(int fd, pid_t pid, const Location* loc, IResponseSink* sink);
 		~CGIReadHandler();
 
-		int getFd()		 const { return _fd; }
-		int handle_input();
+		int 	getFd()		 const { return _fd; }
+		int 	handle_input();
 
 		time_t	getLastActivity() const { return _lastActivity; }
 

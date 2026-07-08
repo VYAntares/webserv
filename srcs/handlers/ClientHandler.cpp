@@ -54,6 +54,8 @@ ClientHandler::ClientHandler(int clientFd, const Server& server,
 
 // Le destructeur ne delete pas _rh via _reset() pour éviter de rappeler
 // EventLoop depuis un contexte de destruction. On delete directement.
+// Si un CGI est encore en cours, on prévient son CGIReadHandler que nous
+// n'existons plus : sans ça, il appellerait onCgiDone() sur un objet détruit.
 ClientHandler::~ClientHandler() {
 	if (_cgiRead)
 		_cgiRead->detachSink();
@@ -89,7 +91,6 @@ void	ClientHandler::_handleComplete() {
 	_rh->setKeepAlive(_keepAlive);
 	_response = _rh->buildResponse();
 
-	// debugger
 	std::cout << "[client " << _peerAddr << "] "
 	          << req.method << " " << req.uri << "\n";
 
@@ -117,7 +118,7 @@ void	ClientHandler::onCgiStart(CGIReadHandler* rd) {
 
 
 void	ClientHandler::onCgiDone(const std::string& rawHttpResp) {
-	_cgiRead = NULL;
+	_cgiRead = NULL; // le CGIReadHandler se détruit juste après, ne plus y toucher
 	_response = rawHttpResp;
 	_sent = 0;
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);

@@ -32,7 +32,7 @@ class ClientHandler : public IEventHandler, public IResponseSink {
 
 		bool				_keepAlive;   // false → close after send
 		time_t				_lastActivity;
-		CGIReadHandler*		_cgiRead;
+		CGIReadHandler*		_cgiRead;   // CGI en cours (NULL sinon) — pour se détacher à la destruction
 
 		void				_reset();   // resets per-request state for keep-alive
 		std::string			_buildPeerStr(const struct sockaddr_in& addr) const;
