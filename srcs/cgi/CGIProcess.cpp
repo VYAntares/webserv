@@ -7,6 +7,8 @@
 #include <vector>
 #include <fcntl.h>
 #include <cerrno>
+#include <signal.h>
+#include <sys/wait.h>
 
 // Un pipe() crée 2 fd : [0] pour lire, [1] pour écrire. On en crée deux :
 // pipe_stdin[0]  → enfant lit  (son STDIN)
@@ -56,13 +58,18 @@ void	CGIProcess::CGIFork(int* pipe_stdout, int* pipe_stdin,
 		close(pipe_stdin[0]); close(pipe_stdin[1]);
 		close(pipe_stdout[0]); close(pipe_stdout[1]);
 
-		char* av[] = { (char*)interpreter.c_str(), (char*)path.c_str(), NULL };
-		// path = "/var/www/site/scripts/hello.py"
-		std::string dir = path.substr(0, path.rfind('/'));
-		// dir = "/var/www/site/scripts"
-		chdir(dir.c_str());
+		// On se place dans le dossier du script (accès aux fichiers relatifs,
+		// exigé par le sujet). L'argument passé à l'interpréteur doit alors
+		// être le SEUL nom de fichier : passer "www/cgi-bin/hello.py" après
+		// un chdir dans "www/cgi-bin" ferait chercher un chemin dédoublé.
+		size_t slash = path.rfind('/');
+		std::string dir  = (slash == std::string::npos) ? "." : path.substr(0, slash);
+		std::string file = (slash == std::string::npos) ? path : path.substr(slash + 1);
+		if (chdir(dir.c_str()) == -1)
+			exit(1);
 
 		char** envp = buildEnvp(path);
+		char* av[] = { (char*)interpreter.c_str(), (char*)file.c_str(), NULL };
 		execve(interpreter.c_str(), av, envp);
 		exit(1);
 
@@ -79,8 +86,21 @@ void	CGIProcess::CGIFork(int* pipe_stdout, int* pipe_stdin,
 		// read()/write() peut bloquer tout le event loop si le pipe est plein
 		// ou vide au moment de l'appel.
 		if (fcntl(_write_fd, F_SETFL, fcntl(_write_fd, F_GETFL) | O_NONBLOCK) == -1
-			|| fcntl(_read_fd, F_SETFL, fcntl(_read_fd, F_GETFL) | O_NONBLOCK) == -1)
+			|| fcntl(_read_fd, F_SETFL, fcntl(_read_fd, F_GETFL) | O_NONBLOCK) == -1) {
+			// nettoyer avant de throw : sinon fds et process enfant fuient
+			close(_write_fd);
+			close(_read_fd);
+			kill(_pid, SIGKILL);
+			waitpid(_pid, NULL, 0);
 			throw std::runtime_error("fcntl() failed: " + std::string(strerror(errno)));
+		}
+
+		// FD_CLOEXEC : si un AUTRE CGI est forké pendant que celui-ci tourne,
+		// l'enfant du second hériterait de nos deux fds de pipe — le premier
+		// CGI ne verrait alors jamais l'EOF sur son stdin (fd d'écriture
+		// encore ouvert ailleurs) et resterait bloqué.
+		fcntl(_write_fd, F_SETFD, FD_CLOEXEC);
+		fcntl(_read_fd, F_SETFD, FD_CLOEXEC);
 	}
 }
 
@@ -151,13 +171,14 @@ void CGIProcess::addRemoteAddr(std::vector<std::string>* envp) {
 // d'un GET (ex. os.environ["QUERY_STRING"] côté Python).
 void CGIProcess::addUri(std::vector<std::string>* envp) {
 	size_t pos = _req.uri.find('?');
-	if (pos != std::string::npos) {
-		envp->push_back("SCRIPT_NAME=" + _req.uri.substr(0, pos));
-		envp->push_back("QUERY_STRING=" + _req.uri.substr(pos + 1));
-	} else {
-		envp->push_back("SCRIPT_NAME=" + _req.uri);
-		envp->push_back("QUERY_STRING=");
-	}
+	std::string scriptPath = (pos != std::string::npos) ? _req.uri.substr(0, pos) : _req.uri;
+	envp->push_back("SCRIPT_NAME=" + scriptPath);
+	envp->push_back("QUERY_STRING=" + (pos != std::string::npos ? _req.uri.substr(pos + 1) : ""));
+	// PATH_INFO et REQUEST_URI obligatoires pour cgi_test (42) : il vérifie
+	// que PATH_INFO existe ET correspond à REQUEST_URI, sinon 500
+	// ("PATH_INFO not found" / "PATH_INFO incorrect").
+	envp->push_back("PATH_INFO=" + scriptPath);
+	envp->push_back("REQUEST_URI=" + _req.uri);
 }
 
 // SERVER_NAME/SERVER_PORT extraits du header "Host: nom[:port]".

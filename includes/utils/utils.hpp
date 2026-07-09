@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include <sys/stat.h>
 #include <iostream>
@@ -6,6 +6,12 @@
 #include <sstream>
 #include <vector>
 #include <map>
+
+#include "../config/ConfigStruct.hpp"
+
+// longest-prefix match de l'URI contre les locations du serveur
+// (partagé entre Router et HttpParser pour la limite de body par location)
+const Location*                     findLocation(const std::string& uri, const Server& server);
 
 bool                                isError(int code);
 bool                                isDir(const std::string& path);

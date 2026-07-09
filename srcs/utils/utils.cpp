@@ -13,11 +13,13 @@ std::string getReason(int code) {
 		case 400: return "Bad Request";
         case 403: return "Forbidden";
         case 404: return "Not Found";
-		case 405: return "Method not allowed";
-		case 413: return "Body size too large";
+		case 405: return "Method Not Allowed";
+		case 413: return "Payload Too Large";
+		case 431: return "Request Header Fields Too Large";
         case 500: return "Internal Server Error";
-		case 501: return "Method not implemented";
+		case 501: return "Not Implemented";
         case 502: return "Bad Gateway";
+        case 504: return "Gateway Timeout";
         default:  return "Unknown";
 	}
 }
@@ -84,6 +86,36 @@ std::string itos(int n)
     return ss.str();
 }
 
+// longest-prefix match : réduit l'URI segment par segment jusqu'à trouver
+// une location dont le path correspond exactement (même logique que le
+// Router — partagée pour que HttpParser applique la limite de body de la
+// bonne location dès la lecture des headers, avant de lire le body)
+const Location* findLocation(const std::string& uri, const Server& server) {
+    std::string shorturi = uri;
+    const Location *loc = NULL;
+    int len = -1;
+    if (uri.empty() || uri[0] != '/')
+        return NULL;
+    while (true) {
+        for (size_t i = 0; i < server.locations.size(); i++) {
+            if (server.locations[i].path == shorturi &&
+                len < (int)(server.locations[i].path.length())) {
+                loc = &server.locations[i];
+                len = (int)(server.locations[i].path.length());
+            }
+        }
+        if (len != -1)
+            break;
+        if (shorturi.empty())
+            break;
+        size_t i = shorturi.rfind('/');
+        shorturi.erase(i);
+        if (shorturi.empty())
+            shorturi = "/";
+    }
+    return loc;
+}
+
 std::string getParentDirectory(const std::string& path) {
     size_t pos = path.rfind('/');
     if (pos == std::string::npos)
@@ -122,7 +154,6 @@ std::string decodeHexa(const std::string& uri, bool plus) {
         } else
             newuri += uri[i];
     }
-    std::cout << "newu" << newuri << std::endl;
     return newuri;
 }
 
@@ -139,28 +170,50 @@ bool    isError(int code) {
     return false;
 }
 
-std::string normalizePath(const std::string& p, const std::string& root) {
+// Canonise un chemin : résout "." et "..", supprime les slashs redondants,
+// et préserve le caractère relatif ou absolu du chemin d'origine.
+static std::string canonPath(const std::string& p) {
     std::vector<std::string>    sgmt;
     std::string                 seg;
     std::stringstream           ss(p);
+    bool                        absolute = (!p.empty() && p[0] == '/');
 
     while(std::getline(ss, seg, '/')){
         if (seg == "." || seg.empty())
             continue ;
         else if (seg == "..") {
-            if (!sgmt.empty())
+            if (!sgmt.empty() && sgmt.back() != "..")
                 sgmt.pop_back();
-            else 
+            else
                 sgmt.push_back(seg);
         }
         else
             sgmt.push_back(seg);
     }
     std::string result;
-    for (size_t i = 0; i < sgmt.size(); i++)
-        result += "/" + sgmt[i];
-
-    if (result.find(root) != 0)
-        return "";
+    for (size_t i = 0; i < sgmt.size(); i++) {
+        if (i > 0 || absolute)
+            result += "/";
+        result += sgmt[i];
+    }
+    if (result.empty() && absolute)
+        result = "/";
     return result;
+}
+
+// Compare le chemin demandé à root sous forme canonique. L'ancien
+// `result.find(root) != 0` avait deux problèmes :
+//   - un simple test de sous-chaîne : "/var/www-evil" passait pour "/var/www"
+//   - root devait être déjà canonique ("./www" ou "www" ne matchaient jamais
+//     leur propre contenu → 403 systématique avec un root relatif)
+std::string normalizePath(const std::string& p, const std::string& root) {
+    std::string res   = canonPath(p);
+    std::string nroot = canonPath(root);
+
+    if (res.compare(0, nroot.size(), nroot) != 0)
+        return "";
+    // frontière de segment : ce qui suit root doit être "/" ou rien
+    if (res.size() > nroot.size() && res[nroot.size()] != '/')
+        return "";
+    return res;
 }
