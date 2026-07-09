@@ -92,3 +92,39 @@ ln -sfn YoupiBanane www/directory        # déjà en place
 ./webserv conf/tester.conf &
 ./tester http://localhost:8080           # appuyer sur Entrée aux prompts
 ```
+
+
+Voici le strict minimum modifié dans cette session pour faire passer le tester à 100% :
+
+  Code — 7 fichiers
+
+  1. srcs/cgi/CGIProcess.cpp (le fix CGI)
+  Dans addUri() : ajout de 2 variables d'environnement que cgi_test exige :
+  envp->push_back("PATH_INFO=" + scriptPath);
+  envp->push_back("REQUEST_URI=" + _req.uri);
+
+  2. srcs/http/HttpParser.cpp (3 fixes)
+  - headerParser() : résolution de la location dès les headers pour appliquer son client_max_body_size (avant, seule la limite serveur existait) :
+  const Location* loc = findLocation(_req.uri.substr(0, _req.uri.find('?')), *_server);
+  if (loc) _maxBodySize = loc->max_body_client;
+  - readChunked() : _bodyReceived += size déplacé après le check de complétude du chunk (avant, un chunk incomplet était re-compté à chaque recv() → faux 413 sur le POST 100MB chunked du tester)
+  - runParsing() : _req.error = (_errorCode != 0) ? _errorCode : 200; au lieu de _req.error = 200; (le 413 chunked était écrasé → /post_body 200 octets répondait 200 au lieu de 413)
+  - reset() : restaure _maxBodySize = _server->max_body_client
+
+  3. includes/http/HttpParser.hpp — constructeur HttpParser(const Server&) + membre const Server* _server
+
+  4. srcs/utils/utils.cpp — nouvelle fonction findLocation() (le longest-prefix match extrait du Router, partagé avec le parser)
+
+  5. includes/utils/utils.hpp — déclaration de findLocation + include de ConfigStruct.hpp
+
+  6. srcs/http/Router.cpp — bestRouteFound() délègue à findLocation() (déduplication)
+
+  7. srcs/handlers/ClientHandler.cpp — une ligne : _parser(server) au lieu de _parser(server.max_body_client)
+
+  Setup — 2 changements (pas du code)
+
+  - conf/tester.conf : client_max_body_size 1g; ajouté dans location /directory (sinon héritage du 1m serveur → 413 sur le POST 100MB)
+  - Symlink : ln -sfn YoupiBanane www/directory (ton root est nginx-style root + uri, donc /directory/... cherche dans www/directory/...)
+
+  En résumé conceptuel, il n'y a que 4 vrais bugs corrigés : les env vars CGI manquantes, la limite de body par location ignorée, le double comptage des chunks, et l'erreur 413 écrasée. Le reste (utils, Router,
+  ClientHandler, hpp) n'est que la plomberie pour donner au parser l'accès à la config des locations.
