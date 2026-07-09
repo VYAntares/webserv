@@ -183,13 +183,14 @@ void CGIProcess::addRemoteAddr(std::vector<std::string>* envp) {
 // d'un GET (ex. os.environ["QUERY_STRING"] côté Python).
 void CGIProcess::addUri(std::vector<std::string>* envp) {
 	size_t pos = _req.uri.find('?');
-	if (pos != std::string::npos) {
-		envp->push_back("SCRIPT_NAME=" + _req.uri.substr(0, pos));
-		envp->push_back("QUERY_STRING=" + _req.uri.substr(pos + 1));
-	} else {
-		envp->push_back("SCRIPT_NAME=" + _req.uri);
-		envp->push_back("QUERY_STRING=");
-	}
+	std::string scriptPath = (pos != std::string::npos) ? _req.uri.substr(0, pos) : _req.uri;
+	envp->push_back("SCRIPT_NAME=" + scriptPath);
+	envp->push_back("QUERY_STRING=" + (pos != std::string::npos ? _req.uri.substr(pos + 1) : ""));
+	// PATH_INFO et REQUEST_URI obligatoires pour cgi_test (42) : il vérifie
+	// que PATH_INFO existe ET correspond à REQUEST_URI, sinon 500
+	// ("PATH_INFO not found" / "PATH_INFO incorrect").
+	envp->push_back("PATH_INFO=" + scriptPath);
+	envp->push_back("REQUEST_URI=" + _req.uri);
 }
 
 
