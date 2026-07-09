@@ -13,24 +13,28 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
 
-    const Location *loc = bestRouteFound(req.uri, server);
-    if (!loc)
-        return new ErrorHandler(server, 404);
-
+    // matcher la location sur le chemin SANS la query string : avec elle,
+    // "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"
     std::string uriPath = req.uri.substr(0, req.uri.find('?'));
 
-    std::string path = resolvePath(loc, uriPath);
-    if (path.empty() && loc->autoindex == 0)
-        return new ErrorHandler(*loc, 403);
+	const Location *loc = bestRouteFound(req.uri, server);
+    if (!loc)
+        return new ErrorHandler(server, 404);
 
     if (!methodImplemented(req.method))
         return new ErrorHandler(*loc, 501);
 
+    if (!methodAllowed(req.method, loc))
+        return new ErrorHandler(*loc, 405);
+	
+	std::string path = resolvePath(loc, uriPath);
+    if (path.empty() && loc->autoindex == 0)
+        return new ErrorHandler(*loc, 403);
+
+
     if (!fileExist(path, req.method))
         return new ErrorHandler(*loc, 404);
 
-    if (!methodAllowed(req.method, loc))
-        return new ErrorHandler(*loc, 405);
 
     if (forbiddenAccess(path, req.method))
         return new ErrorHandler(*loc, 403);
@@ -83,7 +87,6 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
 
 
 int Router::fileExist(const std::string& path, const std::string& method) {
-
     if (fileFound(path) == false && method != "POST")
         return 0;
     return 1;
