@@ -122,7 +122,9 @@ void HttpParser::headerParser() {
 		_req.headers[line.substr(0, sep)] = line.substr(sep + 2);
 	}
 
-	// ici il faut resoudre maxbodysize selon la nouvelle location.
+	// const Location* loc = findLocation();
+	// if (loc)
+	// 	_maxBodySize = loc->max_body_client;
 
 	std::map<std::string, std::string>::iterator it;
 	for (it = _req.headers.begin(); it != _req.headers.end(); ++it) {
