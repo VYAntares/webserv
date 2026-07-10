@@ -40,7 +40,7 @@ time_t	ClientHandler::getLastActivity() const { return _lastActivity; }
 ClientHandler::ClientHandler(int clientFd, const Server& server,
                              const struct sockaddr_in& peerAddr)
 											: _fd(clientFd), _sent(0), _server(server),
-											_parser(server.max_body_client), _rh(NULL),
+											_parser(server), _rh(NULL),
 											_keepAlive(false), _lastActivity(time(NULL)),
 											_cgiRead(NULL) {
 	_peerAddr = _buildPeerStr(peerAddr);
@@ -105,9 +105,16 @@ void	ClientHandler::_handleComplete() {
 void	ClientHandler::_handleError() {
 	HttpRequest req = _parser.getReq();		// contient req.error
 
+	std::cout << "[client " << _peerAddr << "] "
+			  << req.method << " " << req.uri
+			  << " (error " << req.error << ")\n";
+
 	_keepAlive = false;
 	_rh = Router::route(req, _server, _peerAddr, this);
 	_response = _rh->buildResponse();
+
+	if (req.error == 413)
+		shutdown(_fd, SHUT_RD);
 
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }

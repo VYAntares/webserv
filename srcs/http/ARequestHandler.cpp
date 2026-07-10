@@ -51,7 +51,7 @@ std::string ARequestHandler::buildResponse() {
 		oss	<< "Content-Type: " << _type << "\r\n";
 
 	oss << "Content-Length: " << _body.size() << "\r\n"
-		<< "Connection: " << ((_keepAlive) ? "keep-alive" : "close") << "\r\n"
+		<< "Connection: " << (_keepAlive ? "keep-alive" : "close") << "\r\n"
 		<< "\r\n"
 		<< _body;
 

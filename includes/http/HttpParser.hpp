@@ -3,6 +3,7 @@
 #include "HttpRequest.hpp"
 #include "../../includes/http/MultipartParser.hpp"
 #include "../../includes/utils/utils.hpp"
+#include "../config/ConfigStruct.hpp"
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
@@ -12,6 +13,10 @@
 //  accumule,        méthode,          le bon          Error...)
 //  parse)           uri, headers,     handler)
 //                   body)
+
+// taille max de la section headers d'une requête (protection mémoire)
+#define MAX_HEADER_SIZE 32768
+
 class HttpParser {
 	public:
 		enum State {
@@ -22,7 +27,7 @@ class HttpParser {
 			ERROR
 		};
 
-		explicit 		HttpParser(size_t maxBodySize);
+		explicit 		HttpParser(const Server& server);
 		~HttpParser();
 
 		enum State		getState();
@@ -46,8 +51,11 @@ class HttpParser {
 	
 		HttpRequest		_req;
 
+
 		size_t			_bodyExcepted;
 		size_t			_bodyReceived;
 		size_t			_maxBodySize;
+
+		const Server*	_server;
 };
 

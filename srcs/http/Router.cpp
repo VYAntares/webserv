@@ -10,6 +10,9 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 									const std::string& peerAddr, IResponseSink* sink) {
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
+    
+    if (!methodImplemented(req.method))
+        return new ErrorHandler(server, 501);
 
     // matcher la location sur le chemin SANS la query string : avec elle,
     // "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"
@@ -19,21 +22,18 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     if (!loc)
         return new ErrorHandler(server, 404);
 
-    if (!methodImplemented(req.method))
-        return new ErrorHandler(*loc, 501);
-
     if (!methodAllowed(req.method, loc))
         return new ErrorHandler(*loc, 405);
 
     std::string path = resolvePath(loc, uriPath);
-    if (path.empty() && loc->autoindex == 0)
-        return new ErrorHandler(*loc, 403);
+	if (path.empty() && loc->autoindex == 0)
+		return new ErrorHandler(*loc, 403);
+	
+	if (!fileExist(path, req.method))
+		return new ErrorHandler(*loc, 404);
 
-    if (!fileExist(path, req.method))
-        return new ErrorHandler(*loc, 404);
-
-    if (forbiddenAccess(path, req.method))
-        return new ErrorHandler(*loc, 403);
+	if (forbiddenAccess(path, req.method))
+		return new ErrorHandler(*loc, 403);
 
 	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty()) {
