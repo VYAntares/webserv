@@ -34,7 +34,7 @@ void	ARequestHandler::getErrorPage() {
 
 
 std::string ARequestHandler::buildResponse() {
-    if (isError(_ncode) && _location.empty() && _body.empty()) {
+    if (!_noBody && isError(_ncode) && _location.empty() && _body.empty()) {
         if (_errorpage.length() > 0)
             getErrorPage();
         else

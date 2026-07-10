@@ -87,6 +87,10 @@ void	ClientHandler::_handleComplete() {
 		EventLoop::instance()->modify_handler(this, static_cast<EventType>(0));
 		return;
 	}
+	if (req.method == "HEAD") {
+		_rh->stripBody();
+		_keepAlive = false;
+	}
 	_rh->setKeepAlive(_keepAlive);
 	_response = _rh->buildResponse();
 
