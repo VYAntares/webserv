@@ -251,5 +251,7 @@ EventLoop::~EventLoop() {
 	}
 	close(_epfd);
 	_instance = NULL;
+	std::cout << "\nServer closing..." << std::endl;
+	std::cout << "cya babyyyy" << std::endl;
 }
 

@@ -4,6 +4,14 @@
 #include "includes/config/ConfigLoader.hpp"
 #include <iostream>
 
+// bienvenue dans la porte dentree nous menant au paradis.
+// ici on lance l'objet qui va load la config et la parser.
+// une fois la config obtenue, on lance un serveur pour 
+// chaque config server sur le fichier de conf, et surtout
+// chaque listen, represente un serveur qui ecoute sur
+// une paire addresse et port.
+// et on lance la boucle evenementielle on appelant la seule
+// instance de EventLoop. 
 int main(int argc, char **argv) {
 	try {
 		ConfigLoader cl(argc, argv);
