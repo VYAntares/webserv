@@ -14,3 +14,4 @@ class MultipartHandler : public ARequestHandler {
 		const HttpRequest*	_req;
 		const std::string	_path;
 };
+

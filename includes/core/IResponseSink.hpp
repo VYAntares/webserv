@@ -23,3 +23,4 @@ class IResponseSink {
 		virtual void onCgiStart(CGIReadHandler* rd) { (void)rd; }
 		virtual ~IResponseSink() {}
 };
+

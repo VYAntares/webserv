@@ -13,4 +13,4 @@ class Validator {
 		void	checkDuplicateIntraServer(Server& s, size_t& i);
 		Config	_c;
 };
- 
+

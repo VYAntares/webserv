@@ -22,3 +22,4 @@ class Router {
         static int 						methodAllowed(const std::string& method, const Location *loc);
 		static std::string				isCgi(const std::string& uri, const Location* loc);
 };
+

@@ -24,3 +24,4 @@ class ARequestHandler {
 		std::string			_location;
 		std::string			_errorpage;
 };
+

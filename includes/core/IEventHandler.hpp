@@ -26,6 +26,8 @@ enum EventType {
 	CLOSE_EVENT		= 040
 };
 
+
+
 // --- IEventHandler ---
 // getFd()        : pure virtuelle — tout handler doit exposer son fd à EventLoop.
 // handle_*       : virtuelles avec corps vide par défaut — chaque handler

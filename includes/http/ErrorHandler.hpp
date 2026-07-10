@@ -10,3 +10,4 @@ class ErrorHandler : public ARequestHandler {
 		ErrorHandler(const Location& loc, int code, std::string& body);
 		~ErrorHandler() {};
 };
+

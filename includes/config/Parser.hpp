@@ -33,3 +33,4 @@ class Parser {
 		Token				consume();
 		Token				expect(TokenType type);
 };
+

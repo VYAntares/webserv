@@ -22,3 +22,4 @@ class StaticHandler : public ARequestHandler {
 		const Location*		_loc;
 		std::string			_path;
 };
+

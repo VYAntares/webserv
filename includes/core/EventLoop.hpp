@@ -17,6 +17,8 @@ struct HandlerEntry {
 	EventType		type;
 };
 
+
+
 // EventLoop — Initiation Dispatcher du pattern Reactor (Schmidt, 1995).
 //
 // Rôle : point central qui surveille tous les fds via epoll, et dispatche

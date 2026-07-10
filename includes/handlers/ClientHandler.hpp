@@ -39,3 +39,4 @@ class ClientHandler : public IEventHandler, public IResponseSink {
 		void				_handleComplete();
 		void				_handleError();
 };
+

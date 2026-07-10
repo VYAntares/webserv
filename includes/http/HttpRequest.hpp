@@ -10,10 +10,14 @@ struct UploadedFile {
 	size_t 		size;
 };
 
+
+
 struct Multipart {
 	std::map<std::string, std::string>	uploadedForm;
 	std::map<std::string, UploadedFile>	uploadedFiles;
 };
+
+
 
 struct HttpRequest {
 	int									error;
@@ -30,4 +34,5 @@ struct HttpRequest {
 	Multipart							mp;
 	bool								isMultipart;
 	std::string							boundary;
-}; 
+};
+

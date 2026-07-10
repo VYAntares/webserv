@@ -31,3 +31,4 @@ class CGIProcess {
 		int 				_write_fd;
 		int 				_read_fd;
 };
+

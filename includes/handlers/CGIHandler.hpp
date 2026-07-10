@@ -16,3 +16,4 @@ class CGIHandler {
 	private:
 		CGIProcess*			_process;
 };
+

@@ -26,3 +26,4 @@ class CGIReadHandler : public IEventHandler {
 		IResponseSink*	_sink; // lie au client originel qui a lancer le cgi
 		time_t			_lastActivity;
 };
+

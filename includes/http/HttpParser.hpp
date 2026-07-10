@@ -1,11 +1,5 @@
 #pragma once
 
-// HTTPParser   →   HTTPRequest   →   Router   →   ARequestHandler
-// (stateful,       (pure data,       (choisit       (Static, CGI,
-//  accumule,        méthode,          le bon          Error...)
-//  parse)           uri, headers,     handler)
-//                   body)
-
 #include "HttpRequest.hpp"
 #include "../../includes/http/MultipartParser.hpp"
 #include "../../includes/utils/utils.hpp"
@@ -13,6 +7,11 @@
 #include <sstream>
 #include <cstdlib>
 
+// HTTPParser   →   HTTPRequest   →   Router   →   ARequestHandler
+// (stateful,       (pure data,       (choisit       (Static, CGI,
+//  accumule,        méthode,          le bon          Error...)
+//  parse)           uri, headers,     handler)
+//                   body)
 class HttpParser {
 	public:
 		enum State {
@@ -23,31 +22,32 @@ class HttpParser {
 			ERROR
 		};
 
-		explicit HttpParser(size_t maxBodySize);
+		explicit 		HttpParser(size_t maxBodySize);
 		~HttpParser();
 
-		enum State	getState();
-		HttpRequest	getReq();
+		enum State		getState();
+		HttpRequest		getReq();
 
-		void		runParsing(std::string& buffer, size_t n);
-		void		setBoundary(const std::string& boundary);
-		void		setError(int errorCode);
-		void		checkFirstLine();
-		void		headerParser();
-		void		readChunked();
-		void 		getMp();
-		void		reset();
+		void			runParsing(std::string& buffer, size_t n);
+		void			setBoundary(const std::string& boundary);
+		void			setError(int errorCode);
+		void			checkFirstLine();
+		void			headerParser();
+		void			readChunked();
+		void 			getMp();
+		void			reset();
 
 	private:
-		int								_errorCode;
-		State							_state;
-		std::string						_buffer;
-		std::string						_body;
-		std::string						_header;
+		int				_errorCode;
+		State			_state;
+		std::string		_buffer;
+		std::string		_body;
+		std::string		_header;
 	
-		HttpRequest						_req;
+		HttpRequest		_req;
 
-		size_t							_bodyExcepted;
-		size_t							_bodyReceived;
-		size_t							_maxBodySize;
+		size_t			_bodyExcepted;
+		size_t			_bodyReceived;
+		size_t			_maxBodySize;
 };
+
