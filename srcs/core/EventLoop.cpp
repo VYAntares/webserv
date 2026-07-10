@@ -9,8 +9,6 @@
 #include <ctime>
 #include <map>
 
-
-
 static const int CLIENT_TIMEOUT = 30; // secondes
 
 

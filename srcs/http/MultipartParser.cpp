@@ -1,7 +1,5 @@
 #include "../../includes/http/MultipartParser.hpp"
 
-
-
 Multipart MultipartParser::parsePart() {
     Multipart mp;
     std::vector<Part> prts = parseMultiPart();

@@ -4,8 +4,6 @@
 #include "../../includes/handlers/CGIWriteHandler.hpp"
 #include "../../includes/handlers/CGIReadHandler.hpp"
 
-
-
 // ================ CGIHandler
 //
 //

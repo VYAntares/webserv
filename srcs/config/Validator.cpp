@@ -6,8 +6,6 @@
 #include <netdb.h>
 #include <netinet/in.h>
 
-
-
 Validator::Validator(Config c) : _c(c) {}
 
 

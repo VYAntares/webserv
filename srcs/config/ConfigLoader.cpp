@@ -9,10 +9,7 @@
 #include <iostream>
 #include <sys/stat.h>
 
-
-
 static const std::string DEFAULT_CONFIG_PATH = "./conf/default.conf";
-
 
 // ConfigLoader vérifie le bon lancement du programme : le nombre
 // d'arguments, que le fichier de config existe et n'est pas vide,
@@ -74,6 +71,7 @@ ConfigLoader::ConfigLoader(int argc, char **argv) {
 }
 
 
+
 // lancement du lexer et récupération des tokens
 void ConfigLoader::startLexer() {
 	Lexer	l(_input);
@@ -81,11 +79,13 @@ void ConfigLoader::startLexer() {
 }
 
 
+
 // lancement du parser et récupération de la config
 void ConfigLoader::startParser() {
 	Parser	p(_tokens);
 	_c = p.parse();
 }
+
 
 
 // validation et mise à jour de la config

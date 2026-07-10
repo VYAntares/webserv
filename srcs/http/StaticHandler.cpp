@@ -5,8 +5,6 @@
 #include <sstream>
 #include <dirent.h>
 
-
-
 StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const std::string& path): _req(&req), _loc(&loc), _path(path) {
 	_ncode = 200;
 	_type = "";

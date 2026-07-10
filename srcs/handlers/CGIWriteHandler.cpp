@@ -1,8 +1,6 @@
 #include "../../includes/handlers/CGIWriteHandler.hpp"
 #include <unistd.h>
 
-
-
 CGIWriteHandler::CGIWriteHandler(int fd, const std::string& body)
 								: _fd(fd), _body(body), _sent(0) {}
 

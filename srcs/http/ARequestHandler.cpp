@@ -4,8 +4,6 @@
 #include <sstream>
 #include <iostream>
 
-
-
 void ARequestHandler::handleReturn(const std::pair<int, std::string>& return_path) {
 	_ncode = return_path.first;
 	_type = getType(".html");

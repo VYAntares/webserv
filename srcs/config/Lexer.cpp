@@ -4,8 +4,6 @@
 #include <iostream>
 #include <iomanip>
 
-
-
 Lexer::Lexer(const std::string& input) : _input(input), _pos(0), _line(1), _col(1) {}
 
 

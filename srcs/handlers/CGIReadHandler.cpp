@@ -6,8 +6,6 @@
 #include <iostream>
 #include <sys/wait.h>
 
-
-
 CGIReadHandler::CGIReadHandler(int fd, pid_t pid, const Location* loc, IResponseSink* sink) 
 							: _fd(fd), _pid(pid), _loc(loc), _sink(sink) {
 }

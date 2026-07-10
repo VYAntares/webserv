@@ -8,8 +8,6 @@
 #include <iostream>
 #include <sstream>
 
-
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
@@ -79,7 +77,8 @@ void	ClientHandler::_handleComplete() {
 		_keepAlive = (req.version == "HTTP/1.1");
 
 	_rh = Router::route(req, _server, _peerAddr, this);
-	if (!_rh) { // CGI -> async : la réponse arrivera via onCgiDone()
+	if (!_rh) {
+		// CGI -> async : la réponse arrivera via onCgiDone()
 		// La réponse CGI est construite sans connaître notre keep-alive,
 		// elle annonce toujours "Connection: close" → on ferme après envoi.
 		_keepAlive = false;
