@@ -15,11 +15,13 @@ std::string getReason(int code) {
 		case 400: return "Bad Request";
         case 403: return "Forbidden";
         case 404: return "Not Found";
-		case 405: return "Method not allowed";
-		case 413: return "Body size too large";
+		case 405: return "Method Not Allowed";
+		case 413: return "Payload Too Large";
+		case 431: return "Request Header Fields Too Large";
         case 500: return "Internal Server Error";
-		case 501: return "Method not implemented";
+		case 501: return "Not Implemented";
         case 502: return "Bad Gateway";
+        case 504: return "Gateway Timeout";
         default:  return "Unknown";
 	}
 }
@@ -192,31 +194,67 @@ bool    isError(int code) {
     return false;
 }
 
+// Un chemin comme /var/www/../../etc/passwd doit être "résolu" avant d'être comparé à la racine autorisée, 
+// sinon on peut sortir du dossier racine avec des ... L'algo découpe le chemin en segments séparés par /, et pour chaque segment :
+// get ../../../ ca va acceder a des endroit frauduleux
 
-
-std::string normalizePath(const std::string& p, const std::string& root) {
+std::string letNormalize(const std::string& p) {
     std::vector<std::string>    sgmt;
     std::string                 seg;
     std::stringstream           ss(p);
+    bool                        abs = (!p.empty && p[0] == '/');
 
-    while(std::getline(ss, seg, '/')){
-        if (seg == "." || seg.empty())
-            continue ;
-        else if (seg == "..") {
-            if (!sgmt.empty())
-                sgmt.pop_back();
-            else 
-                sgmt.push_back(seg);
-        }
-        else
+    while(std::getline(ss, seg, '/')) {
+    if (seg == "." || seg.empty())
+        continue ;
+    else if (seg == "..") {
+        if (!sgmt.empty() && sgmt.back() != '..')
+            sgmt.pop_back();
+        else 
             sgmt.push_back(seg);
     }
-    std::string result;
-    for (size_t i = 0; i < sgmt.size(); i++)
-        result += "/" + sgmt[i];
-
-    if (result.find(root) != 0)
-        return "";
+    else
+        sgmt.push_back(seg);
+    }
+	
+	std::string result;
+    for (size_t i = 0; i < sgmt.size(); i++) {
+        if (i > 0 || abs)
+            result += '/';
+        result += sgmt[i];
+	}
+	if (result.empty() && absolute)
+		result = "/";
+	
     return result;
+}
+
+std::string normalizePath(const std::string& p, const std::string& root) {
+    std::string nroot = letNormalize(root);
+    std::string res = letNormalize(root + p);
+
+    if (res.compare(0, nroot.size(), nroot) != 0)
+		return "";
+
+    if (res.find(nroot + '/') != 0)
+        return "";
+    return res;
+}
+
+// Compare le chemin demandé à root sous forme canonique. L'ancien
+// `result.find(root) != 0` avait deux problèmes :
+//   - un simple test de sous-chaîne : "/var/www-evil" passait pour "/var/www"
+//   - root devait être déjà canonique ("./www" ou "www" ne matchaient jamais
+//     leur propre contenu → 403 systématique avec un root relatif)
+std::string normalizePath(const std::string& p, const std::string& root) {
+    std::string res   = canonPath(p);
+    std::string nroot = canonPath(root);
+
+    if (res.compare(0, nroot.size(), nroot) != 0)
+        return "";
+    // frontière de segment : ce qui suit root doit être "/" ou rien
+    if (res.size() > nroot.size() && res[nroot.size()] != '/')
+        return "";
+    return res;
 }
 

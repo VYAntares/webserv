@@ -11,22 +11,23 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
     
-    if (!methodImplemented(req.method))
-        return new ErrorHandler(server, 501);
-
+    
     // matcher la location sur le chemin SANS la query string : avec elle,
     // "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"
     std::string uriPath = req.uri.substr(0, req.uri.find('?'));
 
 	const Location *loc = bestRouteFound(req.uri, server);
     if (!loc)
-        return new ErrorHandler(server, 404);
+    return new ErrorHandler(server, 404);
+
+    if (!methodImplemented(req.method))
+        return new ErrorHandler(server, 501);
 
     if (!methodAllowed(req.method, loc))
         return new ErrorHandler(*loc, 405);
 
     std::string path = resolvePath(loc, uriPath);
-	if (path.empty() && loc->autoindex == 0)
+	if (path.empty())  // le chemin normalisé sort de root (ex: /../..)
 		return new ErrorHandler(*loc, 403);
 	
 	if (!fileExist(path, req.method))
