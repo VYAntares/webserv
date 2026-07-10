@@ -105,32 +105,7 @@ int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
 
 
 const Location* Router::bestRouteFound(const std::string& uri, const Server& server) {
-    std::string shorturi = uri;
-    const Location *loc = NULL; 
-    int len = -1;
-    if (uri[0] != '/')
-        return NULL;
-    while (true) {
-        for (size_t i = 0; i < server.locations.size(); i++) {
-            if (server.locations[i].path.find(shorturi) == 0 && 
-                server.locations[i].path == shorturi && 
-                len < (int)(server.locations[i].path.length())) {
-                loc = &server.locations[i];
-                len = (int)(server.locations[i].path.length());
-            } 
-        }
-        if (len != -1)
-            break;
-
-        if (shorturi.empty())
-            break;
-
-        size_t i = shorturi.rfind('/');
-        shorturi.erase(i);
-        if (shorturi.empty())
-            shorturi = "/";
-    }
-    return loc;
+	return findLocation(uri, server);
 }
 
 

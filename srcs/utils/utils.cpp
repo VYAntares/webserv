@@ -97,6 +97,38 @@ std::string itos(int n) {
 
 
 
+// longest-prefix match : réduit l'URI segment par segment jusqu'à trouver
+// une location dont le path correspond exactement (même logique que le
+// Router — partagée pour que HttpParser applique la limite de body de la
+// bonne location dès la lecture des headers, avant de lire le body)
+const Location* findLocation(const std::string& uri, const Server& server) {
+    std::string shorturi = uri;
+    const Location *loc = NULL;
+    int len = -1;
+    if (uri.empty() || uri[0] != '/')
+        return NULL;
+    while (true) {
+        for (size_t i = 0; i < server.locations.size(); i++) {
+            if (server.locations[i].path == shorturi &&
+                len < (int)(server.locations[i].path.length())) {
+                loc = &server.locations[i];
+                len = (int)(server.locations[i].path.length());
+            }
+        }
+        if (len != -1)
+            break;
+        if (shorturi.empty())
+            break;
+        size_t i = shorturi.rfind('/');
+        shorturi.erase(i);
+        if (shorturi.empty())
+            shorturi = "/";
+    }
+    return loc;
+}
+
+
+
 std::string getParentDirectory(const std::string& path) {
     size_t pos = path.rfind('/');
     if (pos == std::string::npos)
