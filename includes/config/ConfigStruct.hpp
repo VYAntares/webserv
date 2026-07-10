@@ -8,8 +8,6 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 
-
-
 // inline : ce header est inclus par plusieurs fichiers .cpp (Parser.cpp,
 // ServerHandler.cpp...). Une fonction normale définie dans un header
 // serait donc dupliquée dans chaque .cpp qui l'inclut, et l'édition de

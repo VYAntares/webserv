@@ -3,6 +3,7 @@
 #include "../config/ConfigStruct.hpp"
 #include "../http/HttpRequest.hpp"
 #include <sys/types.h>
+#include <vector>
 
 class CGIProcess {
 	public:

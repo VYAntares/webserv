@@ -2,7 +2,6 @@
 
 #include "Token.hpp"
 #include "ConfigStruct.hpp"
-
 #include <iostream>
 #include <vector>
 

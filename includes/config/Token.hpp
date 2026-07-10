@@ -11,6 +11,8 @@ enum TokenType {
 	TOK_EOF		// evite de checker _pos < _token.size()
 };
 
+
+
 struct Token {
 	TokenType	type;
 	std::string	value;

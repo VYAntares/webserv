@@ -6,8 +6,6 @@
 #include "../../includes/handlers/CGIHandler.hpp"
 #include <unistd.h>
 
-
-
 ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 									const std::string& peerAddr, IResponseSink* sink) {
     if (req.error != 200)
@@ -26,15 +24,13 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
     if (!methodAllowed(req.method, loc))
         return new ErrorHandler(*loc, 405);
-	
-	std::string path = resolvePath(loc, uriPath);
+
+    std::string path = resolvePath(loc, uriPath);
     if (path.empty() && loc->autoindex == 0)
         return new ErrorHandler(*loc, 403);
 
-
     if (!fileExist(path, req.method))
         return new ErrorHandler(*loc, 404);
-
 
     if (forbiddenAccess(path, req.method))
         return new ErrorHandler(*loc, 403);

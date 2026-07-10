@@ -10,8 +10,6 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-
-
 // Un pipe() crée 2 fd : [0] pour lire, [1] pour écrire. On en crée deux :
 // pipe_stdin[0]  → enfant lit  (son STDIN)
 // pipe_stdin[1]  → parent écrit le body dedans
