@@ -1,4 +1,5 @@
 #include "../../includes/handlers/ClientHandler.hpp"
+#include "../../includes/handlers/CGIReadHandler.hpp"
 #include "../../includes/core/EventLoop.hpp"
 #include "../../includes/http/Router.hpp"
 #include <unistd.h>
@@ -7,6 +8,8 @@
 #include <iostream>
 #include <sstream>
 
+
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
@@ -14,6 +17,8 @@ std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
 	oss << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port);
 	return oss.str();
 }
+
+
 
 // Appelé après chaque requête complète (keep-alive) pour préparer le prochain cycle.
 // _response est vidée explicitement pour libérer la mémoire allouée par la string.
@@ -25,28 +30,41 @@ void ClientHandler::_reset() {
 	_parser.reset();
 }
 
+
+
 int		ClientHandler::getFd()			 const { return _fd; }
 time_t	ClientHandler::getLastActivity() const { return _lastActivity; }
+
+
 
 // ─── Cycle de vie ─────────────────────────────────────────────────────────────
 
 ClientHandler::ClientHandler(int clientFd, const Server& server,
                              const struct sockaddr_in& peerAddr)
 											: _fd(clientFd), _sent(0), _server(server),
-											_parser(server.max_body_client), _rh(NULL),
-											_keepAlive(false), _lastActivity(time(NULL)) {
+											_parser(server), _rh(NULL),
+											_keepAlive(false), _lastActivity(time(NULL)),
+											_cgiRead(NULL) {
 	_peerAddr = _buildPeerStr(peerAddr);
 	EventLoop::instance()->register_handler(this, READ_EVENT);
 	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] connected\n";
 }
 
+
+
 // Le destructeur ne delete pas _rh via _reset() pour éviter de rappeler
 // EventLoop depuis un contexte de destruction. On delete directement.
+// Si un CGI est encore en cours, on prévient son CGIReadHandler que nous
+// n'existons plus : sans ça, il appellerait onCgiDone() sur un objet détruit.
 ClientHandler::~ClientHandler() {
+	if (_cgiRead)
+		_cgiRead->detachSink();
 	delete _rh;
 	close(_fd);
 	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] disconnected\n";
 }
+
+
 
 void	ClientHandler::_handleComplete() {
 	HttpRequest req = _parser.getReq();
@@ -61,31 +79,65 @@ void	ClientHandler::_handleComplete() {
 		_keepAlive = (req.version == "HTTP/1.1");
 
 	_rh = Router::route(req, _server, _peerAddr, this);
-	if (!_rh) // CGI -> async
+	if (!_rh) { // CGI -> async : la réponse arrivera via onCgiDone()
+		// La réponse CGI est construite sans connaître notre keep-alive,
+		// elle annonce toujours "Connection: close" → on ferme après envoi.
+		_keepAlive = false;
+		// Plus rien à lire tant que le CGI tourne : on ne garde que la
+		// détection de déconnexion (EPOLLHUP/EPOLLERR restent signalés).
+		EventLoop::instance()->modify_handler(this, static_cast<EventType>(0));
 		return;
+	}
+	if (req.method == "HEAD") {
+		_rh->stripBody();
+		_keepAlive = false;
+	}
+	_rh->setKeepAlive(_keepAlive);
 	_response = _rh->buildResponse();
 
-	// debugger
 	std::cout << "[client " << _peerAddr << "] "
 	          << req.method << " " << req.uri << "\n";
 
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
 
+
+
 void	ClientHandler::_handleError() {
 	HttpRequest req = _parser.getReq();		// contient req.error
+
+	std::cout << "[client " << _peerAddr << "] "
+	          << req.method << " " << req.uri
+	          << " (error " << req.error << ")\n";
 
 	_keepAlive = false;
 	_rh = Router::route(req, _server, _peerAddr, this);
 	_response = _rh->buildResponse();
 
+	// Pour 413, on dit au client qu'on ne lira plus rien : shutdown(SHUT_RD)
+	// évite un RST intempestif si le client continue d'envoyer son body.
+	if (req.error == 413)
+		shutdown(_fd, SHUT_RD);
+
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
 
+
+
+void	ClientHandler::onCgiStart(CGIReadHandler* rd) {
+	_cgiRead = rd;
+}
+
+
+
 void	ClientHandler::onCgiDone(const std::string& rawHttpResp) {
+	_cgiRead = NULL; // le CGIReadHandler se détruit juste après, ne plus y toucher
 	_response = rawHttpResp;
+	_sent = 0;
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
+
+
 
 // ─── handle_input ─────────────────────────────────────────────────────────────
 int ClientHandler::handle_input() {
@@ -106,6 +158,8 @@ int ClientHandler::handle_input() {
 	return 0;
 }
 
+
+
 // ─── handle_output ────────────────────────────────────────────────────────────
 int ClientHandler::handle_output() {
 	_lastActivity = time(NULL);
@@ -122,9 +176,19 @@ int ClientHandler::handle_output() {
 		if (_keepAlive) {
 			_reset();
 			EventLoop::instance()->modify_handler(this, READ_EVENT);
+			// Une requête pipelinée peut déjà être entière dans le buffer du
+			// parseur : aucun octet n'arrivera pour re-déclencher handle_input,
+			// il faut donc re-parser le reliquat maintenant.
+			std::string empty;
+			_parser.runParsing(empty, 0);
+			if (_parser.getState() == HttpParser::COMPLETE)
+				_handleComplete();
+			else if (_parser.getState() == HttpParser::ERROR)
+				_handleError();
 			return 0;
 		}
 		return -1; // Connection: close → EventLoop détruira ce handler
 	}
 	return 0;
 }
+

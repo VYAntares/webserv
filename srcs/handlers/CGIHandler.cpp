@@ -12,8 +12,12 @@ CGIHandler::CGIHandler(const HttpRequest& req, std::string& path, std::string& i
 	// brancher les pipes
 	EventLoop::instance()->register_handler(
 			new CGIWriteHandler(_process->getWriteFd(), req.body), WRITE_EVENT);
-	EventLoop::instance()->register_handler(
-			new CGIReadHandler(_process->getReadFd(), _process->getPid(), loc, sink), READ_EVENT);
+	CGIReadHandler* rd = new CGIReadHandler(_process->getReadFd(), _process->getPid(), loc, sink);
+	EventLoop::instance()->register_handler(rd, READ_EVENT);
+	// le client doit connaître son CGIReadHandler pour pouvoir se détacher
+	// si l'un des deux meurt avant l'autre (voir IResponseSink)
+	if (sink)
+		sink->onCgiStart(rd);
 }
 
 CGIHandler::~CGIHandler() {

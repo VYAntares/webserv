@@ -7,14 +7,28 @@ MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& pa
     std::string body;
     std::map<std::string, UploadedFile>::const_iterator i;
     for (i = _req->mp.uploadedFiles.begin(); i != _req->mp.uploadedFiles.end(); i++) {
-        std::string path = _path + "/" + i->second.filename;
+        // ne garder que le nom de fichier : un filename client contenant
+        // "../../x" permettait d'écrire hors du dossier d'upload
+        std::string fname = i->second.filename;
+        size_t slash = fname.rfind('/');
+        if (slash != std::string::npos)
+            fname = fname.substr(slash + 1);
+        if (fname.empty())
+            continue ;
+
+        std::string path = _path + "/" + fname;
         bool			exist = fileFound(path);
+        std::ofstream	file(path.c_str(), std::ios::binary);
+        if (!file.is_open()) { // dossier absent ou non inscriptible
+            _ncode = 500;
+            body += "<li>" + fname + " failed</li>";
+            continue ;
+        }
         if (!exist)
             _ncode = 201;
-        std::ofstream	file(path.c_str(), std::ios::binary);
         file.write(i->second.data.c_str(), i->second.size);
         file.close();
-        body += "<li>" + path + " uploded</li>";
+        body += "<li>" + path + " uploaded</li>";
     }
     if (!body.empty())
         setBody(body);

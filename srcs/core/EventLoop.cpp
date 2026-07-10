@@ -4,19 +4,29 @@
 #include <sys/epoll.h>
 #include <errno.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <ctime>
 #include <map>
 
+
+
 static const int CLIENT_TIMEOUT = 30; // secondes
+
+
 
 // Drapeau d'arrêt levé par le signal handler.
 // volatile : force la relecture depuis la mémoire à chaque tour (pas de cache registre).
 // sig_atomic_t : lecture/écriture atomique, sans risque de valeur à moitié écrite par un signal.
 static volatile sig_atomic_t g_stop = 0;
 
+
+
 // Handler SIGINT/SIGTERM : lève g_stop pour que handle_events() sorte proprement.
 // Seules les fonctions async-signal-safe sont autorisées ici — donc pas de malloc/cout.
 static void handle_sigint(int) { g_stop = 1; }
+
+
 
 // Traduit notre EventType en flags epoll.
 // EventType et les flags epoll sont deux systèmes de constantes différents —
@@ -36,9 +46,13 @@ static uint32_t to_epoll_flags(EventType type) {
 	return flags;
 }
 
+
+
 // Une seule instance existe dans tout le programme, accessible via instance().
 // Voir commentaire EventLoop.hpp pour plus de détails.
 EventLoop* EventLoop::_instance = NULL;
+
+
 
 EventLoop* EventLoop::instance() {
 	if (!_instance)
@@ -46,12 +60,18 @@ EventLoop* EventLoop::instance() {
 	return _instance;
 }
 
+
+
 // Crée l'instance epoll unique qui surveillera tous les fd de la boucle.
+// FD_CLOEXEC : les enfants CGI (fork+execve) ne doivent pas hériter du fd epoll.
 EventLoop::EventLoop() {
 	_epfd = epoll_create1(0);
 	if (_epfd == -1)
 		throw std::runtime_error("epoll_create() failed: " + std::string(strerror(errno)));
+	fcntl(_epfd, F_SETFD, FD_CLOEXEC);
 }
+
+
 
 // Crée une entrée dans la table : associe le handler à son type d'événement.
 // C'est ce pointeur (entry) qu epoll nous rendra dans events[i].data.ptr
@@ -82,6 +102,8 @@ void EventLoop::register_handler(IEventHandler* h, EventType type) {
 	}
 }
 
+
+
 // Met à jour le type d'événement surveillé pour un handler déjà enregistré.
 // _table.find(h) : recherche par pointeur dans la map, en O(log n).
 // Met à jour son type, recalcule les flags, puis appelle EPOLL_CTL_MOD pour
@@ -103,6 +125,8 @@ void EventLoop::modify_handler(IEventHandler* h, EventType newType) {
 		std::cerr << "epoll_ctl(MOD) failed fd=" << h->getFd() << ": " << strerror(errno) << "\n";
 }
 
+
+
 // Retire le fd d epoll puis supprime l'entrée de la table interne.
 // EPOLL_CTL_DEL n'a pas besoin de struct epoll_event (dernier arg NULL).
 // L'échec de epoll_ctl est seulement loggé, pour la même raison que dans
@@ -120,6 +144,8 @@ void EventLoop::remove_handler(IEventHandler* h) {
 		_table.erase(it);
 	}
 }
+
+
 
 // epoll_wait retourne :
 //   > 0 : n événements prêts → on traite le for ci-dessous
@@ -139,26 +165,40 @@ void EventLoop::handle_events() {
 	while (!g_stop) {
 		int n = epoll_wait(_epfd, events, MAX_EVENTS, 500);
 
-		if (n <= 0)
-			continue;
-
 		for (int i = 0; i < n; i++) {
 			HandlerEntry* entry	= static_cast<HandlerEntry*>(events[i].data.ptr);
 			IEventHandler* h	= entry->handler;
 			int ret = 0;
 
-			if (entry->type == ACCEPT_EVENT)
-				ret = h->handle_accept();
-			else {
-				// On teste avec & les bits réellement renvoyés par epoll
-				// (events[i].events) : un même fd surveillé pour plusieurs
-				// événements combinés (ex: READ_EVENT|WRITE_EVENT) peut donc
-				// déclencher les deux handlers dans le même passage, si les
-				// deux sont prêts en même temps.
-				if (events[i].events & (EPOLLIN | EPOLLHUP | EPOLLERR))
-             		ret = h->handle_input();
-				if (ret != -1 && events[i].events & EPOLLOUT)
-					ret = h->handle_output();
+			// Une exception levée par un handler ne doit jamais sortir de la
+			// boucle : le sujet impose que le serveur ne s'arrête sous aucune
+			// circonstance. On sacrifie seulement le handler fautif.
+			try {
+				if (entry->type == ACCEPT_EVENT)
+					ret = h->handle_accept();
+				else {
+					// On teste avec & les bits réellement renvoyés par epoll
+					// (events[i].events) : un même fd surveillé pour plusieurs
+					// événements combinés (ex: READ_EVENT|WRITE_EVENT) peut donc
+					// déclencher les deux handlers dans le même passage, si les
+					// deux sont prêts en même temps.
+					if (events[i].events & (EPOLLIN | EPOLLHUP | EPOLLERR))
+						ret = h->handle_input();
+					if (ret != -1 && events[i].events & EPOLLOUT)
+						ret = h->handle_output();
+					// EPOLLERR/EPOLLHUP sans EPOLLIN ni EPOLLOUT : aucun des
+					// deux handlers ci-dessus n'a pu constater l'erreur — on
+					// ferme, sinon epoll re-signale en boucle (busy loop).
+					if (ret != -1 && (events[i].events & (EPOLLHUP | EPOLLERR))
+						&& !(events[i].events & (EPOLLIN | EPOLLOUT)))
+						ret = -1;
+				}
+			} catch (std::exception& e) {
+				std::cerr << "[handler error] fd=" << h->getFd() << ": " << e.what() << "\n";
+				ret = -1;
+			} catch (...) {
+				std::cerr << "[handler error] fd=" << h->getFd() << ": unknown exception\n";
+				ret = -1;
 			}
 
 			if (ret == -1) {
@@ -166,9 +206,13 @@ void EventLoop::handle_events() {
 				delete h;
 			}
 		}
+		// Hors du if (n > 0) : les timeouts doivent aussi tomber quand le
+		// serveur est inactif (epoll_wait qui expire sans événement).
 		checkTimeOut();
 	}
 }
+
+
 
 // Collecte les handlers inactifs depuis plus de CLIENT_TIMEOUT secondes et
 // les ferme, pour ne pas garder indéfiniment un fd enregistré si le client
@@ -195,7 +239,11 @@ void EventLoop::checkTimeOut() {
 	}
 }
 
+
+
 void EventLoop::destroy() { delete _instance; }
+
+
 
 EventLoop::~EventLoop() {
 	for (std::map<IEventHandler*, HandlerEntry*>::iterator it = _table.begin();
@@ -203,6 +251,7 @@ EventLoop::~EventLoop() {
 		delete it->first;
 		delete it->second;
 	}
+	close(_epfd);
 	_instance = NULL;
 }
 

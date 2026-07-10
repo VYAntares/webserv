@@ -13,6 +13,9 @@
 #include <sstream>
 #include <cstdlib>
 
+// taille max de la section headers d'une requête (protection mémoire)
+#define MAX_HEADER_SIZE 32768
+
 class HttpParser {
 	public:
 		enum State {
@@ -23,7 +26,7 @@ class HttpParser {
 			ERROR
 		};
 
-		explicit HttpParser(size_t maxBodySize);
+		explicit HttpParser(const Server& server);
 		~HttpParser();
 
 		enum State	getState();
@@ -50,4 +53,7 @@ class HttpParser {
 		size_t							_bodyExcepted;
 		size_t							_bodyReceived;
 		size_t							_maxBodySize;
+		// pour retrouver la limite de body de la location matchée par l'URI
+		// (le parser lit le body AVANT le passage dans le Router)
+		const Server*					_server;
 };

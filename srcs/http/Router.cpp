@@ -6,41 +6,60 @@
 #include "../../includes/handlers/CGIHandler.hpp"
 #include <unistd.h>
 
+
+
 ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 									const std::string& peerAddr, IResponseSink* sink) {
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
 
-    const Location *loc = bestRouteFound(req.uri, server);
-    if (!loc)
-        return new ErrorHandler(server, 404);
-
+    // matcher la location sur le chemin SANS la query string : avec elle,
+    // "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"
     std::string uriPath = req.uri.substr(0, req.uri.find('?'));
 
-    std::string path = resolvePath(loc, uriPath);
-    if (path.empty() && loc->autoindex == 0)
-        return new ErrorHandler(*loc, 403);
+    const Location *loc = bestRouteFound(uriPath, server);
+    if (!loc)
+        return new ErrorHandler(server, 404);
 
     if (!methodImplemented(req.method))
         return new ErrorHandler(*loc, 501);
 
-    if (!fileExist(path, req.method))
-        return new ErrorHandler(*loc, 404);
-
     if (!methodAllowed(req.method, loc))
         return new ErrorHandler(*loc, 405);
+
+    // la redirection s'applique avant tout accès au filesystem : sinon un
+    // "return" sur une URL sans fichier réel renvoyait 404 au lieu de rediriger
+    if (loc->return_path.first != -1)
+        return new StaticHandler(req, *loc, "");
+
+    std::string path = resolvePath(loc, uriPath);
+    if (path.empty()) // le chemin normalisé sort de root (ex: /../..)
+        return new ErrorHandler(*loc, 403);
+
+    // upload : si un dossier de stockage est configuré, c'est lui qui reçoit
+    // les fichiers (exigence du sujet), pas root + URI
+    if (req.method == "POST" && !loc->upload_store.empty()) {
+        if (req.isMultipart == true)
+            path = loc->upload_store;
+        else {
+            size_t slash = uriPath.rfind('/');
+            std::string base = (slash == std::string::npos) ? uriPath : uriPath.substr(slash + 1);
+            if (!base.empty())
+                path = loc->upload_store + "/" + base;
+        }
+    }
+
+    if (!fileExist(path, req.method))
+        return new ErrorHandler(*loc, 404);
 
     if (forbiddenAccess(path, req.method))
         return new ErrorHandler(*loc, 403);
 
-    if (!methodAllowed(req.method, loc))
-		return new ErrorHandler(*loc, 405);
-
-	std::string interpreter = isCgi(uriPath, loc);
-	if (!interpreter.empty()) {
+    std::string interpreter = isCgi(uriPath, loc);
+    if (!interpreter.empty() && req.method == "POST") {
         CGIHandler cgi(req, path, interpreter, peerAddr, loc, sink);
-		return NULL;
-	}
+        return NULL;
+    }
 
     if (req.method == "POST" && req.isMultipart == true)
         return new MultipartHandler(req, path);
@@ -60,22 +79,24 @@ std::string Router::isCgi(const std::string& uri, const Location* loc) {
 	return "";
 }
 
+// normalizePath() supprime le slash final : tester path[len-1] == '/' ne
+// détectait donc JAMAIS un dossier, et l'index n'était jamais ajouté
+// (GET / renvoyait une redirection vers le chemin filesystem au lieu de
+// servir l'index). On teste réellement le dossier avec isDir().
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
     std::string path = normalizePath(loc->root + uri, loc->root);
     if (path.empty())
         return "";
-    std::string newpath = path;
-    if (path[path.length() - 1] == '/') {
-        if (!loc->index.empty())
-            newpath = newpath + loc->index;
-        else if (!isDir(newpath))
-            return "";
+    if (isDir(path) && !loc->index.empty()) {
+        std::string withIndex = path + "/" + loc->index;
+        // index inexistant + autoindex on → servir le listing du dossier
+        if (fileFound(withIndex) || loc->autoindex != 1)
+            return withIndex;
     }
-    return newpath;
+    return path;
 }
 
 int Router::fileExist(const std::string& path, const std::string& method) {
-
     if (fileFound(path) == false && method != "POST")
         return 0;
     return 1;
@@ -97,36 +118,11 @@ int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
 }
 
 const Location* Router::bestRouteFound(const std::string& uri, const Server& server) {
-    std::string shorturi = uri;
-    const Location *loc = NULL; 
-    int len = -1;
-    if (uri[0] != '/')
-        return NULL;
-    while (true) {
-        for (size_t i = 0; i < server.locations.size(); i++) {
-            if (server.locations[i].path.find(shorturi) == 0 && 
-                server.locations[i].path == shorturi && 
-                len < (int)(server.locations[i].path.length())) {
-                loc = &server.locations[i];
-                len = (int)(server.locations[i].path.length());
-            } 
-        }
-        if (len != -1)
-            break;
-
-        if (shorturi.empty())
-            break;
-
-        size_t i = shorturi.rfind('/');
-        shorturi.erase(i);
-        if (shorturi.empty())
-            shorturi = "/";
-    }
-    return loc;
+    return findLocation(uri, server);
 }
 
 bool Router::methodImplemented(const std::string& method) {
-    return (method == "GET" || method == "DELETE" || method == "POST");
+    return (method == "GET" || method == "DELETE" || method == "POST" || method == "HEAD");
 }
 
 int Router::methodAllowed(const std::string& method, const Location *loc) {
