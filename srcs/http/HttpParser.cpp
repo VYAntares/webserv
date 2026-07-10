@@ -114,7 +114,7 @@ void HttpParser::headerParser() {
 				return setError(400);
 			_bodyExcepted = strtoull(cl.c_str(), NULL, 10);
 		}
-		if (it->second == "chunked")
+		if (it->first == "Transfer-Encoding" && it->second == "chunked")
 			_state = R_CHUNKED;
 		if (it->second.find("multipart/form-data") != std::string::npos)
 			setBoundary(it->second);
@@ -155,7 +155,7 @@ void HttpParser::readChunked() {
 			setError(400);
 
 		while(*end == ' ' || *end == '\t')
-			(*end)++;
+			end++;
 
 		if (*end != '\0')
 			setError(400);
@@ -165,7 +165,11 @@ void HttpParser::readChunked() {
 			setError(413);
 
 		if (size == 0) {
-			_req.body = _body;
+			if (_buffer == "0\r\n\r\n") {
+				_buffer.erase(0, _buffer.size());
+				_req.body = _body;
+			} else
+				setError(400);
 			if (_req.isMultipart == true)
 				getMp();
 			if (_errorCode == 413 || _errorCode == 400)
