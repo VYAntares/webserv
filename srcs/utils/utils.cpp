@@ -231,30 +231,12 @@ std::string letNormalize(const std::string& p) {
 
 std::string normalizePath(const std::string& p, const std::string& root) {
     std::string nroot = letNormalize(root);
-    std::string res = letNormalize(root + p);
+    std::string res = letNormalize(p);
 
     if (res.compare(0, nroot.size(), nroot) != 0)
 		return "";
 
-    if (res.find(nroot + '/') != 0)
-        return "";
-    return res;
-}
-
-// Compare le chemin demandé à root sous forme canonique. L'ancien
-// `result.find(root) != 0` avait deux problèmes :
-//   - un simple test de sous-chaîne : "/var/www-evil" passait pour "/var/www"
-//   - root devait être déjà canonique ("./www" ou "www" ne matchaient jamais
-//     leur propre contenu → 403 systématique avec un root relatif)
-std::string normalizePath(const std::string& p, const std::string& root) {
-    std::string res   = canonPath(p);
-    std::string nroot = canonPath(root);
-
-    if (res.compare(0, nroot.size(), nroot) != 0)
-        return "";
-    // frontière de segment : ce qui suit root doit être "/" ou rien
     if (res.size() > nroot.size() && res[nroot.size()] != '/')
         return "";
     return res;
 }
-
