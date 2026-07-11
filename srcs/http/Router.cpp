@@ -11,7 +11,6 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     if (req.error != 200)
 		return new ErrorHandler(server, req.error);
     
-    
     // matcher la location sur le chemin SANS la query string : avec elle,
     // "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"
     std::string uriPath = req.uri.substr(0, req.uri.find('?'));
@@ -42,7 +41,6 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 		return NULL;
 	}
     if (req.method == "POST" && req.isMultipart == true) {
-        std::cout << "multiparting " << std::endl;
         if (loc->upload_store.empty())
             return new ErrorHandler(*loc, 500);
         else
@@ -69,17 +67,22 @@ std::string Router::isCgi(const std::string& uri, const Location* loc) {
 
 
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
+    bool    	slash = (uri[uri.length() - 1] == '/');
     std::string path = normalizePath(loc->root + uri, loc->root);
+
     if (path.empty())
         return "";
-    std::string newpath = path;
+    if (slash || (!slash && isDir(path)))
+        path = path + "/";
+
     if (path[path.length() - 1] == '/') {
         if (!loc->index.empty())
-            newpath = newpath + loc->index;
-        else if (!isDir(newpath))
+            path = path + "/" + loc->index;
+        else if (!isDir(path))
             return "";
     }
-    return newpath;
+
+    return path;
 }
 
 

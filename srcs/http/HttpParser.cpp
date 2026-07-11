@@ -122,6 +122,7 @@ void HttpParser::headerParser() {
 		_req.headers[line.substr(0, sep)] = line.substr(sep + 2);
 	}
 
+
 	const Location* loc = findLocation(_req.uri.substr(0, _req.uri.find('?')), *_server);
 	if (loc)
 		_maxBodySize = loc->max_body_client;
@@ -134,7 +135,8 @@ void HttpParser::headerParser() {
 				return setError(400);
 			_bodyExcepted = strtoull(cl.c_str(), NULL, 10);
 		}
-		if (it->first == "Transfer-Encoding" && it->second == "chunked")
+		
+		if (it->first == "Transfer-Encoding" && it->second.find("chunked") != std::string::npos) 
 			_state = R_CHUNKED;
 		if (it->second.find("multipart/form-data") != std::string::npos)
 			setBoundary(it->second);

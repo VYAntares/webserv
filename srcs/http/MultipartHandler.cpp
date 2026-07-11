@@ -5,7 +5,12 @@
 MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& path): _req(&req), _path(path) {
     _ncode = 200;
     std::string body;
-    std::cout << "in handler " << std::endl;
+
+    // on a pas derror page
+    // std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
+	// if (it != loc.error_page.end())
+	// 	_errorpage = it->second;
+
     std::map<std::string, UploadedFile>::const_iterator i;
     for (i = _req->mp.uploadedFiles.begin(); i != _req->mp.uploadedFiles.end(); i++) {
 		// ne garder que le nom du fichier.
@@ -36,7 +41,6 @@ MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& pa
 }
 
 
-
 void    MultipartHandler::setBody(const std::string& b) {
     _body += "<!DOCTYPE html>\n";
 	_body += "<html>\n";
@@ -47,4 +51,3 @@ void    MultipartHandler::setBody(const std::string& b) {
     _body += b;
     _body += "</html>\n";
 }
-

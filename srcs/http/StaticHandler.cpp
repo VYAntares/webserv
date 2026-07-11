@@ -9,33 +9,35 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 	_ncode = 200;
 	_type = "";
 
-	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-	if (it != loc.error_page.end()) {
-	 	_errorpage = it->second;
-	}
 	if (loc.return_path.first != -1) {
 		handleReturn(loc.return_path);
 		return ;
 	}
 	if (isDir(path) && req.method != "POST") {
-		if (path[path.length() - 1] != '/') {
-			const std::pair<int, std::string> toreturn(301,path + '/');
+		std::string uriPath = req.uri.substr(0, req.uri.find('?'));
+		if (uriPath[uriPath.length() - 1] != '/') {
+			const std::pair<int, std::string> toreturn(301,uriPath + '/');
 			handleReturn(toreturn);
-		} else
+		} else if (loc.autoindex == 1)
 			throwList();
-		return ;
+		else
+			_ncode = 403;
 	}
-	if (req.method == "GET")
+	else if (req.method == "GET")
 		handleGet();
 	else if (req.method == "POST")
 		handlePost();
 	else if (req.method == "DELETE")
 		handleDelete();
+
+	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
+	if (it != loc.error_page.end())
+		_errorpage = it->second;
 }
 
 
 
-StaticHandler::StaticHandler(const Location& loc, int code, const std::string& body) {
+StaticHandler::StaticHandler(const Location& loc, int code, const std::string& body) : _req(NULL), _loc(&loc) {
 	_ncode = code;
 	_body = body;
 
@@ -104,6 +106,7 @@ void	StaticHandler::handleDelete() {
 
 
 void	StaticHandler::throwList() {
+	_type = getType(".html");
 	std::string path = _loc->root + _req->uri;
 	if (path[path.length() - 1] != '/')
 		path = path + '/';
@@ -112,7 +115,6 @@ void	StaticHandler::throwList() {
 	DIR* dir = opendir(path.c_str());
 	if (!dir) {
 		_ncode = 403;
-		_type = getType(".html");
 		return ;
 	}
 	headerListe(path);
@@ -132,7 +134,6 @@ void	StaticHandler::throwList() {
 	else
 		_body += html;
 	_body += "</ul>\n</body>\n</html>\n";
-	_type = getType(".html");
 }
 
 
