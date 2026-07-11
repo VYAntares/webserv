@@ -122,9 +122,9 @@ void HttpParser::headerParser() {
 		_req.headers[line.substr(0, sep)] = line.substr(sep + 2);
 	}
 
-	// const Location* loc = findLocation();
-	// if (loc)
-	// 	_maxBodySize = loc->max_body_client;
+	const Location* loc = findLocation(_req.uri.substr(0, _req.uri.find('?')), *_server);
+	if (loc)
+		_maxBodySize = loc->max_body_client;
 
 	std::map<std::string, std::string>::iterator it;
 	for (it = _req.headers.begin(); it != _req.headers.end(); ++it) {
