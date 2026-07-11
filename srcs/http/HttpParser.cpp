@@ -46,7 +46,7 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 			// accumuler, pour ne pas exploser la mémoire
 			_buffer.clear();
 		} else {
-			_body.append(_buffer, acceptable);
+			_body.append(_buffer, 0, acceptable);
 			_buffer.erase(0, acceptable);
 		}
 		_bodyReceived = _body.size();

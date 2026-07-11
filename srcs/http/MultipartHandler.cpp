@@ -5,16 +5,31 @@
 MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& path): _req(&req), _path(path) {
     _ncode = 200;
     std::string body;
+    std::cout << "in handler " << std::endl;
     std::map<std::string, UploadedFile>::const_iterator i;
     for (i = _req->mp.uploadedFiles.begin(); i != _req->mp.uploadedFiles.end(); i++) {
-        std::string path = _path + "/" + i->second.filename;
+		// ne garder que le nom du fichier.
+		std::string fname = i->second.filename;
+        size_t slash = fname.rfind('/');
+        if (slash != std::string::npos)
+			fname = fname.substr(slash + 1);
+		if (fname.empty())
+			continue ;
+
+        std::string		path  = _path + "/" + fname;
+        std::cout << "path > " << path << std::endl;
         bool			exist = fileFound(path);
+		std::ofstream	file(path.c_str(), std::ios::binary);
+        if (!file.is_open()) {
+            _ncode = 500;
+            body += "<li>" + fname + " failed</li>";
+            continue ;
+        }
         if (!exist)
             _ncode = 201;
-        std::ofstream	file(path.c_str(), std::ios::binary);
         file.write(i->second.data.c_str(), i->second.size);
         file.close();
-        body += "<li>" + path + " uploded</li>";
+        body += "<li>" + path + " uploaded</li>";
     }
     if (!body.empty())
         setBody(body);

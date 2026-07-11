@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../config/ConfigStruct.hpp"
 #include "HttpRequest.hpp"
 #include <vector>
 

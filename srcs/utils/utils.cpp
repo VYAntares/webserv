@@ -13,8 +13,8 @@ std::string getReason(int code) {
 		case 301: return "Moved Permanently";
 		case 302: return "Found";
 		case 400: return "Bad Request";
-        case 403: return "Forbidden";
-        case 404: return "Not Found";
+		case 403: return "Forbidden";
+		case 404: return "Not Found";
 		case 405: return "Method Not Allowed";
 		case 413: return "Payload Too Large";
 		case 431: return "Request Header Fields Too Large";
@@ -202,13 +202,13 @@ std::string letNormalize(const std::string& p) {
     std::vector<std::string>    sgmt;
     std::string                 seg;
     std::stringstream           ss(p);
-    bool                        abs = (!p.empty && p[0] == '/');
+    bool                        abs = (!p.empty() && p[0] == '/');
 
     while(std::getline(ss, seg, '/')) {
     if (seg == "." || seg.empty())
         continue ;
     else if (seg == "..") {
-        if (!sgmt.empty() && sgmt.back() != '..')
+        if (!sgmt.empty() && sgmt.back() != "..")
             sgmt.pop_back();
         else 
             sgmt.push_back(seg);
@@ -223,7 +223,7 @@ std::string letNormalize(const std::string& p) {
             result += '/';
         result += sgmt[i];
 	}
-	if (result.empty() && absolute)
+	if (result.empty() && abs)
 		result = "/";
 	
     return result;

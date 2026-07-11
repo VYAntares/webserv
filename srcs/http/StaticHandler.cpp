@@ -10,8 +10,8 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 	_type = "";
 
 	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-    if (it != loc.error_page.end()) {
-     	_errorpage = it->second;
+	if (it != loc.error_page.end()) {
+	 	_errorpage = it->second;
 	}
 	if (loc.return_path.first != -1) {
 		handleReturn(loc.return_path);
@@ -40,8 +40,8 @@ StaticHandler::StaticHandler(const Location& loc, int code, const std::string& b
 	_body = body;
 
 	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-    if (it != loc.error_page.end()) {
-     	_errorpage = it->second;
+	if (it != loc.error_page.end()) {
+	 	_errorpage = it->second;
 	}
 }
 
@@ -52,10 +52,12 @@ void	StaticHandler::handleGet() {
 	_type = getType(_path);
 
 	std::ifstream file(_path.c_str());
-	if (!file.is_open())
+	
+	if (!file.is_open()) {
 		_ncode = 403;
 		_type = getType(".html");
 		return ;
+	}
 
 	std::stringstream ss;
 	ss << file.rdbuf();
@@ -70,10 +72,11 @@ void	StaticHandler::handlePost() {
 	std::string 	body = _req->body;
 	bool			exist = fileFound(_path);
 
-	if (!file.is_open())
+	if (!file.is_open()) {
 		_ncode = 403;
 		_type = getType(".html");
 		return ;
+	}
 
 	size_t pos = _req->body.find('+');
 	size_t pos2 = _req->body.find('%');

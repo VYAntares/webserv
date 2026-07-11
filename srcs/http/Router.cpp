@@ -29,7 +29,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
     std::string path = resolvePath(loc, uriPath);
 	if (path.empty())  // le chemin normalisé sort de root (ex: /../..)
 		return new ErrorHandler(*loc, 403);
-	
+
 	if (!fileExist(path, req.method))
 		return new ErrorHandler(*loc, 404);
 
@@ -41,9 +41,13 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
         CGIHandler cgi(req, path, interpreter, peerAddr, loc, sink);
 		return NULL;
 	}
-
-    if (req.method == "POST" && req.isMultipart == true)
-        return new MultipartHandler(req, path);
+    if (req.method == "POST" && req.isMultipart == true) {
+        std::cout << "multiparting " << std::endl;
+        if (loc->upload_store.empty())
+            return new ErrorHandler(*loc, 500);
+        else
+            return new MultipartHandler(req, loc->upload_store);
+    }
 
     return new StaticHandler(req, *loc, path);
 }
