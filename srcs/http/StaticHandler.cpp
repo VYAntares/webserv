@@ -125,10 +125,10 @@ void	StaticHandler::throwList() {
 	}
 	closedir(dir);
 	if (html.empty())
-		_body += "<html><body>Empty directory";
+		_body += "<li>Empty directory<li>\n";
 	else
-		_body += html + "</ul>\n";
-	_body += "</body>\n</html>\n";
+		_body += html;
+	_body += "</ul>\n</body>\n</html>\n";
 	_type = getType(".html");
 }
 
