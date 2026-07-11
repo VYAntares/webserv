@@ -53,6 +53,8 @@ void	StaticHandler::handleGet() {
 
 	std::ifstream file(_path.c_str());
 	if (!file.is_open())
+		_ncode = 403;
+		_type = "html";
 		return ;
 
 	std::stringstream ss;
@@ -67,6 +69,11 @@ void	StaticHandler::handlePost() {
 	std::ofstream	file(_path.c_str());
 	std::string 	body = _req->body;
 	bool			exist = fileFound(_path);
+
+	if (!file.is_open())
+		_ncode = 403;
+		_type = "html";
+		return ;
 
 	size_t pos = _req->body.find('+');
 	size_t pos2 = _req->body.find('%');
