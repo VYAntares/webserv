@@ -54,7 +54,7 @@ void	StaticHandler::handleGet() {
 	std::ifstream file(_path.c_str());
 	if (!file.is_open())
 		_ncode = 403;
-		_type = "html";
+		_type = getType(".html");
 		return ;
 
 	std::stringstream ss;
@@ -72,7 +72,7 @@ void	StaticHandler::handlePost() {
 
 	if (!file.is_open())
 		_ncode = 403;
-		_type = "html";
+		_type = getType(".html");
 		return ;
 
 	size_t pos = _req->body.find('+');
@@ -107,8 +107,11 @@ void	StaticHandler::throwList() {
 
 	std::string html;
 	DIR* dir = opendir(path.c_str());
-	if (!dir)
+	if (!dir) {
+		_ncode = 403;
+		_type = getType(".html");
 		return ;
+	}
 	headerListe(path);
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL) {
@@ -116,16 +119,16 @@ void	StaticHandler::throwList() {
 		if (listing == "." || listing == "..")
 			continue ;
 		if (isDir(path + listing))
-			html += "<li><a class=\"directory\" href=\"" + listing + "/\">" + listing + "</a><br>\n";
+			html += "<li><a class=\"directory\" href=\"" + listing + "/\">" + listing + "</a><li>\n";
 		else
-			html += "<li><a class=\"file\" href=\"" + listing + "\">" + listing + "</a><br>\n";
+			html += "<li><a class=\"file\" href=\"" + listing + "\">" + listing + "</a><li>\n";
 	}
 	closedir(dir);
 	if (html.empty())
 		_body += "<html><body>Empty directory";
 	else
 		_body += html + "</ul>\n";
-	html += "</body>\n</html>\n";
+	_body += "</body>\n</html>\n";
 	_type = getType(".html");
 }
 
