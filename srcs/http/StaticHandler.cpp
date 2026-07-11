@@ -30,9 +30,7 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 	else if (req.method == "DELETE")
 		handleDelete();
 
-	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-	if (it != loc.error_page.end())
-		_errorpage = it->second;
+	setErrorPage(loc);
 }
 
 
@@ -41,10 +39,7 @@ StaticHandler::StaticHandler(const Location& loc, int code, const std::string& b
 	_ncode = code;
 	_body = body;
 
-	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-	if (it != loc.error_page.end()) {
-	 	_errorpage = it->second;
-	}
+	setErrorPage(loc);
 }
 
 
@@ -70,9 +65,9 @@ void	StaticHandler::handleGet() {
 
 
 void	StaticHandler::handlePost() {
+	bool			exist = fileFound(_path);
 	std::ofstream	file(_path.c_str());
 	std::string 	body = _req->body;
-	bool			exist = fileFound(_path);
 
 	if (!file.is_open()) {
 		_ncode = 403;

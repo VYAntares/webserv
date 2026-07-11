@@ -2,14 +2,11 @@
 #include "../../includes/utils/utils.hpp"
 #include <fstream>
 
-MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& path): _req(&req), _path(path) {
+MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req, const std::string& path): _req(&req), _path(path) {
     _ncode = 200;
     std::string body;
 
-    // on a pas derror page
-    // std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-	// if (it != loc.error_page.end())
-	// 	_errorpage = it->second;
+    setErrorPage(loc);
 
     std::map<std::string, UploadedFile>::const_iterator i;
     for (i = _req->mp.uploadedFiles.begin(); i != _req->mp.uploadedFiles.end(); i++) {
@@ -22,7 +19,6 @@ MultipartHandler::MultipartHandler(const HttpRequest& req, const std::string& pa
 			continue ;
 
         std::string		path  = _path + "/" + fname;
-        std::cout << "path > " << path << std::endl;
         bool			exist = fileFound(path);
 		std::ofstream	file(path.c_str(), std::ios::binary);
         if (!file.is_open()) {

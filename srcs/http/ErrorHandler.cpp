@@ -7,10 +7,7 @@ ErrorHandler::ErrorHandler(const Location& loc, int code) {
 		handleReturn(loc.return_path);
 		return ;
 	}
-
-	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-	if (it != loc.error_page.end())
-    	_errorpage = it->second;
+	setErrorPage(loc);
 }
 
 

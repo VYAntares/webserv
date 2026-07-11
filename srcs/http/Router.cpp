@@ -44,7 +44,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
         if (loc->upload_store.empty())
             return new ErrorHandler(*loc, 500);
         else
-            return new MultipartHandler(req, loc->upload_store);
+            return new MultipartHandler(*loc, req, loc->upload_store);
     }
 
     return new StaticHandler(req, *loc, path);

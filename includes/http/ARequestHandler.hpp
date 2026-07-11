@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../config/ConfigStruct.hpp"
 #include <string>
 
 class ARequestHandler {
@@ -11,6 +12,7 @@ class ARequestHandler {
 
 		// devrait etre que dans staticHandler.hpp et errorHandler.hpp
 		void				getErrorPage();
+		void				setErrorPage(const Location& loc);
 		void 				handleReturn(const std::pair<int, std::string>& return_path);
 
 		void				setKeepAlive(bool ka) { _keepAlive = ka; }

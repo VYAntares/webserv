@@ -5,7 +5,7 @@
 
 class MultipartHandler : public ARequestHandler {
 	public:
-		MultipartHandler(const HttpRequest& req, const std::string& path);
+		MultipartHandler(const Location& loc, const HttpRequest& req, const std::string& path);
 		~MultipartHandler() {};
 
 		void    setBody(const std::string& b);

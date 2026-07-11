@@ -18,12 +18,24 @@ void ARequestHandler::handleReturn(const std::pair<int, std::string>& return_pat
 
 
 
+void ARequestHandler::setErrorPage(const Location& loc) {
+	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
+	if (it != loc.error_page.end()) {
+	 	_errorpage = it->second;
+	}
+}
+
+
+
 void	ARequestHandler::getErrorPage() {
 	_type = getType(_errorpage);
 
 	std::ifstream file(_errorpage.c_str());
-	if (!file.is_open())
+	if (!file.is_open()) {
+		_type = getType(".html");
+		_body = "<html><body><h1>" + itos(_ncode) + " " + getReason(_ncode) + "</h1></body></html>";
 		return ;
+	}
 
 	std::stringstream ss;
 	ss << file.rdbuf();
@@ -35,7 +47,7 @@ void	ARequestHandler::getErrorPage() {
 
 std::string ARequestHandler::buildResponse() {
     if (!_noBody && isError(_ncode) && _location.empty() && _body.empty()) {
-        if (_errorpage.length() > 0)
+		if (_errorpage.length() > 0)
             getErrorPage();
         else
             _body = "<html><body><h1>" + itos(_ncode) + " " + getReason(_ncode) + "</h1></body></html>";
