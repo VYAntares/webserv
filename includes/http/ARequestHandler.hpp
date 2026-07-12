@@ -17,6 +17,7 @@ class ARequestHandler {
 
 		void				setKeepAlive(bool ka) { _keepAlive = ka; }
 		void				stripBody() { _body.clear(); _noBody = true; }
+		void				setType(std::string& type) { _type = type; }
 
 	protected:
 		int					_ncode;

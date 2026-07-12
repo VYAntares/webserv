@@ -31,6 +31,8 @@ void	ARequestHandler::getErrorPage() {
 	_type = getType(_errorpage);
 
 	std::ifstream file(_errorpage.c_str());
+	// page d'erreur configurée mais introuvable → retomber sur la page
+	// par défaut plutôt que de renvoyer un body vide
 	if (!file.is_open()) {
 		_type = getType(".html");
 		_body = "<html><body><h1>" + itos(_ncode) + " " + getReason(_ncode) + "</h1></body></html>";
@@ -46,6 +48,7 @@ void	ARequestHandler::getErrorPage() {
 
 
 std::string ARequestHandler::buildResponse() {
+	std::cout << "In build response body :" << _body << std::endl;
     if (!_noBody && isError(_ncode) && _location.empty() && _body.empty()) {
 		if (_errorpage.length() > 0)
             getErrorPage();
