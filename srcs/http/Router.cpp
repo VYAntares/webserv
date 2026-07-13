@@ -87,17 +87,16 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
 
 	if (path.empty())
 		return "";
-	if (slash || (!slash && isDir(path)))
-		path = path + "/";
-	// std::cout << "slash > " << slash << "et isdir > " << isDir(path) << std::endl;
 
+	if (slash)
+		path = path + "/";
+	
 	if (path[path.length() - 1] == '/') {
 		if (!loc->index.empty())
 			path = path + "/" + loc->index;
 		else if (!isDir(path))
 			return "";
 	}
-	std::cout << "PATH > " << path << std::endl;
 	return path;
 }
 

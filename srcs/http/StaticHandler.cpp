@@ -102,8 +102,8 @@ void	StaticHandler::handleDelete() {
 void	StaticHandler::throwList() {
 	_type = getType(".html");
 	std::string path = _loc->root + _req->uri;
-	if (path[path.length() - 1] != '/')
-		path = path + '/';
+	// if (path[path.length() - 1] != '/')
+	// 	path = path + '/';
 
 	std::string html;
 	DIR* dir = opendir(path.c_str());
