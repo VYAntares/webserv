@@ -41,7 +41,7 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 	if (_state == R_BODY) {
 		size_t left = _bodyExcepted - _bodyReceived;
 		// size_t acceptable = std::min(left, _buffer.size());
-		size_t acceptable = (_buffer.size() < left) ? _buffer.size() : left;
+		size_t acceptable = std::min(left, _buffer.size());
 		if (_errorCode == 413) {
 			// corps trop gros : jeter les données au lieu de les
 			// accumuler, pour ne pas exploser la mémoire
