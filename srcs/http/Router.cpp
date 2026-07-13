@@ -115,8 +115,8 @@ int Router::fileExist(const std::string& path, const std::string& method) {
 
 
 int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
-	int mode = 0;
-	std::string pathtoaccess = uri;
+	int			mode = 0;
+	std::string	pathtoaccess = uri;
 
 	if (method == "DELETE")
 		mode = W_OK;

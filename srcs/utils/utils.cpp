@@ -173,7 +173,6 @@ std::string decodeHexa(const std::string& uri, bool plus) {
         } else
             newuri += uri[i];
     }
-    std::cout << "newu" << newuri << std::endl;
     return newuri;
 }
 
@@ -194,10 +193,11 @@ bool    isError(int code) {
     return false;
 }
 
+
+
 // Un chemin comme /var/www/../../etc/passwd doit être "résolu" avant d'être comparé à la racine autorisée, 
 // sinon on peut sortir du dossier racine avec des ... L'algo découpe le chemin en segments séparés par /, et pour chaque segment :
 // get ../../../ ca va acceder a des endroit frauduleux
-
 std::string letNormalize(const std::string& p) {
     std::vector<std::string>    sgmt;
     std::string                 seg;
@@ -228,6 +228,8 @@ std::string letNormalize(const std::string& p) {
 	
     return result;
 }
+
+
 
 std::string normalizePath(const std::string& p, const std::string& root) {
     std::string nroot = letNormalize(root);

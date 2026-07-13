@@ -39,8 +39,9 @@ CGIHandler::CGIHandler(const HttpRequest& req, std::string& path, std::string& i
 	_process = new CGIProcess(req, path, interpreter, peerAddr);
 	
 	// brancher les pipes
-	EventLoop::instance()->register_handler(
-			new CGIWriteHandler(_process->getWriteFd(), req.body), WRITE_EVENT);
+	CGIWriteHandler* wr = new CGIWriteHandler(_process->getWriteFd(), req.body);
+	EventLoop::instance()->register_handler(wr, WRITE_EVENT);
+
 	CGIReadHandler* rd = new CGIReadHandler(_process->getReadFd(), _process->getPid(), loc, sink);
 	EventLoop::instance()->register_handler(rd, READ_EVENT);
 	// le client doit connaître son CGIReadHandler pour pouvoir se détacher

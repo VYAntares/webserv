@@ -9,6 +9,8 @@ HttpParser::HttpParser(const Server& server) : _errorCode(0), _state(R_HEADERS),
 
 HttpParser::~HttpParser() {}
 
+
+
 void HttpParser::runParsing(std::string& buffer) {
 	// ne pas écraser une erreur déjà flaggée (ex: 413 détecté sur un chunk,
 	// alors que le terminateur "0\r\n\r\n" arrive dans un recv() ultérieur)
@@ -120,19 +122,17 @@ void HttpParser::checkFirstLine() {
 void HttpParser::headerParser() {
 	std::istringstream	iss(_header);
 	std::string			line;
-	
 	std::getline(iss, line);
 	std::istringstream	firstLine(line);
 	firstLine >> _req.method >> _req.uri >> _req.version;
 
 	checkFirstLine();
 
-	while(std::getline(iss, line)) {
+	while (std::getline(iss, line)) {
 		if (!line.empty() && line[line.size() - 1] == '\r')
 			line.erase(line.size() - 1);
 		if (line.empty())
 			break;
-
 		size_t sep = line.find(": ");
 		if (sep == std::string::npos)
 			return setError(400);
@@ -144,7 +144,14 @@ void HttpParser::headerParser() {
 	const Location* loc = findLocation(_req.uri.substr(0, _req.uri.find('?')), *_server);
 	if (loc)
 		_maxBodySize = loc->max_body_client;
+	findHeaders();
+	if (_bodyExcepted > _maxBodySize)
+		return setError(413);
+}
 
+
+
+void HttpParser::findHeaders() {
 	std::map<std::string, std::string>::iterator it;
 	for (it = _req.headers.begin(); it != _req.headers.end(); ++it) {
 		if (it->first == "Content-Length") {
@@ -160,9 +167,6 @@ void HttpParser::headerParser() {
 		if (it->second.find("multipart/form-data") != std::string::npos)
 			setBoundary(it->second);
 	}
-
-	if (_bodyExcepted > _maxBodySize)
-		return setError(413);
 }
 
 

@@ -40,6 +40,7 @@ class HttpParser {
 		void			setError(int errorCode);
 		void			checkFirstLine();
 		void			headerParser();
+		void			findHeaders();
 		void			readChunked();
 		void 			getMp();
 		void			reset();

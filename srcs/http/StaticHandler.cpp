@@ -45,7 +45,6 @@ StaticHandler::StaticHandler(const Location& loc, int code, const std::string& b
 
 
 void	StaticHandler::handleGet() {
-
 	_type = getType(_path);
 
 	std::ifstream file(_path.c_str());
@@ -75,7 +74,7 @@ void	StaticHandler::handlePost() {
 		return ;
 	}
 
-	size_t pos = _req->body.find('+');
+	size_t pos  = _req->body.find('+');
 	size_t pos2 = _req->body.find('%');
 
 	if (pos != std::string::npos || pos2 != std::string::npos)
