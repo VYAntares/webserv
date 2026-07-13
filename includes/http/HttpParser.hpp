@@ -33,7 +33,9 @@ class HttpParser {
 		enum State		getState();
 		HttpRequest		getReq();
 
-		void			runParsing(std::string& buffer, size_t n);
+		void			runParsing(std::string& buffer);
+		void			treatHeader();
+		void			treatBody();
 		void			setBoundary(const std::string& boundary);
 		void			setError(int errorCode);
 		void			checkFirstLine();

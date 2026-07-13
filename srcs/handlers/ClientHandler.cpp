@@ -10,9 +10,15 @@
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// s_addr est un uint32_t déjà en network byte order (big-endian), donc son
+// octet mémoire 0 est le 1er chiffre de l'IP ("a" dans a.b.c.d), l'octet 1
+// le 2e, etc. On le relit comme 4 octets bruts pour éviter inet_ntoa (interdit).
 std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
+	const unsigned char* ip = reinterpret_cast<const unsigned char*>(&addr.sin_addr.s_addr);
 	std::ostringstream oss;
-	oss << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port);
+	oss << static_cast<int>(ip[0]) << "." << static_cast<int>(ip[1]) << "."
+		<< static_cast<int>(ip[2]) << "." << static_cast<int>(ip[3])
+		<< ":" << ntohs(addr.sin_port);
 	return oss.str();
 }
 
@@ -113,9 +119,6 @@ void	ClientHandler::_handleError() {
 	_rh = Router::route(req, _server, _peerAddr, this);
 	_response = _rh->buildResponse();
 
-	if (req.error == 413)
-		shutdown(_fd, SHUT_RD);
-
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
 
@@ -146,7 +149,7 @@ int ClientHandler::handle_input() {
 		return -1;
 	std::string data(buf, n);
 
-	_parser.runParsing(data, static_cast<size_t>(n));
+	_parser.runParsing(data);
 	if (_parser.getState() == HttpParser::COMPLETE)
 		_handleComplete();
 	else if (_parser.getState() == HttpParser::ERROR)
@@ -177,7 +180,7 @@ int ClientHandler::handle_output() {
 			// parseur : aucun octet n'arrivera pour re-déclencher handle_input,
 			// il faut donc re-parser le reliquat maintenant.
 			std::string empty;
-			_parser.runParsing(empty, 0);
+			_parser.runParsing(empty);
 			if (_parser.getState() == HttpParser::COMPLETE)
 				_handleComplete();
 			else if (_parser.getState() == HttpParser::ERROR)

@@ -9,62 +9,75 @@ HttpParser::HttpParser(const Server& server) : _errorCode(0), _state(R_HEADERS),
 
 HttpParser::~HttpParser() {}
 
-
-
-void HttpParser::runParsing(std::string& buffer, size_t n) {
-	(void)n;
+void HttpParser::runParsing(std::string& buffer) {
 	// ne pas écraser une erreur déjà flaggée (ex: 413 détecté sur un chunk,
 	// alors que le terminateur "0\r\n\r\n" arrive dans un recv() ultérieur)
 	_req.error = (_errorCode != 0) ? _errorCode : 200;
-    _buffer += buffer;
+	_buffer += buffer;
 
-    if (_state == R_HEADERS) {
-		_req.isMultipart = false;
-        size_t pos = _buffer.find("\r\n\r\n");
-        if (pos == std::string::npos) {
-			// garde-fou : des headers sans fin ne doivent pas faire grossir
-			// le buffer indéfiniment (résilience exigée par le sujet)
-			if (_buffer.size() > MAX_HEADER_SIZE)
-				setError(431);
-            return ;
-		}
-        _header = _buffer.substr(0, pos);
-		_buffer = _buffer.substr(pos + 4);
-        _state = R_BODY;
-        headerParser();
-		if (_state == ERROR)
-			return;
-		if (_state != R_CHUNKED)
-        	_state = (_bodyExcepted > 0) ? R_BODY : COMPLETE;
-    }
+	// if (_state == R_HEADERS) 
+	// 	treatHeader();
+	// if (_state == R_BODY)
+	// 	treatBody();
+	// if (_state == R_CHUNKED)
+	// 	readChunked();
+	// if (_state == ERROR)
+	// 	return;
 
-	if (_state == R_BODY) {
-		size_t left = _bodyExcepted - _bodyReceived;
-		// size_t acceptable = std::min(left, _buffer.size());
-		size_t acceptable = std::min(left, _buffer.size());
-		if (_errorCode == 413) {
-			// corps trop gros : jeter les données au lieu de les
-			// accumuler, pour ne pas exploser la mémoire
-			_buffer.erase(0, acceptable);
-		} else {
-			_body.append(_buffer, 0, acceptable);
-			_buffer.erase(0, acceptable);
-		}
-		_bodyReceived += acceptable;
-		if (_bodyReceived == _bodyExcepted) {
-			_req.error = (_errorCode != 0) ? _errorCode : 200;
-			if (_errorCode == 0) {
-				_req.body = _body;
-				if (_req.isMultipart == true)
-					getMp();
-			}
-			_state = (_errorCode == 0) ? COMPLETE : ERROR;
-		}
+	switch (_state) {
+		case R_HEADERS: treatHeader();	break;
+		case R_BODY:	treatBody();	break;
+		case R_CHUNKED:	readChunked();	break;
+		default:		break;			// ERROR ou autre -> rien faire.
 	}
-	if (_state == R_CHUNKED)
-		readChunked();
+}
+
+
+
+void HttpParser::treatHeader() {
+	_req.isMultipart = false;
+ 	size_t pos = _buffer.find("\r\n\r\n");
+	if (pos == std::string::npos) {
+		// garde-fou : des headers sans fin ne doivent pas faire grossir
+		// le buffer indéfiniment (résilience exigée par le sujet)
+		if (_buffer.size() > MAX_HEADER_SIZE)
+			setError(431);
+		return ;
+	}
+	_header = _buffer.substr(0, pos);
+	_buffer = _buffer.substr(pos + 4);
+	_state = R_BODY;
+	headerParser();
 	if (_state == ERROR)
 		return;
+	if (_state != R_CHUNKED)
+	   	_state = (_bodyExcepted > 0) ? R_BODY : COMPLETE;
+}
+
+
+
+void HttpParser::treatBody() {
+	size_t left = _bodyExcepted - _bodyReceived;
+	// size_t acceptable = std::min(left, _buffer.size());
+	size_t acceptable = std::min(left, _buffer.size());
+	if (_errorCode == 413) {
+		// corps trop gros : jeter les données au lieu de les
+		// accumuler, pour ne pas exploser la mémoire
+		_buffer.erase(0, acceptable);
+	} else {
+		_body.append(_buffer, 0, acceptable);
+		_buffer.erase(0, acceptable);
+	}
+	_bodyReceived += acceptable;
+	if (_bodyReceived == _bodyExcepted) {
+		_req.error = (_errorCode != 0) ? _errorCode : 200;
+		if (_errorCode == 0) {
+			_req.body = _body;
+			if (_req.isMultipart == true)
+				getMp();
+		}
+		_state = (_errorCode == 0) ? COMPLETE : ERROR;
+	}
 }
 
 
@@ -206,11 +219,11 @@ void HttpParser::readChunked() {
 				_state = ERROR;
 			else
 				_state = COMPLETE;
-            return;
+			return;
 		}
 		size_t needed = pos + 2 + size + 2;
 		if (_buffer.size() < needed)
-    		return;
+			return;
 
 		// compter le chunk UNIQUEMENT quand il est entier dans le buffer :
 		// avant, l'incrément se faisait avant le check de complétude, donc un
@@ -230,13 +243,13 @@ void HttpParser::readChunked() {
 
 
 HttpParser::State	HttpParser::getState() {
-    return _state;
+	return _state;
 }
 
 
 
 HttpRequest	HttpParser::getReq() {
-    return _req;
+	return _req;
 }
 
 
