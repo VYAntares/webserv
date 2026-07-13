@@ -40,16 +40,17 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 
 	if (_state == R_BODY) {
 		size_t left = _bodyExcepted - _bodyReceived;
-		size_t acceptable = std::min(left, _buffer.size());
+		// size_t acceptable = std::min(left, _buffer.size());
+		size_t acceptable = (_buffer.size() < left) ? _buffer.size() : left;
 		if (_errorCode == 413) {
 			// corps trop gros : jeter les données au lieu de les
 			// accumuler, pour ne pas exploser la mémoire
-			_buffer.clear();
+			_buffer.erase(0, acceptable);
 		} else {
 			_body.append(_buffer, 0, acceptable);
 			_buffer.erase(0, acceptable);
 		}
-		_bodyReceived = _body.size();
+		_bodyReceived += acceptable;
 		if (_bodyReceived == _bodyExcepted) {
 			_req.error = (_errorCode != 0) ? _errorCode : 200;
 			if (_errorCode == 0) {
@@ -71,7 +72,10 @@ void HttpParser::runParsing(std::string& buffer, size_t n) {
 void HttpParser::setError(int errorCode) {
 	_req.error = errorCode; 
 	_errorCode = errorCode;
-	if (_state != R_CHUNKED)
+	// Pour 413 en mode normal, ne pas changer l'état immédiatement :
+	// on continue de lire le corps jusqu'à la fin (en le jetant) pour
+	// que le client puisse terminer son envoi avant de lire notre 413.
+	if (_state != R_CHUNKED && errorCode != 413)
 		_state = ERROR;
 }
 
@@ -122,7 +126,8 @@ void HttpParser::headerParser() {
 		_req.headers[line.substr(0, sep)] = line.substr(sep + 2);
 	}
 
-
+	// la limite de body dépend de la location matchée (client_max_body_size
+	// par location) : on la résout dès les headers, avant de lire le body
 	const Location* loc = findLocation(_req.uri.substr(0, _req.uri.find('?')), *_server);
 	if (loc)
 		_maxBodySize = loc->max_body_client;
@@ -135,7 +140,8 @@ void HttpParser::headerParser() {
 				return setError(400);
 			_bodyExcepted = strtoull(cl.c_str(), NULL, 10);
 		}
-		
+		// tester la CLÉ Transfer-Encoding : avant, n'importe quel header dont
+		// la valeur était "chunked" (ex: X-Foo: chunked) déclenchait le mode
 		if (it->first == "Transfer-Encoding" && it->second.find("chunked") != std::string::npos) 
 			_state = R_CHUNKED;
 		if (it->second.find("multipart/form-data") != std::string::npos)
@@ -179,17 +185,21 @@ void HttpParser::readChunked() {
 		while(*end == ' ' || *end == '\t')
 			end++;
 
-		if (*end != '\0')
+		// ';' introduit une chunk-extension (RFC 7230), autorisée → ignorée
+		if (*end != '\0' && *end != ';')
 			setError(400);
 
 		if (size == 0) {
+			// attendre le terminateur complet "0\r\n\r\n" puis le consommer,
+			// sinon il traînerait dans _buffer et corromprait la requête
+			// keep-alive suivante (sauf si on est déjà en erreur : inutile
+			// d'attendre des octets qui n'arriveront peut-être jamais)
 			if (_errorCode != 413 && _errorCode != 400) {
 				if (_buffer.size() < pos + 4)
 					return;
 				_buffer.erase(0, pos + 4);
 			}
-			else
-				setError(400);
+			_req.body = _body;
 			if (_req.isMultipart == true)
 				getMp();
 			if (_errorCode == 413 || _errorCode == 400)
@@ -207,8 +217,9 @@ void HttpParser::readChunked() {
 		// chunk arrivant en plusieurs recv() était re-compté à chaque appel
 		// (jusqu'à ~16x avec des chunks de 64k et un buffer de 4k) → faux 413
 		_bodyReceived += size;
-		if (_bodyReceived > _maxBodySize)
+		if (_bodyReceived > _maxBodySize) {
 			setError(413);
+		}
 		
 		if (_errorCode != 413 && _errorCode != 400)
 			_body.append(_buffer, pos + 2, size);

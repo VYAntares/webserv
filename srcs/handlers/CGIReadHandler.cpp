@@ -97,13 +97,17 @@ int CGIReadHandler::handle_input() {
 			// ne pas laisser le client sans réponse
 			_sink->onCgiDone(err.buildResponse());
 			_responded = true;
-			return -1;
 		}
+		return -1;
 	}
 
 	// n == 0 : EOF — le CGI a fermé son stdout, _out est complet
+	std::cerr << "[DEBUG CGIReadHandler EOF] _out.size()=" << _out.size() << std::endl;
 	int status = 0;
 	reapChild(status);
+	std::cerr << "[DEBUG CGIReadHandler status] WIFEXITED=" << WIFEXITED(status)
+			  << " WEXITSTATUS=" << (WIFEXITED(status) ? WEXITSTATUS(status) : -1)
+			  << " WIFSIGNALED=" << WIFSIGNALED(status) << std::endl;
 
 	if (!_sink)
 		return -1;

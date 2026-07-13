@@ -8,7 +8,7 @@
 class CGIProcess {
 	public:
 		CGIProcess(const HttpRequest& req, std::string& path, 
-						std::string& interpreter, const std::string& peerAddr);
+					std::string& interpreter, const std::string& peerAddr);
 		~CGIProcess();
 
 		int 	getWriteFd() const;

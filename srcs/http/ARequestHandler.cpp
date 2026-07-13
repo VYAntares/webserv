@@ -48,14 +48,12 @@ void	ARequestHandler::getErrorPage() {
 
 
 std::string ARequestHandler::buildResponse() {
-	std::cout << "In build response body :" << _body << std::endl;
     if (!_noBody && isError(_ncode) && _location.empty() && _body.empty()) {
 		if (_errorpage.length() > 0)
             getErrorPage();
         else
             _body = "<html><body><h1>" + itos(_ncode) + " " + getReason(_ncode) + "</h1></body></html>";
     }
-	std::cout << "NCODE" << _ncode << std::endl;
 	std::ostringstream oss;
 	oss << "HTTP/1.1 " << _ncode << " " << getReason(_ncode) << "\r\n";
 
