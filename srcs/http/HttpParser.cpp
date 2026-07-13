@@ -17,21 +17,21 @@ void HttpParser::runParsing(std::string& buffer) {
 	_req.error = (_errorCode != 0) ? _errorCode : 200;
 	_buffer += buffer;
 
-	// if (_state == R_HEADERS) 
-	// 	treatHeader();
-	// if (_state == R_BODY)
-	// 	treatBody();
-	// if (_state == R_CHUNKED)
-	// 	readChunked();
-	// if (_state == ERROR)
-	// 	return;
-
-	switch (_state) {
-		case R_HEADERS: treatHeader();	break;
-		case R_BODY:	treatBody();	break;
-		case R_CHUNKED:	readChunked();	break;
-		default:		break;			// ERROR ou autre -> rien faire.
-	}
+	// Boucle plutôt que simple switch : un seul recv() peut livrer les
+	// headers ET tout le body d'un coup (petite requête). Sans boucle,
+	// treatHeader() bascule l'état vers R_BODY mais s'arrête là, laissant
+	// le body déjà présent dans _buffer sans le consommer — la requête ne
+	// progresse plus jamais si le client n'envoie rien de plus (timeout).
+	State before;
+	do {
+		before = _state;
+		switch (_state) {
+			case R_HEADERS: treatHeader();	break;
+			case R_BODY:	treatBody();	break;
+			case R_CHUNKED:	readChunked();	break;
+			default:		break;			// COMPLETE, ERROR -> rien faire.
+		}
+	} while (_state != before && _state != COMPLETE && _state != ERROR);
 }
 
 
@@ -144,6 +144,7 @@ void HttpParser::headerParser() {
 	const Location* loc = findLocation(_req.uri.substr(0, _req.uri.find('?')), *_server);
 	if (loc)
 		_maxBodySize = loc->max_body_client;
+	
 	findHeaders();
 	if (_bodyExcepted > _maxBodySize)
 		return setError(413);
@@ -191,40 +192,23 @@ void HttpParser::readChunked() {
 		if (pos == std::string::npos)
 			return ;
 
+		char* 		end 	= NULL;
 		std::string sizeStr = _buffer.substr(0, pos);
-
-		char* end = NULL;
-		size_t size = std::strtol(sizeStr.c_str(), &end, 16);
+		size_t 		size 	= std::strtol(sizeStr.c_str(), &end, 16);
 
 		if (end == sizeStr.c_str())
 			setError(400);
-
 		while(*end == ' ' || *end == '\t')
 			end++;
-
 		// ';' introduit une chunk-extension (RFC 7230), autorisée → ignorée
 		if (*end != '\0' && *end != ';')
 			setError(400);
 
 		if (size == 0) {
-			// attendre le terminateur complet "0\r\n\r\n" puis le consommer,
-			// sinon il traînerait dans _buffer et corromprait la requête
-			// keep-alive suivante (sauf si on est déjà en erreur : inutile
-			// d'attendre des octets qui n'arriveront peut-être jamais)
-			if (_errorCode != 413 && _errorCode != 400) {
-				if (_buffer.size() < pos + 4)
-					return;
-				_buffer.erase(0, pos + 4);
-			}
-			_req.body = _body;
-			if (_req.isMultipart == true)
-				getMp();
-			if (_errorCode == 413 || _errorCode == 400)
-				_state = ERROR;
-			else
-				_state = COMPLETE;
-			return;
+			endOfChunked(pos);
+			return ;
 		}
+
 		size_t needed = pos + 2 + size + 2;
 		if (_buffer.size() < needed)
 			return;
@@ -242,6 +226,24 @@ void HttpParser::readChunked() {
 			_body.append(_buffer, pos + 2, size);
 		_buffer.erase(0, needed);
 	}
+}
+
+
+
+void HttpParser::endOfChunked(size_t pos) {
+	if (_errorCode != 413 && _errorCode != 400) {
+		if (_buffer.size() < pos + 4)
+			return;
+		_buffer.erase(0, pos + 4);
+	}
+	_req.body = _body;
+	if (_req.isMultipart == true)
+		getMp();
+	if (_errorCode == 413 || _errorCode == 400)
+		_state = ERROR;
+	else
+		_state = COMPLETE;
+	return ;
 }
 
 

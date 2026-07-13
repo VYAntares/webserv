@@ -9,7 +9,7 @@
 ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 									const std::string& peerAddr, IResponseSink* sink) {
 	if (req.error != 200)
-		return new ErrorHandler(server, req.error);
+		return new ErrorHandler(server, req.error, "");
 	
 	// matcher la location sur le chemin SANS la query string : avec elle,
 	// "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"
@@ -17,13 +17,13 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
 	const Location *loc = bestRouteFound(req.uri, server);
 	if (!loc)
-	return new ErrorHandler(server, 404);
+	return new ErrorHandler(server, 404, "");
 
 	if (!methodImplemented(req.method))
-		return new ErrorHandler(server, 501);
+		return new ErrorHandler(server, 501, "");
 
 	if (!methodAllowed(req.method, loc))
-		return new ErrorHandler(*loc, 405);
+		return new ErrorHandler(*loc, 405, "");
 
 	// la redirection s'applique avant tout accès au filesystem : sinon un
 	// "return" sur une URL sans fichier réel renvoyait 404 au lieu de rediriger
@@ -32,7 +32,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
 	std::string path = resolvePath(loc, uriPath);
 	if (path.empty())  // le chemin normalisé sort de root (ex: /../..)
-		return new ErrorHandler(*loc, 403);
+		return new ErrorHandler(*loc, 403, "");
 
 	// upload : si un dossier de stockage est configuré, c'est lui qui reçoit
     // les fichiers (exigence du sujet), pas root + URI
@@ -48,23 +48,19 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 	}
 
 	if (!fileExist(path, req.method))
-		return new ErrorHandler(*loc, 404);
+		return new ErrorHandler(*loc, 404, "");
 
 	if (forbiddenAccess(path, req.method))
-		return new ErrorHandler(*loc, 403);
+		return new ErrorHandler(*loc, 403, "");
 
 	std::string interpreter = isCgi(uriPath, loc);
-	if (!interpreter.empty() && req.method == "POST") {
+	if (!interpreter.empty() && (req.method == "GET" || req.method == "POST")) {
 		CGIHandler cgi(req, path, interpreter, peerAddr, loc, sink);
 		return NULL;
 	}
-	if (req.method == "POST" && req.isMultipart == true) {
-		// if (loc->upload_store.empty())
-		// 	return new ErrorHandler(*loc, 500);
-		// else
-		// 	return new MultipartHandler(*loc, req, loc->upload_store);
+
+	if (req.method == "POST" && req.isMultipart == true)
 		return new MultipartHandler(*loc, req, path);
-	}
 
 	return new StaticHandler(req, *loc, path);
 }
@@ -87,12 +83,13 @@ std::string Router::isCgi(const std::string& uri, const Location* loc) {
 
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
 	bool    	slash = (uri[uri.length() - 1] == '/');
-	std::string path = normalizePath(loc->root + uri, loc->root);
+	std::string path  = normalizePath(loc->root + uri, loc->root);
 
 	if (path.empty())
 		return "";
 	if (slash || (!slash && isDir(path)))
 		path = path + "/";
+	// std::cout << "slash > " << slash << "et isdir > " << isDir(path) << std::endl;
 
 	if (path[path.length() - 1] == '/') {
 		if (!loc->index.empty())
@@ -100,7 +97,7 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
 		else if (!isDir(path))
 			return "";
 	}
-
+	std::cout << "PATH > " << path << std::endl;
 	return path;
 }
 

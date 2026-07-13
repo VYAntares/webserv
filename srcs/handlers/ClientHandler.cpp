@@ -8,47 +8,13 @@
 #include <iostream>
 #include <sstream>
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-// s_addr est un uint32_t déjà en network byte order (big-endian), donc son
-// octet mémoire 0 est le 1er chiffre de l'IP ("a" dans a.b.c.d), l'octet 1
-// le 2e, etc. On le relit comme 4 octets bruts pour éviter inet_ntoa (interdit).
-std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
-	const unsigned char* ip = reinterpret_cast<const unsigned char*>(&addr.sin_addr.s_addr);
-	std::ostringstream oss;
-	oss << static_cast<int>(ip[0]) << "." << static_cast<int>(ip[1]) << "."
-		<< static_cast<int>(ip[2]) << "." << static_cast<int>(ip[3])
-		<< ":" << ntohs(addr.sin_port);
-	return oss.str();
-}
-
-
-
-// Appelé après chaque requête complète (keep-alive) pour préparer le prochain cycle.
-// _response est vidée explicitement pour libérer la mémoire allouée par la string.
-void ClientHandler::_reset() {
-	delete _rh;
-	_rh = NULL;
-	_response.clear();
-	_sent = 0;
-	_parser.reset();
-}
-
-
-
-int		ClientHandler::getFd()			 const { return _fd; }
-time_t	ClientHandler::getLastActivity() const { return _lastActivity; }
-
-
-
 // ─── Cycle de vie ─────────────────────────────────────────────────────────────
 
 ClientHandler::ClientHandler(int clientFd, const Server& server,
                              const struct sockaddr_in& peerAddr)
 											: _fd(clientFd), _sent(0), _server(server),
-											_parser(server), _rh(NULL),
-											_keepAlive(false), _lastActivity(time(NULL)),
-											_cgiRead(NULL) {
+											_parser(server), _rh(NULL), _keepAlive(false), 
+											_lastActivity(time(NULL)), _cgiRead(NULL) {
 	_peerAddr = _buildPeerStr(peerAddr);
 	EventLoop::instance()->register_handler(this, READ_EVENT);
 	std::cout << "[client " << _peerAddr << " fd=" << _fd << "] connected\n";
@@ -131,9 +97,9 @@ void	ClientHandler::onCgiStart(CGIReadHandler* rd) {
 
 
 void	ClientHandler::onCgiDone(const std::string& rawHttpResp) {
-	_cgiRead = NULL; // le CGIReadHandler se détruit juste après, ne plus y toucher
 	_response = rawHttpResp;
-	_sent = 0;
+	_cgiRead  = NULL; // le CGIReadHandler se détruit juste après, ne plus y toucher
+	_sent     = 0;
 	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
 }
 
@@ -165,7 +131,7 @@ int ClientHandler::handle_output() {
 	_lastActivity = time(NULL);
 
 	const char*  data = _response.c_str() + _sent;
-	size_t       left = _response.size() - _sent;
+	size_t       left = _response.size()  - _sent;
 
 	ssize_t n = send(_fd, data, left, MSG_NOSIGNAL);
 	if (n <= 0)
@@ -192,3 +158,35 @@ int ClientHandler::handle_output() {
 	return 0;
 }
 
+
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// s_addr est un uint32_t déjà en network byte order (big-endian), donc son
+// octet mémoire 0 est le 1er chiffre de l'IP ("a" dans a.b.c.d), l'octet 1
+// le 2e, etc. On le relit comme 4 octets bruts pour éviter inet_ntoa (interdit).
+std::string ClientHandler::_buildPeerStr(const struct sockaddr_in& addr) const {
+	const unsigned char* ip = reinterpret_cast<const unsigned char*>(&addr.sin_addr.s_addr);
+	std::ostringstream oss;
+	oss << static_cast<int>(ip[0]) << "." << static_cast<int>(ip[1]) << "."
+		<< static_cast<int>(ip[2]) << "." << static_cast<int>(ip[3])
+		<< ":" << ntohs(addr.sin_port);
+	return oss.str();
+}
+
+
+
+// Appelé après chaque requête complète (keep-alive) pour préparer le prochain cycle.
+// _response est vidée explicitement pour libérer la mémoire allouée par la string.
+void ClientHandler::_reset() {
+	delete _rh;
+	_rh = NULL;
+	_response.clear();
+	_sent = 0;
+	_parser.reset();
+}
+
+
+
+int		ClientHandler::getFd()			 const { return _fd; }
+time_t	ClientHandler::getLastActivity() const { return _lastActivity; }

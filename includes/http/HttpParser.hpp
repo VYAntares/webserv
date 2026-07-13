@@ -33,15 +33,16 @@ class HttpParser {
 		enum State		getState();
 		HttpRequest		getReq();
 
-		void			runParsing(std::string& buffer);
-		void			treatHeader();
-		void			treatBody();
 		void			setBoundary(const std::string& boundary);
+		void			runParsing(std::string& buffer);
+		void			endOfChunked(size_t pos);
 		void			setError(int errorCode);
 		void			checkFirstLine();
 		void			headerParser();
 		void			findHeaders();
 		void			readChunked();
+		void			treatHeader();
+		void			treatBody();
 		void 			getMp();
 		void			reset();
 

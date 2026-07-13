@@ -16,7 +16,7 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 	if (isDir(path) && req.method != "POST") {
 		std::string uriPath = req.uri.substr(0, req.uri.find('?'));
 		if (uriPath[uriPath.length() - 1] != '/') {
-			const std::pair<int, std::string> toreturn(301,uriPath + '/');
+			const std::pair<int, std::string> toreturn(301, uriPath + '/');
 			handleReturn(toreturn);
 		} else if (loc.autoindex == 1)
 			throwList();
@@ -118,13 +118,13 @@ void	StaticHandler::throwList() {
 		if (listing == "." || listing == "..")
 			continue ;
 		if (isDir(path + listing))
-			html += "<li><a class=\"directory\" href=\"" + listing + "/\">" + listing + "</a><li>\n";
+			html += "<li><a class=\"directory\" href=\"" + listing + "/\">" + listing + "</a><l/i>\n";
 		else
-			html += "<li><a class=\"file\" href=\"" + listing + "\">" + listing + "</a><li>\n";
+			html += "<li><a class=\"file\" href=\"" + listing + "\">" + listing + "</a></li>\n";
 	}
 	closedir(dir);
 	if (html.empty())
-		_body += "<li>Empty directory<li>\n";
+		_body += "<li>Empty directory</li>\n";
 	else
 		_body += html;
 	_body += "</ul>\n</body>\n</html>\n";

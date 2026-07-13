@@ -93,7 +93,7 @@ int CGIReadHandler::handle_input() {
 	if (n < 0) {
 		if (_sink) {
 			// erreur réelle (epoll a dit "lisible")
-			ErrorHandler err(*_loc, 502);
+			ErrorHandler err(*_loc, 502, "");
 			// ne pas laisser le client sans réponse
 			_sink->onCgiDone(err.buildResponse());
 			_responded = true;
@@ -119,7 +119,7 @@ int CGIReadHandler::handle_input() {
 	// Dans ce cas il n'y a pas de "code de sortie" au sens normal, 
 	// donc WEXITSTATUS n'a pas de sens ici.
 	if (WIFSIGNALED(status)) {
-		ErrorHandler err(*_loc, 502);
+		ErrorHandler err(*_loc, 502, "");
 		raw = err.buildResponse();
 	}
 	// WIFEXITED(status) -> Retourne vrai si le processus enfant s'est terminé normalement, 
@@ -158,7 +158,7 @@ CGIReadHandler::~CGIReadHandler() {
 	// destructeur appelé sans passer par handle_input() (ex: timeout après
 	// 30s d'inactivité dans EventLoop::checkTimeOut) -> client jamais servi
 	if (_sink && !_responded) {
-		ErrorHandler err(*_loc, 504);
+		ErrorHandler err(*_loc, 504, "");
 		_sink->onCgiDone(err.buildResponse());
 	}
 }

@@ -12,7 +12,8 @@ class ARequestHandler {
 
 		// devrait etre que dans staticHandler.hpp et errorHandler.hpp
 		void				getErrorPage();
-		void				setErrorPage(const Location& loc);
+		void				setErrorPage(const BaseBlock& b);
+		// void				setErrorPage(const Location& loc);
 		void 				handleReturn(const std::pair<int, std::string>& return_path);
 
 		void				setKeepAlive(bool ka) { _keepAlive = ka; }
