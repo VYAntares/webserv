@@ -1,0 +1,10 @@
+# Binaire compilé
+webserv
+
+# Objets de compilation
+*.o
+
+# Artefacts d'exécution (générés par les CGI/tests, pas du code source)
+www/cgi-bin/sessions/
+www/upload/*
+!www/upload/.gitkeep
