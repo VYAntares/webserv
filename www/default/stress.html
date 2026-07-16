@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — stress / disponibilité</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>Stress — « Your server must remain operational at all times »</h1>
+	<p class="desc">
+		Envoie des rafales de requêtes concurrentes (mélange statique / 404 / autoindex / CGI)
+		et vérifie que tout est répondu et que le serveur reste disponible ensuite.
+		Pour un vrai stress (connexions brutes, keep-alive, malformées), utiliser
+		<code>python3 tests/stress_test.py</code> ou <code>siege</code>.
+	</p>
+
+	<div class="card">
+		<label>Nombre de requêtes :
+			<input type="number" id="count" value="300" min="10" max="5000">
+		</label>
+		<label style="margin-left:1rem">Concurrence :
+			<input type="number" id="conc" value="30" min="1" max="200">
+		</label>
+		<label style="margin-left:1rem">
+			<input type="checkbox" id="withcgi" checked> inclure du CGI
+		</label>
+		<div style="margin-top:.8rem">
+			<button class="primary" id="go">🔥 Lancer la rafale</button>
+		</div>
+		<div style="margin-top:.8rem">
+			<progress id="bar" max="100" value="0"></progress>
+			<pre id="report">—</pre>
+		</div>
+	</div>
+
+	<script>
+	function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+	document.addEventListener("DOMContentLoaded", function () {
+		document.getElementById("go").onclick = async function () {
+			const total = Math.min(5000, parseInt(document.getElementById("count").value, 10) || 300);
+			const conc  = Math.min(200, parseInt(document.getElementById("conc").value, 10) || 30);
+			const withCgi = document.getElementById("withcgi").checked;
+			const bar = document.getElementById("bar");
+			const report = document.getElementById("report");
+			const btn = this;
+			btn.disabled = true;
+
+			const targets = [
+				{ url: "/default/index.html", expect: [200] },
+				{ url: "/files/hello.txt",    expect: [200] },
+				{ url: "/files/",             expect: [200] },
+				{ url: "/nexiste-pas",        expect: [404] },
+				{ url: "/default/assets/style.css", expect: [200] },
+			];
+			if (withCgi) targets.push({ url: "/cgi-bin/hello.py?x=1", expect: [200] });
+
+			let done = 0, ok = 0, wrong = 0, neterr = 0;
+			let latSum = 0, latMax = 0;
+			const t0 = Date.now();
+
+			async function worker() {
+				while (done < total) {
+					done++;
+					const t = pick(targets);
+					const s = Date.now();
+					try {
+						const r = await fetch(t.url, { cache: "no-store" });
+						await r.text();
+						const lat = Date.now() - s;
+						latSum += lat; if (lat > latMax) latMax = lat;
+						if (t.expect.indexOf(r.status) !== -1) ok++; else wrong++;
+					} catch (e) {
+						neterr++;
+					}
+					if (done % 10 === 0) bar.value = (done / total) * 100;
+				}
+			}
+
+			const workers = [];
+			for (let i = 0; i < conc; i++) workers.push(worker());
+			await Promise.all(workers);
+			bar.value = 100;
+
+			/* le serveur répond-il encore normalement après la rafale ? */
+			let alive = "✘";
+			try {
+				const r = await fetch("/default/index.html", { cache: "no-store" });
+				alive = (r.status === 200) ? "✔ le serveur répond toujours" : ("✘ status " + r.status);
+			} catch (e) { alive = "✘ injoignable : " + e.message; }
+
+			const secs = (Date.now() - t0) / 1000;
+			report.textContent =
+				"Requêtes        : " + total + " (concurrence " + conc + ")\n" +
+				"Réussies        : " + ok + "\n" +
+				"Mauvais code    : " + wrong + "\n" +
+				"Erreurs réseau  : " + neterr + "\n" +
+				"Durée           : " + secs.toFixed(1) + " s  (" + (total / secs).toFixed(0) + " req/s)\n" +
+				"Latence moyenne : " + (latSum / total).toFixed(1) + " ms (max " + latMax + " ms)\n" +
+				"Disponibilité   : " + alive;
+			btn.disabled = false;
+		};
+	});
+	</script>
+</main>
+</body>
+</html>

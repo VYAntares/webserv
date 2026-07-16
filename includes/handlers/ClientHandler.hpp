@@ -18,6 +18,7 @@ class ClientHandler : public IEventHandler, public IResponseSink {
 		int		handle_input();
 		int		handle_output();
 		time_t	getLastActivity()	const;
+		int		handle_timeout();
 		void	onCgiDone(const std::string& rawHttpResp);
 		void	onCgiStart(CGIReadHandler* rd);
 

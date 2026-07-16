@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — tests CGI</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>CGI — GET, POST, variables d'environnement, erreurs</h1>
+	<p class="desc">
+		Le serveur exécute les CGI selon l'extension (<code>cgi_pass .py /usr/bin/python3</code>,
+		<code>.sh /usr/bin/bash</code> en demo.conf), transmet la requête complète (query string,
+		headers en <code>HTTP_*</code>, body sur stdin jusqu'à EOF) et parse la sortie CGI
+		(<code>Status:</code>, <code>Content-Type:</code>).
+	</p>
+
+	<div id="tests"></div>
+
+	<h2>Tests manuels</h2>
+	<div class="card">
+		<p>
+			<a href="/cgi-bin/hello.py?nom=evaluateur" target="_blank">hello.py?nom=evaluateur</a> ·
+			<a href="/cgi-bin/env.py?a=1&b=2" target="_blank">env.py (dump environnement CGI)</a> ·
+			<a href="/cgi-bin/calc.sh?a=6&b=7" target="_blank">calc.sh?a=6&b=7 (CGI bash)</a>
+		</p>
+		<p class="desc">Formulaire GET → le navigateur construit la query string lui-même :</p>
+		<form action="/cgi-bin/calc.sh" method="get">
+			<input type="number" name="a" value="19"> +
+			<input type="number" name="b" value="23">
+			<button type="submit" class="primary">Calculer via CGI bash</button>
+		</form>
+	</div>
+
+	<div class="card">
+		<h3>CGI lent → timeout serveur</h3>
+		<p class="desc">
+			<code>slow.py</code> dort 35 s, plus que le timeout serveur (30 s). Exigence du sujet :
+			« A request to your server should never hang indefinitely ». Le serveur doit couper la
+			requête (~30 s) sans jamais bloquer les autres clients — ouvrir un autre onglet pendant
+			l'attente : il doit répondre instantanément.
+		</p>
+		<button id="slowbtn">Lancer le test timeout (~30 s)</button>
+		<span id="slowmsg" class="desc"></span>
+	</div>
+
+	<script>
+	/* ---------- CGI GET ---------- */
+	T.add("GET CGI avec query string (env.py?foo=bar&x=42)",
+	      "200, QUERY_STRING et REQUEST_METHOD corrects", async () => {
+		const r = await T.req("/cgi-bin/env.py?foo=bar&x=42");
+		T.assert(r.status === 200, "status " + r.status);
+		const j = JSON.parse(r.text);
+		T.assert(j.env.QUERY_STRING === "foo=bar&x=42", "QUERY_STRING=" + j.env.QUERY_STRING);
+		T.assert(j.env.REQUEST_METHOD === "GET", "REQUEST_METHOD=" + j.env.REQUEST_METHOD);
+		return "QUERY_STRING + REQUEST_METHOD ✔";
+	});
+
+	T.add("Variables CGI obligatoires présentes",
+	      "PATH_INFO, SCRIPT_NAME, SERVER_PROTOCOL, GATEWAY_INTERFACE, REMOTE_ADDR", async () => {
+		const r = await T.req("/cgi-bin/env.py");
+		const j = JSON.parse(r.text);
+		const wanted = ["PATH_INFO", "SCRIPT_NAME", "SERVER_PROTOCOL",
+		                "GATEWAY_INTERFACE", "REMOTE_ADDR", "SERVER_NAME", "CONTENT_LENGTH"];
+		const missing = wanted.filter(function (k) { return !(k in j.env); });
+		T.assert(missing.length === 0, "manquantes : " + missing.join(", "));
+		return wanted.length + " variables présentes ✔";
+	});
+
+	T.add("Headers HTTP transmis au CGI (HTTP_*)",
+	      "un header custom arrive en HTTP_X_WEBSERV_TEST", async () => {
+		const r = await T.req("/cgi-bin/env.py", { headers: { "X-Webserv-Test": "ca-marche" } });
+		const j = JSON.parse(r.text);
+		T.assert(j.env.HTTP_X_WEBSERV_TEST === "ca-marche",
+			"HTTP_X_WEBSERV_TEST=" + j.env.HTTP_X_WEBSERV_TEST);
+		return "HTTP_X_WEBSERV_TEST=ca-marche ✔";
+	});
+
+	/* ---------- CGI POST ---------- */
+	T.add("POST CGI petit body (urlencoded)",
+	      "200, champs parsés, CONTENT_LENGTH correct", async () => {
+		const body = "ville=paris&campus=42";
+		const r = await T.req("/cgi-bin/post_echo.py", {
+			method: "POST", body: body,
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		});
+		T.assert(r.status === 200, "status " + r.status);
+		const j = JSON.parse(r.text);
+		T.assert(j.body_bytes_read === body.length, "octets lus " + j.body_bytes_read);
+		T.assert(j.fields.ville === "paris", "champ ville=" + j.fields.ville);
+		T.assert(j.content_length_env === String(body.length), "CONTENT_LENGTH=" + j.content_length_env);
+		return "CONTENT_LENGTH=" + j.content_length_env + ", champs ✔";
+	});
+
+	T.add("POST CGI 1 Mo", "200, le CGI lit exactement 1 048 576 octets sur stdin", async () => {
+		const body = T.makeBody(1048576);
+		const r = await T.req("/cgi-bin/post_echo.py", { method: "POST", body: body });
+		T.assert(r.status === 200, "status " + r.status);
+		const j = JSON.parse(r.text);
+		T.assert(j.body_bytes_read === 1048576, "octets lus " + j.body_bytes_read);
+		return "1 Mo lu intégralement par le CGI ✔ (md5 " + j.body_md5.slice(0, 8) + "…)";
+	});
+
+	T.add("POST CGI 5 Mo", "200, 5 242 880 octets lus", async () => {
+		const body = T.makeBody(5 * 1048576);
+		const r = await T.req("/cgi-bin/post_echo.py", { method: "POST", body: body });
+		T.assert(r.status === 200, "status " + r.status);
+		const j = JSON.parse(r.text);
+		T.assert(j.body_bytes_read === 5 * 1048576, "octets lus " + j.body_bytes_read);
+		return "5 Mo lus par le CGI ✔";
+	});
+
+	/* ---------- CGI bash (demo.conf) ---------- */
+	T.add("CGI bash : GET calc.sh?a=6&b=7", "200, sum=13 (demo.conf)", async () => {
+		const r = await T.req("/cgi-bin/calc.sh?a=6&b=7");
+		T.assert(r.status === 200, "status " + r.status);
+		const j = JSON.parse(r.text);
+		T.assert(j.sum === 13, "sum=" + j.sum);
+		T.assert(j.language === "bash", "language=" + j.language);
+		return "6 + 7 = " + j.sum + " calculé par bash ✔";
+	});
+
+	/* ---------- gestion du Status: renvoyé par le CGI ---------- */
+	T.add("Le serveur honore 'Status:' du CGI (test_status.py)",
+	      "le script émet 'Status: 404' → réponse HTTP 404", async () => {
+		const r = await T.req("/cgi-bin/test_status.py");
+		T.assert(r.status === 404, "status " + r.status + " (attendu 404)");
+		return "Status: 404 du CGI transmis au client ✔";
+	});
+
+	/* ---------- erreurs CGI ---------- */
+	T.add("CGI qui exit(1) (crash.py)", "500 Internal Server Error", async () => {
+		const r = await T.req("/cgi-bin/crash.py");
+		T.assert(r.status === 500, "status " + r.status);
+		return "500 ✔";
+	});
+
+	T.add("CGI tué par SIGSEGV (sigsegv.py)", "502 Bad Gateway", async () => {
+		const r = await T.req("/cgi-bin/sigsegv.py");
+		T.assert(r.status === 502, "status " + r.status);
+		return "502 ✔";
+	});
+
+	document.addEventListener("DOMContentLoaded", function () {
+		T.mount("#tests");
+
+		document.getElementById("slowbtn").onclick = async function () {
+			const btn = this, msg = document.getElementById("slowmsg");
+			btn.disabled = true;
+			msg.textContent = " en attente du timeout serveur (~30 s)… le serveur reste utilisable pendant ce temps.";
+			const t0 = Date.now();
+			try {
+				const r = await T.req("/cgi-bin/slow.py");
+				const secs = ((Date.now() - t0) / 1000).toFixed(1);
+				msg.textContent = " HTTP " + r.status + " après " + secs + " s — " +
+					(r.status === 504 ? "504 ✔ le timeout CGI fonctionne"
+					                  : "le CGI a fini avant le timeout ✘");
+			} catch (e) {
+				const secs = (Date.now() - t0) / 1000;
+				if (secs >= 25) {
+					msg.textContent = " connexion coupée par le serveur après " + secs.toFixed(1) +
+						" s ✔ — pas de blocage infini (le timeout ferme le client et le CGI" +
+						" dans le même balayage, donc le 504 n'est pas délivré).";
+				} else {
+					msg.textContent = " erreur après " + secs.toFixed(1) + " s : " + e.message;
+				}
+			}
+			btn.disabled = false;
+		};
+	});
+	</script>
+</main>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — tests GET &amp; HEAD</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>GET &amp; HEAD — site statique, MIME, index, autoindex, redirections</h1>
+	<p class="desc">Cliquer « Tout lancer » : chaque ligne fait une vraie requête HTTP au serveur et vérifie le résultat.</p>
+
+	<div id="tests"></div>
+
+	<h2>Vérification visuelle</h2>
+	<div class="card">
+		<p>Image SVG servie par le serveur (MIME <code>image/svg+xml</code>) :
+			<img src="/default/assets/sample.svg" alt="logo webserv" width="60" style="vertical-align:middle">
+		</p>
+		<p>Liens à ouvrir à la main :
+			<a href="/files/" target="_blank">/files/ (autoindex)</a> ·
+			<a href="/old-page" target="_blank">/old-page (301)</a> ·
+			<a href="/private/" target="_blank">/private/ (403, demo.conf)</a> ·
+			<a href="http://localhost:8081/" target="_blank">port 8081 (autre contenu)</a>
+		</p>
+	</div>
+
+	<script>
+	/* ---------- GET basiques ---------- */
+	T.add("GET /default/index.html", "200 + text/html", async () => {
+		const r = await T.req("/default/index.html");
+		T.assert(r.status === 200, "status " + r.status);
+		const ct = r.headers.get("Content-Type") || "";
+		T.assert(ct.indexOf("text/html") === 0, "Content-Type: " + ct);
+		return "200, " + ct + ", " + T.fmtBytes(r.text.length);
+	});
+
+	T.add("GET /default/ (index par défaut)", "200, sert index.html du dossier", async () => {
+		const r = await T.req("/default/");
+		T.assert(r.status === 200, "status " + r.status);
+		T.assert(r.text.indexOf("Suite de tests webserv") !== -1, "le body ne ressemble pas à index.html");
+		return "200, index.html servi automatiquement";
+	});
+
+	T.add("GET /files/hello.txt", "200 + text/plain", async () => {
+		const r = await T.req("/files/hello.txt");
+		T.assert(r.status === 200, "status " + r.status);
+		const ct = r.headers.get("Content-Type") || "";
+		T.assert(ct.indexOf("text/plain") === 0, "Content-Type: " + ct);
+		return "200, " + ct;
+	});
+
+	/* ---------- types MIME ---------- */
+	const mimes = [
+		["/default/assets/style.css",  "text/css"],
+		["/default/assets/tests.js",   "application/javascript"],
+		["/default/assets/sample.json","application/json"],
+		["/default/assets/sample.svg", "image/svg+xml"],
+	];
+	mimes.forEach(function (m) {
+		T.add("MIME " + m[0].split("/").pop(), m[1], async () => {
+			const r = await T.req(m[0]);
+			T.assert(r.status === 200, "status " + r.status);
+			const ct = r.headers.get("Content-Type") || "";
+			T.assert(ct.indexOf(m[1]) === 0, "Content-Type: " + ct);
+			return ct;
+		});
+	});
+
+	/* ---------- autoindex ---------- */
+	T.add("GET /files/ (autoindex)", "200 + listing HTML du dossier", async () => {
+		const r = await T.req("/files/");
+		T.assert(r.status === 200, "status " + r.status);
+		T.assert(r.text.indexOf("Index of") !== -1, "pas de listing dans le body");
+		T.assert(r.text.indexOf("hello.txt") !== -1, "hello.txt absent du listing");
+		return "listing généré, hello.txt présent";
+	});
+
+	T.add("GET /files (sans slash final)", "redirection 301 vers /files/", async () => {
+		const r = await T.req("/files");
+		T.assert(r.redirected === true, "pas de redirection (status " + r.status + ")");
+		T.assert(r.url.slice(-7) === "/files/", "redirigé vers " + r.url);
+		return "301 → /files/ puis 200";
+	});
+
+	/* ---------- redirections configurées ---------- */
+	T.add("GET /old-page (return 301)", "301 + Location suivie par le navigateur", async () => {
+		const r = await T.req("/old-page");
+		T.assert(r.redirected === true, "pas de redirection (status " + r.status + ")");
+		T.assert(r.status === 200, "status final " + r.status);
+		return "redirigé vers " + new URL(r.url).pathname;
+	});
+
+	T.add("GET /redirect302 (return 302)", "302 vers /default/get.html (demo.conf)", async () => {
+		const r = await T.req("/redirect302");
+		T.assert(r.redirected === true, "pas de redirection (status " + r.status + ")");
+		T.assert(new URL(r.url).pathname === "/default/get.html", "redirigé vers " + r.url);
+		return "302 → /default/get.html";
+	});
+
+	/* ---------- HEAD ---------- */
+	T.add("HEAD /files/hello.txt", "200, aucun body", async () => {
+		const r = await T.req("/files/hello.txt", { method: "HEAD" });
+		T.assert(r.status === 200, "status " + r.status);
+		T.assert(r.text.length === 0, "body non vide (" + r.text.length + " octets)");
+		return "200, body vide ✔";
+	});
+
+	T.add("HEAD /default/index.html", "405 (location / n'autorise que GET)", async () => {
+		const r = await T.req("/default/index.html", { method: "HEAD" });
+		T.assert(r.status === 405, "status " + r.status);
+		return "405 — cohérent avec allowed_methods GET";
+	});
+
+	/* ---------- divers ---------- */
+	T.add("GET /private/secret.txt", "200 (fichier lisible, demo.conf)", async () => {
+		const r = await T.req("/private/secret.txt");
+		T.assert(r.status === 200, "status " + r.status);
+		return "200";
+	});
+
+	T.add("GET /private/ (listing interdit)", "403 (autoindex off, pas d'index — demo.conf)", async () => {
+		const r = await T.req("/private/");
+		T.assert(r.status === 403, "status " + r.status);
+		return "403 ✔";
+	});
+
+	T.add("GET /nexiste/pas.html", "404", async () => {
+		const r = await T.req("/nexiste/pas.html");
+		T.assert(r.status === 404, "status " + r.status);
+		return "404 ✔";
+	});
+
+	T.add("GET port 8081 (multi-port)", "le 2e serveur répond (demo.conf)", async () => {
+		// cross-origin : sans en-têtes CORS le navigateur cache la réponse,
+		// on vérifie donc seulement que la connexion aboutit (mode no-cors).
+		// Contenu différent à vérifier via le lien manuel ou run_all_tests.sh.
+		await fetch("http://" + location.hostname + ":8081/", { mode: "no-cors", cache: "no-store" });
+		return "le serveur du port 8081 répond ✔ (contenu : voir lien manuel ci-dessous)";
+	});
+
+	document.addEventListener("DOMContentLoaded", function () { T.mount("#tests"); });
+	</script>
+</main>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<title>Erreur serveur</title>
+	<style>
+		body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+		       background:#12131a; color:#e8e8ef; font-family:system-ui, sans-serif; }
+		.box { text-align:center; }
+		h1 { font-size:6rem; margin:0; color:#ffb86b; }
+		p  { color:#9aa0b0; }
+		a  { color:#6bb3ff; }
+		.tag { display:inline-block; margin-top:1rem; padding:.3rem .8rem; border:1px solid #2a2c3a;
+		       border-radius:99px; font-size:.8rem; color:#9aa0b0; }
+	</style>
+</head>
+<body>
+	<div class="box">
+		<h1>5xx</h1>
+		<p>Erreur côté serveur (500 / 502 / 504).</p>
+		<a href="/default/">← Retour à la suite de tests</a>
+		<div class="tag">page d'erreur personnalisée — servie via <code>error_page</code> (demo.conf)</div>
+	</div>
+</body>
+</html>

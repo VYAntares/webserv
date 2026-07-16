@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — bonus : cookies, sessions, multi-CGI</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>Bonus — cookies &amp; sessions, plusieurs types de CGI</h1>
+	<p class="desc">
+		Sessions gérées côté serveur par <code>session.py</code> : l'état est stocké dans
+		<code>www/cgi-bin/sessions/&lt;sid&gt;.json</code>, le client est identifié par un cookie
+		<code>sid</code> transmis au CGI via <code>HTTP_COOKIE</code>.
+		Validation en ligne de commande : <code>bash tests/bonus_cookies_sessions.sh</code> et
+		<code>bash tests/bonus_multi_cgi.sh</code>.
+	</p>
+
+	<h2>Démo interactive : session</h2>
+	<div class="card">
+		<p>Cookie actuel du navigateur : <code id="curcookie">(aucun)</code></p>
+		<button class="primary" id="visit">Visiter (action=visit)</button>
+		<button id="setname">Enregistrer mon nom</button>
+		<input type="text" id="name" value="marvin" style="width:9rem">
+		<button id="getsess">Lire la session</button>
+		<button id="logout">Se déconnecter (logout)</button>
+		<pre id="sessout">—</pre>
+	</div>
+
+	<h2>Tests automatiques</h2>
+	<div id="tests"></div>
+
+	<div class="note">
+		<strong>Note technique :</strong> si le test « Set-Cookie relayé » est en WARN, c'est que
+		<code>CGIReadHandler::parseCgi()</code> ne recopie que <code>Status:</code> et
+		<code>Content-Type:</code> dans la réponse : le <code>Set-Cookie:</code> émis par le CGI
+		est perdu. La démo ci-dessus contourne en posant le cookie via JavaScript, mais pour un
+		flux cookie 100 % standard il faudra relayer les autres headers CGI.
+	</div>
+
+	<script>
+	/* ---------- helpers cookie ---------- */
+	function getCookie(name) {
+		const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+		return m ? m[1] : "";
+	}
+	function ensureSid() {
+		/* fallback si le Set-Cookie du CGI n'est pas relayé par le serveur */
+		if (!getCookie("sid")) {
+			let sid = "";
+			const hex = "0123456789abcdef";
+			for (let i = 0; i < 32; i++) sid += hex[Math.floor(Math.random() * 16)];
+			document.cookie = "sid=" + sid + "; path=/";
+		}
+		return getCookie("sid");
+	}
+	function showCookie() {
+		document.getElementById("curcookie").textContent = document.cookie || "(aucun)";
+	}
+	async function sessionCall(params) {
+		const r = await T.req("/cgi-bin/session.py?" + params);
+		showCookie();
+		return JSON.parse(r.text);
+	}
+
+	/* ---------- démo interactive ---------- */
+	document.addEventListener("DOMContentLoaded", function () {
+		showCookie();
+		const out = document.getElementById("sessout");
+		function show(j) { out.textContent = JSON.stringify(j, null, 2); }
+
+		document.getElementById("visit").onclick = async function () {
+			ensureSid(); show(await sessionCall("action=visit"));
+		};
+		document.getElementById("setname").onclick = async function () {
+			ensureSid();
+			const n = encodeURIComponent(document.getElementById("name").value);
+			show(await sessionCall("action=set&key=nom&value=" + n));
+		};
+		document.getElementById("getsess").onclick = async function () {
+			ensureSid(); show(await sessionCall("action=get"));
+		};
+		document.getElementById("logout").onclick = async function () {
+			const j = await sessionCall("action=logout");
+			document.cookie = "sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+			showCookie(); show(j);
+		};
+	});
+
+	/* ---------- tests automatiques ---------- */
+	T.add("Le CGI reçoit les cookies (HTTP_COOKIE)",
+	      "cookie posé par le client visible côté CGI", async () => {
+		document.cookie = "gouter=chocolatine; path=/";
+		const r = await T.req("/cgi-bin/cookies.py");
+		const j = JSON.parse(r.text);
+		T.assert(j.cookies_received.gouter === "chocolatine",
+			"reçu : " + JSON.stringify(j.cookies_received));
+		document.cookie = "gouter=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+		return "HTTP_COOKIE transmis au CGI ✔";
+	});
+
+	T.add("Session : le compteur de visites persiste côté serveur",
+	      "3 appels avec le même sid → visits augmente de 3", async () => {
+		const sid = ensureSid();
+		const a = await sessionCall("action=visit");
+		const b = await sessionCall("action=visit");
+		const c = await sessionCall("action=visit");
+		T.assert(c.sid === sid, "sid différent : " + c.sid);
+		T.assert(b.session.visits === a.session.visits + 1 &&
+		         c.session.visits === a.session.visits + 2,
+			"visites : " + a.session.visits + ", " + b.session.visits + ", " + c.session.visits);
+		return "visits " + a.session.visits + " → " + c.session.visits + " (état stocké côté serveur) ✔";
+	});
+
+	T.add("Session : stockage et relecture d'une donnée",
+	      "action=set puis action=get → la valeur persiste", async () => {
+		ensureSid();
+		await sessionCall("action=set&key=couleur&value=bleu");
+		const j = await sessionCall("action=get");
+		T.assert(j.session.couleur === "bleu", "couleur=" + j.session.couleur);
+		return "couleur=bleu relue depuis la session serveur ✔";
+	});
+
+	T.add("Session : logout détruit la session serveur",
+	      "après logout, nouvelle session vierge (visits repart à 1)", async () => {
+		const sid = ensureSid();
+		await sessionCall("action=visit");
+		await sessionCall("action=logout");
+		const j = await sessionCall("action=visit");
+		T.assert(j.session.visits === 1, "visits=" + j.session.visits + " (attendu 1)");
+		return "session détruite puis recréée à zéro ✔ (même sid " + sid.slice(0, 8) + "…)";
+	});
+
+	T.add("Deux clients = deux sessions isolées",
+	      "un autre sid ne voit pas les données du premier", async () => {
+		ensureSid();
+		await sessionCall("action=set&key=secret&value=42");
+		const old = getCookie("sid");
+		document.cookie = "sid=" + "f".repeat(32) + "; path=/";
+		const j = await sessionCall("action=get");
+		document.cookie = "sid=" + old + "; path=/";
+		T.assert(j.session.secret === undefined, "fuite : secret=" + j.session.secret);
+		return "isolation des sessions ✔";
+	});
+
+	T.add("Set-Cookie du CGI relayé au navigateur",
+	      "cookies.py émet Set-Cookie → le cookie doit apparaître", async () => {
+		document.cookie = "relay=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+		await T.req("/cgi-bin/cookies.py?set=relay:ok");
+		T.assert(getCookie("relay") === "ok",
+			"Set-Cookie émis par le CGI mais absent du navigateur (voir note sous la table)");
+		document.cookie = "relay=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+		return "Set-Cookie relayé de bout en bout ✔";
+	}, { warnOnly: true });
+
+	/* ---------- multi-CGI ---------- */
+	T.add("Bonus multi-CGI : Python (.py)", "hello.py répond 200", async () => {
+		const r = await T.req("/cgi-bin/hello.py?bonus=1");
+		T.assert(r.status === 200, "status " + r.status);
+		T.assert(r.text.indexOf("Hello from CGI") !== -1, "sortie inattendue");
+		return "CGI Python ✔";
+	});
+
+	T.add("Bonus multi-CGI : Bash (.sh)", "calc.sh répond 200 avec sum (demo.conf)", async () => {
+		const r = await T.req("/cgi-bin/calc.sh?a=20&b=22");
+		T.assert(r.status === 200, "status " + r.status);
+		const j = JSON.parse(r.text);
+		T.assert(j.sum === 42, "sum=" + j.sum);
+		return "CGI Bash ✔ (sum=42)";
+	});
+
+	document.addEventListener("DOMContentLoaded", function () { T.mount("#tests"); });
+	</script>
+</main>
+</body>
+</html>

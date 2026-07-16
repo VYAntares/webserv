@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — tests DELETE</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>DELETE — suppression de fichiers</h1>
+	<p class="desc">
+		Le gestionnaire ci-dessous liste le contenu de <code>/upload/</code> (en parsant l'autoindex
+		renvoyé par le serveur) et permet de supprimer chaque fichier : le serveur doit répondre
+		<code>204 No Content</code>, puis le fichier doit disparaître du listing.
+	</p>
+
+	<h2>Gestionnaire du dossier /upload/</h2>
+	<div class="card">
+		<button class="primary" id="refresh">↻ Rafraîchir la liste</button>
+		<span id="dirmsg" class="desc"></span>
+		<table class="tests" id="filetable">
+			<thead><tr><th>Fichier</th><th>Action</th><th>Résultat</th></tr></thead>
+			<tbody></tbody>
+		</table>
+	</div>
+
+	<h2>Tests automatiques</h2>
+	<div id="tests"></div>
+
+	<script>
+	/* ---------- gestionnaire manuel ---------- */
+	async function refreshList() {
+		const msg = document.getElementById("dirmsg");
+		const tbody = document.querySelector("#filetable tbody");
+		tbody.innerHTML = "";
+		const r = await T.req("/upload/");
+		if (r.status !== 200) { msg.textContent = " autoindex indisponible (HTTP " + r.status + ")"; return; }
+		const doc = new DOMParser().parseFromString(r.text, "text/html");
+		const links = doc.querySelectorAll("a.file");
+		msg.textContent = " " + links.length + " fichier(s)";
+		links.forEach(function (a) {
+			const name = a.getAttribute("href");
+			const tr = document.createElement("tr");
+			const tdName = document.createElement("td");
+			tdName.className = "name";
+			const link = document.createElement("a");
+			link.href = "/upload/" + name;
+			link.target = "_blank";
+			link.textContent = name;
+			tdName.appendChild(link);
+			const tdBtn = document.createElement("td");
+			const btn = document.createElement("button");
+			btn.textContent = "🗑 DELETE";
+			const tdRes = document.createElement("td");
+			tdRes.className = "detail";
+			btn.onclick = async function () {
+				const d = await T.req("/upload/" + encodeURIComponent(name), { method: "DELETE" });
+				tdRes.textContent = "HTTP " + d.status + (d.status === 204 ? " ✔" : " ✘");
+				if (d.status === 204) setTimeout(refreshList, 400);
+			};
+			tdBtn.appendChild(btn);
+			tr.appendChild(tdName); tr.appendChild(tdBtn); tr.appendChild(tdRes);
+			tbody.appendChild(tr);
+		});
+	}
+
+	/* ---------- tests automatiques ---------- */
+	T.add("Cycle complet : POST → GET → DELETE → GET",
+	      "201 → 200 → 204 → 404", async () => {
+		const name = "delete_me.txt";
+		const p = await T.req("/upload/" + name, { method: "POST", body: "a supprimer" });
+		T.assert(p.status === 200 || p.status === 201, "POST status " + p.status);
+		const g1 = await T.req("/upload/" + name);
+		T.assert(g1.status === 200, "GET status " + g1.status);
+		const d = await T.req("/upload/" + name, { method: "DELETE" });
+		T.assert(d.status === 204, "DELETE status " + d.status);
+		const g2 = await T.req("/upload/" + name);
+		T.assert(g2.status === 404, "GET après DELETE : " + g2.status + " (attendu 404)");
+		return "cycle complet OK (201 → 200 → 204 → 404)";
+	});
+
+	T.add("DELETE d'un fichier inexistant", "404", async () => {
+		const r = await T.req("/upload/fichier_qui_nexiste_pas.txt", { method: "DELETE" });
+		T.assert(r.status === 404, "status " + r.status);
+		return "404 ✔";
+	});
+
+	T.add("DELETE sur une route qui ne l'autorise pas", "405 (location / : GET uniquement)", async () => {
+		const r = await T.req("/default/index.html", { method: "DELETE" });
+		T.assert(r.status === 405, "status " + r.status);
+		return "405 ✔ — index.html toujours en vie";
+	});
+
+	T.add("Le fichier supprimé disparaît de l'autoindex",
+	      "listing sans le fichier après DELETE", async () => {
+		const name = "ghost.txt";
+		await T.req("/upload/" + name, { method: "POST", body: "bouh" });
+		let r = await T.req("/upload/");
+		T.assert(r.text.indexOf(name) !== -1, "fichier absent du listing après POST");
+		await T.req("/upload/" + name, { method: "DELETE" });
+		r = await T.req("/upload/");
+		T.assert(r.text.indexOf(name) === -1, "fichier encore listé après DELETE");
+		return "listing cohérent avant/après ✔";
+	});
+
+	document.addEventListener("DOMContentLoaded", function () {
+		T.mount("#tests");
+		document.getElementById("refresh").onclick = refreshList;
+		refreshList();
+	});
+	</script>
+</main>
+</body>
+</html>

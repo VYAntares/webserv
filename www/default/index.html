@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — suite de tests</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>Suite de tests webserv</h1>
+	<p class="desc">
+		Pages de démonstration prouvant que le serveur couvre toutes les exigences du sujet.
+		Lancer le serveur avec <code>./webserv conf/demo.conf</code> puis ouvrir
+		<code>http://localhost:8080/default/</code>.
+	</p>
+
+	<div class="note info">
+		<strong>conf/demo.conf</strong> est un sur-ensemble de <code>default.conf</code> :
+		mêmes routes, plus <code>/tiny</code> (test 413), <code>/private</code> (test 403),
+		<code>/redirect302</code>, le CGI shell (<code>.sh</code>), les pages d'erreur
+		personnalisées et un second serveur sur le port <a href="http://localhost:8081/">8081</a>.
+		Avec <code>default.conf</code>, ces tests-là échoueront, le reste fonctionne.
+	</div>
+
+	<h2>Pages de test</h2>
+	<div class="grid2">
+		<div class="card">
+			<h3><a href="/default/get.html">GET &amp; HEAD</a></h3>
+			<p class="desc">Site statique, types MIME, index, autoindex, redirections 301/302, HEAD.</p>
+		</div>
+		<div class="card">
+			<h3><a href="/default/post.html">POST</a></h3>
+			<p class="desc">Bodies bruts de 1 Ko à 12 Mo, formulaires urlencoded, limite <code>client_max_body_size</code> (413).</p>
+		</div>
+		<div class="card">
+			<h3><a href="/default/upload.html">Upload (multipart)</a></h3>
+			<p class="desc">Upload de fichiers depuis le navigateur : vos fichiers + fichiers générés de 1 Ko à 12 Mo, multi-fichiers.</p>
+		</div>
+		<div class="card">
+			<h3><a href="/default/delete.html">DELETE</a></h3>
+			<p class="desc">Lister le dossier d'upload et supprimer les fichiers un par un (204), cycle create→delete→404.</p>
+		</div>
+		<div class="card">
+			<h3><a href="/default/cgi.html">CGI</a></h3>
+			<p class="desc">CGI GET (query string), CGI POST (petits et gros bodies), variables d'environnement, erreurs CGI (500/502/504).</p>
+		</div>
+		<div class="card">
+			<h3><a href="/default/errors.html">Codes d'erreur</a></h3>
+			<p class="desc">403, 404, 405, 413, 431, 501 + pages d'erreur par défaut et personnalisées.</p>
+		</div>
+		<div class="card">
+			<h3><a href="/default/stress.html">Stress / disponibilité</a></h3>
+			<p class="desc">Rafales de requêtes concurrentes depuis le navigateur, le serveur doit rester disponible.</p>
+		</div>
+		<div class="card">
+			<h3><a href="/default/bonus.html">Bonus</a></h3>
+			<p class="desc">Cookies &amp; sessions (CGI + fichier de session côté serveur), plusieurs types de CGI (Python + Bash).</p>
+		</div>
+	</div>
+
+	<h2>Correspondance avec le sujet</h2>
+	<ul class="checklist">
+		<li>Fichier de configuration en argument (<code>conf/demo.conf</code>) ou chemin par défaut</li>
+		<li>Serveur non-bloquant, un seul <code>epoll()</code> pour toutes les I/O — voir <a href="/default/stress.html">stress</a></li>
+		<li>Compatible navigateur : ces pages en sont la preuve</li>
+		<li>Codes de statut HTTP exacts — voir <a href="/default/errors.html">erreurs</a></li>
+		<li>Pages d'erreur par défaut + personnalisées (<code>error_page</code>)</li>
+		<li>Site entièrement statique servi (cette suite)</li>
+		<li>Upload de fichiers par les clients — voir <a href="/default/upload.html">upload</a></li>
+		<li>Méthodes GET, POST, DELETE (+ HEAD)</li>
+		<li>Écoute sur plusieurs ports, contenus différents — <a href="http://localhost:8081/">port 8081</a></li>
+		<li>Routes configurables : méthodes, redirection, root, autoindex, index, upload_store, CGI par extension</li>
+		<li>Limite de taille de body par route (<code>client_max_body_size</code>)</li>
+		<li>Requêtes chunked dé-chunkées pour le CGI — voir <code>tests/run_all_tests.sh</code> (impossible depuis un navigateur)</li>
+		<li>Bonus : cookies &amp; sessions, plusieurs CGI — <a href="/default/bonus.html">bonus</a> + <code>tests/bonus_*.sh</code></li>
+	</ul>
+
+	<h2>Scripts de test en ligne de commande</h2>
+	<pre>bash tests/run_all_tests.sh            # suite complète partie obligatoire (curl)
+bash tests/bonus_cookies_sessions.sh   # bonus : cookies + sessions
+bash tests/bonus_multi_cgi.sh          # bonus : plusieurs types de CGI
+python3 tests/stress_test.py           # stress : 500 requêtes concurrentes</pre>
+</main>
+</body>
+</html>

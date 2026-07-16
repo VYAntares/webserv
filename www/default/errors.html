@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — tests codes d'erreur</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>Codes d'erreur — « Your HTTP response status codes must be accurate »</h1>
+	<p class="desc">
+		Chaque test provoque volontairement une erreur et vérifie le code exact de la réponse.
+		Les erreurs 400 (requête malformée) et la robustesse bas niveau sont couvertes par
+		<code>tests/run_all_tests.sh</code> (impossibles à générer depuis un navigateur).
+	</p>
+
+	<div id="tests"></div>
+
+	<h2>Pages d'erreur</h2>
+	<div class="card">
+		<p class="desc">
+			À vérifier visuellement : <a href="/nexiste-pas" target="_blank">/nexiste-pas</a> doit
+			afficher la page 404 <strong>personnalisée</strong> (demo.conf, via <code>error_page</code>) ;
+			avec default.conf c'est la page par défaut générée par le serveur.
+			<a href="/cgi-bin/crash.py" target="_blank">/cgi-bin/crash.py</a> → page 50x personnalisée.
+		</p>
+	</div>
+
+	<script>
+	T.add("404 — ressource inexistante", "GET /nexiste-pas → 404", async () => {
+		const r = await T.req("/nexiste-pas");
+		T.assert(r.status === 404, "status " + r.status);
+		return "404 ✔" + (r.text.indexOf("personnalisée") !== -1 ? " (page custom servie)" : "");
+	});
+
+	T.add("403 — listing interdit", "GET /private/ → 403 (demo.conf)", async () => {
+		const r = await T.req("/private/");
+		T.assert(r.status === 403, "status " + r.status);
+		return "403 ✔";
+	});
+
+	T.add("405 — méthode non autorisée sur la route", "POST /default/index.html → 405", async () => {
+		const r = await T.req("/default/index.html", { method: "POST", body: "x" });
+		T.assert(r.status === 405, "status " + r.status);
+		return "405 ✔";
+	});
+
+	T.add("405 — DELETE sur route GET-only", "DELETE /default/get.html → 405", async () => {
+		const r = await T.req("/default/get.html", { method: "DELETE" });
+		T.assert(r.status === 405, "status " + r.status);
+		return "405 ✔";
+	});
+
+	T.add("501 — méthode inconnue du serveur", "PATCH / → 501 Not Implemented", async () => {
+		const r = await T.req("/default/index.html", { method: "PATCH", body: "x" });
+		T.assert(r.status === 501, "status " + r.status);
+		return "501 ✔";
+	});
+
+	T.add("413 — body trop gros pour la route", "POST 200 o sur /tiny (max 100) → 413", async () => {
+		const r = await T.req("/tiny/limit.txt", { method: "POST", body: T.makeBody(200) });
+		T.assert(r.status === 413, "status " + r.status);
+		return "413 ✔";
+	});
+
+	T.add("413 — body trop gros pour le serveur", "POST 12 Mo (max 10m) → 413", async () => {
+		const r = await T.req("/upload/toobig.bin", { method: "POST", body: T.makeBody(12 * 1048576) });
+		T.assert(r.status === 413, "status " + r.status);
+		return "413 ✔";
+	});
+
+	T.add("431 — headers trop volumineux", "header de 40 Ko (> 32 Ko max) → 431", async () => {
+		const r = await T.req("/default/index.html", {
+			headers: { "X-Big": "A".repeat(40 * 1024) },
+		});
+		T.assert(r.status === 431, "status " + r.status);
+		return "431 ✔";
+	}, { warnOnly: true });
+
+	T.add("Erreur CGI : exit ≠ 0", "GET /cgi-bin/crash.py → 500", async () => {
+		const r = await T.req("/cgi-bin/crash.py");
+		T.assert(r.status === 500, "status " + r.status);
+		return "500 ✔";
+	});
+
+	T.add("Erreur CGI : tué par signal", "GET /cgi-bin/sigsegv.py → 502", async () => {
+		const r = await T.req("/cgi-bin/sigsegv.py");
+		T.assert(r.status === 502, "status " + r.status);
+		return "502 ✔";
+	});
+
+	T.add("Redirection : code exact 301", "/old-page → suivi par le navigateur", async () => {
+		const r = await T.req("/old-page");
+		T.assert(r.redirected === true, "pas de redirection, status " + r.status);
+		return "301 suivie ✔ (code brut vérifiable : curl -i localhost:8080/old-page)";
+	});
+
+	document.addEventListener("DOMContentLoaded", function () { T.mount("#tests"); });
+	</script>
+</main>
+</body>
+</html>

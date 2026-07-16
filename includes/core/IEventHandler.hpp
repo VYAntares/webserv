@@ -53,7 +53,8 @@ class IEventHandler {
 		virtual int		handle_input()		{ return 0; }
 		virtual int		handle_output()		{ return 0; }
 		virtual int		handle_close()		{ return 0; }
+		virtual int		handle_timeout()	{ return 0; }
 		virtual time_t	getLastActivity()	const { return 0; }
-		virtual			~IEventHandler() {}
+		virtual			~IEventHandler()	{}
 };
 

@@ -1,0 +1,111 @@
+/* Suite de tests webserv — style partagé */
+:root {
+	--bg: #0f1117;
+	--panel: #161a23;
+	--panel2: #1c2130;
+	--border: #2a3042;
+	--text: #e6e9f2;
+	--muted: #98a0b8;
+	--accent: #6bb3ff;
+	--pass: #37d67a;
+	--fail: #ff6b6b;
+	--warn: #ffb86b;
+	--mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+	line-height: 1.55;
+}
+main { max-width: 1000px; margin: 0 auto; padding: 1.5rem 1.2rem 4rem; }
+
+/* --- nav --- */
+nav {
+	position: sticky; top: 0; z-index: 10;
+	background: rgba(15,17,23,.92); backdrop-filter: blur(6px);
+	border-bottom: 1px solid var(--border);
+	display: flex; flex-wrap: wrap; gap: .2rem;
+	padding: .5rem 1rem; align-items: center;
+}
+nav .brand { font-weight: 700; color: var(--accent); margin-right: .8rem; text-decoration: none; }
+nav a { color: var(--muted); text-decoration: none; padding: .3rem .6rem; border-radius: 6px; font-size: .9rem; }
+nav a:hover { color: var(--text); background: var(--panel2); }
+nav a.current { color: var(--text); background: var(--panel2); }
+
+h1 { font-size: 1.5rem; margin: 1.2rem 0 .3rem; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .6rem; color: var(--accent); }
+p.desc { color: var(--muted); margin-top: 0; }
+code, pre { font-family: var(--mono); font-size: .85em; }
+code { background: var(--panel2); padding: .1rem .35rem; border-radius: 4px; }
+pre {
+	background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+	padding: .8rem 1rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+}
+a { color: var(--accent); }
+
+/* --- cards / panels --- */
+.card {
+	background: var(--panel); border: 1px solid var(--border);
+	border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0;
+}
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* --- boutons --- */
+button, .btn {
+	background: var(--panel2); color: var(--text);
+	border: 1px solid var(--border); border-radius: 8px;
+	padding: .45rem .9rem; font-size: .9rem; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: #1d4ed8; border-color: #1d4ed8; }
+button.primary:hover { background: #2563eb; }
+button:disabled { opacity: .5; cursor: wait; }
+
+input[type="text"], input[type="number"], textarea, select {
+	background: var(--panel2); color: var(--text);
+	border: 1px solid var(--border); border-radius: 8px;
+	padding: .45rem .7rem; font-size: .9rem; font-family: inherit;
+}
+textarea { width: 100%; font-family: var(--mono); }
+
+/* --- table de tests --- */
+table.tests { width: 100%; border-collapse: collapse; margin: .8rem 0; }
+table.tests th, table.tests td {
+	text-align: left; padding: .5rem .6rem;
+	border-bottom: 1px solid var(--border); vertical-align: top;
+}
+table.tests th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+table.tests td.name { font-family: var(--mono); font-size: .82rem; }
+table.tests td.detail { color: var(--muted); font-size: .82rem; font-family: var(--mono); max-width: 26rem; word-break: break-word; }
+
+.badge {
+	display: inline-block; min-width: 4.2rem; text-align: center;
+	padding: .15rem .5rem; border-radius: 99px;
+	font-size: .75rem; font-weight: 700; letter-spacing: .04em;
+}
+.badge.idle { background: var(--panel2); color: var(--muted); }
+.badge.run  { background: #313a55; color: var(--accent); }
+.badge.pass { background: rgba(55,214,122,.15); color: var(--pass); }
+.badge.fail { background: rgba(255,107,107,.15); color: var(--fail); }
+.badge.warn { background: rgba(255,184,107,.15); color: var(--warn); }
+
+.summary { font-size: .95rem; margin: .6rem 0; }
+.summary .pass { color: var(--pass); font-weight: 700; }
+.summary .fail { color: var(--fail); font-weight: 700; }
+
+.note {
+	border-left: 3px solid var(--warn); background: rgba(255,184,107,.07);
+	padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: 1rem 0;
+	color: var(--muted); font-size: .9rem;
+}
+.note.info { border-color: var(--accent); background: rgba(107,179,255,.07); }
+
+ul.checklist { list-style: none; padding: 0; }
+ul.checklist li { padding: .25rem 0; }
+ul.checklist li::before { content: "✔ "; color: var(--pass); }
+
+progress { width: 100%; height: 10px; accent-color: var(--accent); }

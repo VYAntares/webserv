@@ -2,6 +2,7 @@
 #include "../../includes/handlers/CGIReadHandler.hpp"
 #include "../../includes/core/EventLoop.hpp"
 #include "../../includes/http/Router.hpp"
+#include "../../includes/http/ErrorHandler.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -184,6 +185,25 @@ void ClientHandler::_reset() {
 	_response.clear();
 	_sent = 0;
 	_parser.reset();
+}
+
+
+
+
+// Dernière chance de répondre avant que checkTimeOut() ne nous détruise.
+// On ne fait AUCUN send() ici : on prépare juste la réponse et on redemande
+// à epoll de nous notifier en écriture, comme le fait déjà onCgiDone().
+// Grace a keepAlive = false, le client se detruira apres avoir envoyer error 504.
+int	ClientHandler::handle_timeout() {
+	if (!_cgiRead)
+		return 0;		// pas de CGI en cours, rien a faire, comportement inchangé
+
+	ErrorHandler err(_server, 504, "");
+	_response = err.buildResponse();
+	_sent = 0;
+	_keepAlive = false;
+	EventLoop::instance()->modify_handler(this, WRITE_EVENT);
+	return 1;
 }
 
 

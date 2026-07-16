@@ -232,6 +232,10 @@ void EventLoop::checkTimeOut() {
 	for (size_t i = 0; i < timedOut.size(); i++) {
 		std::cout << "[timeout] fd=" << timedOut[i]->getFd() << " closed after "
 		          << CLIENT_TIMEOUT << "s of inactivity\n";
+		// avant de supprimer le client, il faut verifier si il nya pas un cgi en cours (erreur 504)
+		if (timedOut[i]->handle_timeout())
+			continue;
+		// ensuite on peut le supprimer.
 		remove_handler(timedOut[i]);
 		delete timedOut[i];
 	}

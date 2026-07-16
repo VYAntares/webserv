@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv — tests upload (multipart)</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
+	<script src="/default/assets/tests.js"></script>
+</head>
+<body>
+<main>
+	<h1>Upload — multipart/form-data</h1>
+	<p class="desc">
+		Exigence du sujet : « Clients must be able to upload files ». Les fichiers sont envoyés en
+		<code>multipart/form-data</code> vers <code>/upload</code> et stockés dans
+		<code>upload_store</code> (./www/upload). Gestion ensuite sur la page
+		<a href="/default/delete.html">DELETE</a>.
+	</p>
+
+	<h2>Upload manuel (formulaire navigateur, sans JavaScript)</h2>
+	<div class="card">
+		<form action="/upload" method="post" enctype="multipart/form-data">
+			<input type="file" name="file">
+			<button type="submit" class="primary">Uploader</button>
+		</form>
+		<p class="desc">Le serveur répond avec la liste des fichiers écrits (201 si nouveau).</p>
+	</div>
+
+	<h2>Upload manuel multi-fichiers</h2>
+	<div class="card">
+		<form action="/upload" method="post" enctype="multipart/form-data">
+			<input type="file" name="files" multiple>
+			<button type="submit" class="primary">Uploader plusieurs fichiers</button>
+		</form>
+		<p class="desc">Plusieurs parts dans la même requête multipart.</p>
+	</div>
+
+	<h2>Upload avec barre de progression</h2>
+	<div class="card">
+		<input type="file" id="pickfile">
+		<button class="primary" id="sendpick">Envoyer</button>
+		<div style="margin-top:.6rem">
+			<progress id="pbar" max="100" value="0"></progress>
+			<span id="pmsg" class="desc"></span>
+		</div>
+	</div>
+
+	<h2>Tests automatiques — fichiers générés de tailles croissantes</h2>
+	<p class="desc">
+		Chaque test génère un fichier en mémoire, l'envoie en multipart, vérifie le code (201/200),
+		relit le fichier pour comparer la taille, puis le supprime (DELETE 204).
+	</p>
+	<div id="tests"></div>
+
+	<script>
+	function multipartTest(size, label) {
+		const name = "mp_" + label.replace(/[ ,]/g, "").toLowerCase() + ".bin";
+		T.add("Upload multipart " + label + " (" + name + ")",
+		      "201/200, taille exacte à la relecture, DELETE 204", async () => {
+			const content = T.makeBody(size);
+			const fd = new FormData();
+			fd.append("file", new File([content], name, { type: "application/octet-stream" }));
+
+			const p = await T.req("/upload", { method: "POST", body: fd });
+			T.assert(p.status === 200 || p.status === 201, "POST status " + p.status);
+
+			const g = await T.req("/upload/" + name);
+			T.assert(g.status === 200, "GET status " + g.status);
+			T.assert(g.text.length === size, "taille relue " + g.text.length + " ≠ " + size);
+			T.assert(g.text === content, "contenu altéré");
+
+			const d = await T.req("/upload/" + name, { method: "DELETE" });
+			T.assert(d.status === 204, "DELETE status " + d.status);
+			return "upload " + p.status + " (" + T.fmtBytes(size) + "), relecture OK, DELETE 204";
+		});
+	}
+
+	multipartTest(1024,          "1 Ko");
+	multipartTest(512 * 1024,    "512 Ko");
+	multipartTest(1 * 1048576,   "1 Mo");
+	multipartTest(4 * 1048576,   "4 Mo");
+	multipartTest(8 * 1048576,   "8 Mo");
+
+	T.add("Upload multipart 3 fichiers en une requête",
+	      "201/200, les 3 fichiers existent, puis DELETE", async () => {
+		const fd = new FormData();
+		const names = ["multi_a.txt", "multi_b.txt", "multi_c.txt"];
+		names.forEach(function (n, i) {
+			fd.append("file" + i, new File([T.makeBody(2048 * (i + 1))], n));
+		});
+		const p = await T.req("/upload", { method: "POST", body: fd });
+		T.assert(p.status === 200 || p.status === 201, "POST status " + p.status);
+		for (let i = 0; i < names.length; i++) {
+			const g = await T.req("/upload/" + names[i]);
+			T.assert(g.status === 200, names[i] + " introuvable (" + g.status + ")");
+			T.assert(g.text.length === 2048 * (i + 1), names[i] + " taille " + g.text.length);
+			await T.req("/upload/" + names[i], { method: "DELETE" });
+		}
+		return "3 fichiers écrits, vérifiés, supprimés";
+	});
+
+	T.add("Upload multipart 12 Mo", "413 (dépasse client_max_body_size 10m)", async () => {
+		const fd = new FormData();
+		fd.append("file", new File([T.makeBody(12 * 1048576)], "mp_toobig.bin"));
+		const r = await T.req("/upload", { method: "POST", body: fd });
+		T.assert(r.status === 413, "status " + r.status);
+		return "413 ✔";
+	});
+
+	T.add("POST vers une route sans POST (/default/index.html)", "405 Method Not Allowed", async () => {
+		const fd = new FormData();
+		fd.append("file", new File(["x"], "nope.txt"));
+		const r = await T.req("/default/index.html", { method: "POST", body: fd });
+		T.assert(r.status === 405, "status " + r.status);
+		return "405 ✔";
+	});
+
+	document.addEventListener("DOMContentLoaded", function () { T.mount("#tests"); });
+
+	/* ---------- upload avec progression (XMLHttpRequest) ---------- */
+	document.addEventListener("DOMContentLoaded", function () {
+		document.getElementById("sendpick").onclick = function () {
+			const f = document.getElementById("pickfile").files[0];
+			const bar = document.getElementById("pbar");
+			const msg = document.getElementById("pmsg");
+			if (!f) { msg.textContent = " choisir un fichier d'abord"; return; }
+			const fd = new FormData();
+			fd.append("file", f);
+			const xhr = new XMLHttpRequest();
+			xhr.open("POST", "/upload");
+			xhr.upload.onprogress = function (e) {
+				if (e.lengthComputable) bar.value = (e.loaded / e.total) * 100;
+			};
+			xhr.onload = function () {
+				bar.value = 100;
+				msg.textContent = " HTTP " + xhr.status + " — " + f.name +
+					" (" + T.fmtBytes(f.size) + ") envoyé";
+			};
+			xhr.onerror = function () { msg.textContent = " erreur réseau"; };
+			xhr.send(fd);
+		};
+	});
+	</script>
+</main>
+</body>
+</html>
