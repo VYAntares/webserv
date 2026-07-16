@@ -7,8 +7,6 @@ MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req,
     _ncode = 200;
     std::string body;
 
-    setErrorPage(loc);
-
     std::map<std::string, UploadedFile>::const_iterator i;
     for (i = _req->mp.uploadedFiles.begin(); i != _req->mp.uploadedFiles.end(); i++) {
         // ne garder que le nom de fichier : un filename client contenant
@@ -37,6 +35,9 @@ MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req,
     }
     if (!body.empty())
         setBody(body);
+
+    setErrorPage(loc);
+    getCookie(req);
 }
 
 

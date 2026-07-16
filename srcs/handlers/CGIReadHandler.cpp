@@ -40,6 +40,7 @@ std::string CGIReadHandler::parseCgi() {
 	int			code = 200;
 	std::string	type;
 	std::string	body;
+	std::string	cookie;
 
 	size_t sep = _out.find("\r\n\r\n");
 	size_t s = 4;
@@ -66,6 +67,12 @@ std::string CGIReadHandler::parseCgi() {
 					v++;
 				type = line.substr(v);
 			}
+			else if (line.compare(0, 11, "Set-Cookie:") == 0) {
+				size_t v = 11;
+				while (v < line.size() && line[v] == ' ')
+					v++;
+				cookie = line.substr(v);
+			}
 		}
 	}
 	if (code <= 0)
@@ -74,6 +81,8 @@ std::string CGIReadHandler::parseCgi() {
 	StaticHandler st(*_loc, code, body);
 	if (!type.empty())
 		st.setType(type);
+	if(!cookie.empty())
+		st.setCookie(cookie);
 	
 	return st.buildResponse();	
 }

@@ -51,7 +51,14 @@ void	ARequestHandler::getErrorPage() {
 	file.close();
 }
 
-
+void ARequestHandler::getCookie(const HttpRequest& r) {
+	std::map<std::string, std::string>::const_iterator it;
+	for (it = r.headers.begin(); it != r.headers.end(); ++it) {
+		if (it->first == "Set-Cookie") {
+			_cookie = it->second;
+		}
+	}
+}
 
 std::string ARequestHandler::buildResponse() {
     if (!_noBody && isError(_ncode) && _location.empty() && _body.empty()) {
@@ -68,7 +75,10 @@ std::string ARequestHandler::buildResponse() {
 
 	if (!_type.empty())
 		oss	<< "Content-Type: " << _type << "\r\n";
-
+	
+	if (!_cookie.empty())
+		oss	<< "Set-Cookie: " << _cookie << "\r\n";
+	
 	oss << "Content-Length: " << _body.size() << "\r\n"
 		<< "Connection: " << (_keepAlive ? "keep-alive" : "close") << "\r\n"
 		<< "\r\n"

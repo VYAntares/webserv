@@ -31,6 +31,7 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 		handleDelete();
 
 	setErrorPage(loc);
+	getCookie(req);
 }
 
 
