@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CGI — Les variables d'environnement dans notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#pourquoi" class="step-pill active" id="nav-pourquoi"><span class="step-dot"></span>Pourquoi</a>
+    <div class="step-connector"></div>
+    <a href="#buildenvp" class="step-pill" id="nav-buildenvp"><span class="step-dot"></span>buildEnvp</a>
+    <div class="step-connector"></div>
+    <a href="#uri" class="step-pill" id="nav-uri"><span class="step-dot"></span>URI &amp; query</a>
+    <div class="step-connector"></div>
+    <a href="#headers" class="step-pill" id="nav-headers"><span class="step-dot"></span>Headers</a>
+    <div class="step-connector"></div>
+    <a href="#conversion" class="step-pill" id="nav-conversion"><span class="step-dot"></span>char**</a>
+    <div class="step-connector"></div>
+    <a href="#cote-script" class="step-pill" id="nav-cote-script"><span class="step-dot"></span>C&ocirc;t&eacute; script</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">CGI &mdash; Le protocole RFC 3875, dans notre code</div>
+  <h1>Les variables <em>d'environnement</em><br>&mdash; <em>buildEnvp()</em></h1>
+  <p class="header-desc">
+    Le CGI ne re&ccedil;oit pas la requ&ecirc;te HTTP brute : il re&ccedil;oit le <strong>body sur stdin</strong>
+    et <strong>tout le reste en variables d'environnement</strong>. Dans notre webserv, c'est
+    <code>CGIProcess::buildEnvp()</code> et ses quatre helpers (<code>addUri</code>, <code>addHost</code>,
+    <code>addHeaders</code>, <code>addRemoteAddr</code>) qui traduisent la <code>HttpRequest</code>
+    en environnement conforme &agrave; la RFC 3875.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : POURQUOI DES ENV VARS     -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="pourquoi" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Le contrat CGI/1.1</div>
+        <div class="step-subtitle">Body sur stdin, m&eacute;tadonn&eacute;es dans l'environnement</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; Have a careful look at the environment variables involved in the web server-CGI communication. The full request and arguments provided by the client must be available to the CGI. &raquo;</p>
+      <cite>&mdash; webserv.pdf, IV.3</cite>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Ce qui passe par stdin</div>
+        <p>
+          Le <strong>body</strong> de la requ&ecirc;te, et rien d'autre. Chez nous il est &eacute;crit
+          dans le pipe par <code>CGIWriteHandler</code>, morceau par morceau, au rythme d'epoll.
+          Le script sait combien lire gr&acirc;ce &agrave; <code>CONTENT_LENGTH</code> &mdash; ou lit jusqu'&agrave; l'EOF
+          (d&eacute;clench&eacute; quand <code>CGIWriteHandler</code> ferme le fd d'&eacute;criture).
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">Ce qui passe par l'environnement</div>
+        <p>
+          Tout le reste : m&eacute;thode, URI, query string, version HTTP, taille et type du body,
+          identit&eacute; du client, et chaque header de la requ&ecirc;te. Le script les lit avec
+          <code>os.environ["..."]</code> en Python ou <code>$VARIABLE</code> en bash.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : BUILDENVP                  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="buildenvp" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">buildEnvp()</div>
+        <div class="step-subtitle">Le chef d'orchestre &mdash; accumule dans un vector&lt;string&gt;</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
+      <div class="panel-label">Pourquoi un vector&lt;string&gt; interm&eacute;diaire ?</div>
+      <p>
+        <code>execve()</code> attend un <code>char**</code> termin&eacute; par NULL, mais on ne conna&icirc;t pas
+        &agrave; l'avance le nombre de variables (&ccedil;a d&eacute;pend du nombre de headers de la requ&ecirc;te).
+        On accumule donc d'abord dans un <code>std::vector&lt;std::string&gt;</code> (taille dynamique),
+        puis on convertit <strong>une seule fois</strong> &agrave; la fin.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">char</span>** <span class="type">CGIProcess</span>::<span class="fn-name">buildEnvp</span>(<span class="type">std::string</span>&amp; <span class="var">path</span>) {
+    <span class="type">std::vector</span>&lt;<span class="type">std::string</span>&gt; <span class="var">envp</span>;
+
+    <span class="type">std::ostringstream</span> <span class="var">oss</span>;
+    <span class="var">oss</span> &lt;&lt; <span class="var">_req</span>.<span class="var">body</span>.<span class="fn-name">size</span>();
+<span class="highlight-line">    <span class="var">envp</span>.<span class="fn-name">push_back</span>(<span class="str">"CONTENT_LENGTH="</span> + <span class="var">oss</span>.<span class="fn-name">str</span>());</span>
+
+    <span class="var">envp</span>.<span class="fn-name">push_back</span>(<span class="str">"REQUEST_METHOD="</span> + <span class="var">_req</span>.<span class="var">method</span>);
+    <span class="var">envp</span>.<span class="fn-name">push_back</span>(<span class="str">"SCRIPT_FILENAME="</span> + <span class="var">path</span>);
+    <span class="var">envp</span>.<span class="fn-name">push_back</span>(<span class="str">"SERVER_PROTOCOL="</span> + <span class="var">_req</span>.<span class="var">version</span>);
+    <span class="var">envp</span>.<span class="fn-name">push_back</span>(<span class="str">"GATEWAY_INTERFACE=CGI/1.1"</span>);
+    <span class="var">envp</span>.<span class="fn-name">push_back</span>(<span class="str">"SERVER_SOFTWARE=webserv/1.0"</span>);
+
+    <span class="fn-name">addUri</span>(&amp;<span class="var">envp</span>);         <span class="cmt">// SCRIPT_NAME, QUERY_STRING, PATH_INFO, REQUEST_URI</span>
+    <span class="fn-name">addHost</span>(&amp;<span class="var">envp</span>);        <span class="cmt">// SERVER_NAME, SERVER_PORT</span>
+    <span class="fn-name">addHeaders</span>(&amp;<span class="var">envp</span>);     <span class="cmt">// CONTENT_TYPE + tous les HTTP_*</span>
+    <span class="fn-name">addRemoteAddr</span>(&amp;<span class="var">envp</span>);  <span class="cmt">// REMOTE_ADDR, REMOTE_PORT</span>
+
+    <span class="kw">return</span> <span class="fn-name">convertToCharStarStarBabyyy</span>(&amp;<span class="var">envp</span>);
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong><code>CONTENT_LENGTH</code> vient de <code>_req.body.size()</code>, pas du header.</strong>
+        Nuance cruciale : si la requ&ecirc;te &eacute;tait <em>chunked</em>, le header Content-Length n'existe pas.
+        Comme notre <code>HttpParser</code> a d&eacute;j&agrave; <strong>d&eacute;-chunk&eacute;</strong> le body avant le routing,
+        la taille r&eacute;elle du body reconstitu&eacute; est toujours la bonne valeur &agrave; transmettre.
+        C'est exactement ce que demande le sujet : le CGI ne voit jamais de chunks.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : URI, QUERY, PATH_INFO      -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="uri" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">addUri() &amp; addHost()</div>
+        <div class="step-subtitle">D&eacute;couper l'URI &mdash; et satisfaire le cgi_test de 42</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; addUri()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// SCRIPT_NAME = chemin avant le '?', QUERY_STRING = ce qui suit.</span>
+<span class="cmt">// Exemple : "/cgi-bin/multiply.py?a=4&amp;b=7"</span>
+<span class="cmt">//   → SCRIPT_NAME=/cgi-bin/multiply.py</span>
+<span class="cmt">//   → QUERY_STRING=a=4&amp;b=7</span>
+<span class="type">void</span> <span class="type">CGIProcess</span>::<span class="fn-name">addUri</span>(<span class="type">std::vector</span>&lt;<span class="type">std::string</span>&gt;* <span class="var">envp</span>) {
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="var">_req</span>.<span class="var">uri</span>.<span class="fn-name">find</span>(<span class="str">'?'</span>);
+    <span class="type">std::string</span> <span class="var">scriptPath</span> = (<span class="var">pos</span> != <span class="type">std::string</span>::<span class="var">npos</span>) ? <span class="var">_req</span>.<span class="var">uri</span>.<span class="fn-name">substr</span>(<span class="num">0</span>, <span class="var">pos</span>) : <span class="var">_req</span>.<span class="var">uri</span>;
+    <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"SCRIPT_NAME="</span> + <span class="var">scriptPath</span>);
+    <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"QUERY_STRING="</span> + (<span class="var">pos</span> != <span class="type">std::string</span>::<span class="var">npos</span> ? <span class="var">_req</span>.<span class="var">uri</span>.<span class="fn-name">substr</span>(<span class="var">pos</span> + <span class="num">1</span>) : <span class="str">""</span>));
+    <span class="cmt">// PATH_INFO et REQUEST_URI obligatoires pour cgi_test (42) : il vérifie</span>
+    <span class="cmt">// que PATH_INFO existe ET correspond à REQUEST_URI, sinon 500</span>
+    <span class="cmt">// ("PATH_INFO not found" / "PATH_INFO incorrect").</span>
+<span class="highlight-line">    <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"PATH_INFO="</span> + <span class="var">scriptPath</span>);</span>
+<span class="highlight-line">    <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"REQUEST_URI="</span> + <span class="var">_req</span>.<span class="var">uri</span>);</span>
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; addHost()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// SERVER_NAME/SERVER_PORT extraits du header "Host: nom[:port]".</span>
+<span class="cmt">// Port 80 par défaut si absent du header.</span>
+<span class="type">void</span> <span class="type">CGIProcess</span>::<span class="fn-name">addHost</span>(<span class="type">std::vector</span>&lt;<span class="type">std::string</span>&gt;* <span class="var">envp</span>) {
+    <span class="type">std::map</span>&lt;<span class="type">std::string</span>, <span class="type">std::string</span>&gt;::<span class="type">const_iterator</span> <span class="var">it</span>;
+
+    <span class="var">it</span> = <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">find</span>(<span class="str">"Host"</span>);
+    <span class="type">std::string</span> <span class="var">host</span> = (<span class="var">it</span> != <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">end</span>() ? <span class="var">it</span>-&gt;<span class="var">second</span> : <span class="str">""</span>);
+    <span class="type">std::string</span> <span class="var">serverPort</span> = <span class="str">"80"</span>;
+    <span class="type">size_t</span> <span class="var">hostSep</span> = <span class="var">host</span>.<span class="fn-name">find</span>(<span class="str">':'</span>);
+    <span class="kw">if</span> (<span class="var">hostSep</span> != <span class="type">std::string</span>::<span class="var">npos</span>) {
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"SERVER_NAME="</span> + <span class="var">host</span>.<span class="fn-name">substr</span>(<span class="num">0</span>, <span class="var">hostSep</span>));
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"SERVER_PORT="</span> + <span class="var">host</span>.<span class="fn-name">substr</span>(<span class="var">hostSep</span> + <span class="num">1</span>));
+    } <span class="kw">else</span> {
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"SERVER_NAME="</span> + <span class="var">host</span>);
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"SERVER_PORT="</span> + <span class="var">serverPort</span>);
+    }
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Le pi&egrave;ge du tester officiel.</strong> Le binaire <code>cgi_test</code> de 42
+        (mont&eacute; sur <code>location /directory</code> avec <code>cgi_pass .bla</code> dans notre
+        <code>default.conf</code>) refuse de r&eacute;pondre si <code>PATH_INFO</code> est absent
+        ou ne correspond pas &agrave; <code>REQUEST_URI</code>. D'o&ugrave; les deux lignes surlign&eacute;es :
+        sans elles, POST sur <code>*.bla</code> renvoyait un 500 myst&eacute;rieux.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : HEADERS HTTP_*             -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="headers" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">addHeaders() &amp; addRemoteAddr()</div>
+        <div class="step-subtitle">User-Agent &rarr; HTTP_USER_AGENT &mdash; la convention RFC 3875</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; addHeaders()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// Convertit chaque header restant en variable HTTP_&lt;NOM_EN_MAJUSCULES&gt;,</span>
+<span class="cmt">// tirets remplacés par underscores (convention CGI/1.1, RFC 3875) :</span>
+<span class="cmt">// ex. "User-Agent: curl/8.0"  →  HTTP_USER_AGENT=curl/8.0</span>
+<span class="type">void</span> <span class="type">CGIProcess</span>::<span class="fn-name">addHeaders</span>(<span class="type">std::vector</span>&lt;<span class="type">std::string</span>&gt;* <span class="var">envp</span>) {
+    <span class="type">std::map</span>&lt;<span class="type">std::string</span>, <span class="type">std::string</span>&gt;::<span class="type">const_iterator</span> <span class="var">it</span>;
+
+    <span class="var">it</span> = <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">find</span>(<span class="str">"Content-Type"</span>);
+    <span class="type">std::string</span> <span class="var">contentType</span> = (<span class="var">it</span> != <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">end</span>() ? <span class="var">it</span>-&gt;<span class="var">second</span> : <span class="str">""</span>);
+    <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"CONTENT_TYPE="</span> + <span class="var">contentType</span>);
+
+    <span class="kw">for</span> (<span class="var">it</span> = <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">begin</span>(); <span class="var">it</span> != <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">end</span>(); ++<span class="var">it</span>) {
+        <span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">key</span> = <span class="var">it</span>-&gt;<span class="var">first</span>;
+        <span class="cmt">// Content-Type et Content-Length ont déjà leurs variables dédiées,</span>
+        <span class="cmt">// pas de préfixe HTTP_ pour eux</span>
+        <span class="kw">if</span> (<span class="var">key</span> == <span class="str">"Content-Type"</span> || <span class="var">key</span> == <span class="str">"Content-Length"</span>)
+            <span class="kw">continue</span>;
+
+        <span class="type">std::string</span> <span class="var">name</span> = <span class="str">"HTTP_"</span>;
+        <span class="kw">for</span> (<span class="type">size_t</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">key</span>.<span class="fn-name">size</span>(); <span class="var">i</span>++) {
+<span class="highlight-line">            <span class="kw">if</span> (<span class="var">key</span>[<span class="var">i</span>] == <span class="str">'-'</span>)</span>
+<span class="highlight-line">                <span class="var">name</span> += <span class="str">'_'</span>;</span>
+<span class="highlight-line">            <span class="kw">else</span></span>
+<span class="highlight-line">                <span class="var">name</span> += <span class="fn-name">std::toupper</span>(<span class="kw">static_cast</span>&lt;<span class="type">unsigned char</span>&gt;(<span class="var">key</span>[<span class="var">i</span>]));</span>
+        }
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="var">name</span> + <span class="str">"="</span> + <span class="var">it</span>-&gt;<span class="var">second</span>);
+    }
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; addRemoteAddr()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// REMOTE_ADDR/REMOTE_PORT : adresse du client qui a fait la requête HTTP.</span>
+<span class="cmt">// _peerAddr arrive déjà formaté "ip:port" depuis ClientHandler::_buildPeerStr().</span>
+<span class="type">void</span> <span class="type">CGIProcess</span>::<span class="fn-name">addRemoteAddr</span>(<span class="type">std::vector</span>&lt;<span class="type">std::string</span>&gt;* <span class="var">envp</span>) {
+    <span class="type">size_t</span> <span class="var">sep</span> = <span class="var">_peerAddr</span>.<span class="fn-name">find</span>(<span class="str">':'</span>);
+    <span class="kw">if</span> (<span class="var">sep</span> != <span class="type">std::string</span>::<span class="var">npos</span>) {
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"REMOTE_ADDR="</span> + <span class="var">_peerAddr</span>.<span class="fn-name">substr</span>(<span class="num">0</span>, <span class="var">sep</span>));
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"REMOTE_PORT="</span> + <span class="var">_peerAddr</span>.<span class="fn-name">substr</span>(<span class="var">sep</span> + <span class="num">1</span>));
+    } <span class="kw">else</span> {
+        <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="str">"REMOTE_ADDR="</span> + <span class="var">_peerAddr</span>);
+    }
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-top: 1.5rem;">
+      <div class="panel-label">R&eacute;capitulatif &mdash; tout ce que notre serveur transmet</div>
+      <table class="compare-table">
+        <tr><td><code>REQUEST_METHOD</code></td><td>GET / POST (depuis <code>_req.method</code>)</td></tr>
+        <tr><td><code>CONTENT_LENGTH</code></td><td>taille r&eacute;elle du body d&eacute;j&agrave; d&eacute;-chunk&eacute; (<code>_req.body.size()</code>)</td></tr>
+        <tr><td><code>CONTENT_TYPE</code></td><td>header Content-Type, cha&icirc;ne vide si absent</td></tr>
+        <tr><td><code>SCRIPT_NAME</code> / <code>SCRIPT_FILENAME</code></td><td>URI sans query / chemin disque complet du script</td></tr>
+        <tr><td><code>QUERY_STRING</code></td><td>tout ce qui suit le <code>?</code> de l'URI</td></tr>
+        <tr><td><code>PATH_INFO</code> / <code>REQUEST_URI</code></td><td>exig&eacute;s par cgi_test &mdash; URI sans query / URI compl&egrave;te</td></tr>
+        <tr><td><code>SERVER_NAME</code> / <code>SERVER_PORT</code></td><td>d&eacute;coup&eacute;s depuis le header <code>Host</code></td></tr>
+        <tr><td><code>REMOTE_ADDR</code> / <code>REMOTE_PORT</code></td><td>IP:port du client (depuis <code>accept()</code>)</td></tr>
+        <tr><td><code>SERVER_PROTOCOL</code></td><td>HTTP/1.1 ou HTTP/1.0 (<code>_req.version</code>)</td></tr>
+        <tr><td><code>GATEWAY_INTERFACE</code> / <code>SERVER_SOFTWARE</code></td><td>CGI/1.1 / webserv/1.0</td></tr>
+        <tr><td><code>HTTP_*</code></td><td>chaque autre header, majuscules, tirets &rarr; underscores</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : CONVERSION CHAR**          -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="conversion" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">convertToCharStarStarBabyyy()</div>
+        <div class="step-subtitle">Du C++ au C &mdash; le format qu'execve() exige</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// Convertit le vector&lt;string&gt; en char** NULL-terminated attendu par execve().</span>
+<span class="cmt">// strdup() alloue chaque chaîne séparément ; ces allocations ne sont jamais</span>
+<span class="cmt">// libérées explicitement, mais ça n'a pas d'importance ici : soit execve()</span>
+<span class="cmt">// réussit et remplace tout l'espace mémoire du processus (le tas actuel</span>
+<span class="cmt">// disparaît avec), soit elle échoue et exit(1) suit juste après.</span>
+<span class="type">char</span>** <span class="type">CGIProcess</span>::<span class="fn-name">convertToCharStarStarBabyyy</span>(<span class="type">std::vector</span>&lt;<span class="type">std::string</span>&gt;* <span class="var">envp</span>) {
+    <span class="type">char</span>** <span class="var">env</span>;
+
+    <span class="var">env</span> = (<span class="type">char</span>**)<span class="fn-name">malloc</span>((<span class="var">envp</span>-&gt;<span class="fn-name">size</span>() + <span class="num">1</span>) * <span class="kw">sizeof</span>(<span class="type">char</span>*));
+    <span class="kw">if</span> (!<span class="var">env</span>)
+        <span class="kw">throw</span> <span class="type">std::runtime_error</span>(<span class="str">"malloc() on env failed"</span>);
+
+    <span class="kw">for</span> (<span class="type">size_t</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">envp</span>-&gt;<span class="fn-name">size</span>(); <span class="var">i</span>++) {
+        <span class="type">std::string</span>&amp; <span class="var">s</span> = (*<span class="var">envp</span>)[<span class="var">i</span>];
+        <span class="var">env</span>[<span class="var">i</span>] = <span class="fn-name">strdup</span>(<span class="var">s</span>.<span class="fn-name">c_str</span>());
+    }
+<span class="highlight-line">    <span class="var">env</span>[<span class="var">envp</span>-&gt;<span class="fn-name">size</span>()] = <span class="macro">NULL</span>;   <span class="cmt">// ← le NULL final, obligatoire pour execve</span></span>
+
+    <span class="kw">return</span> <span class="var">env</span>;
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pourquoi strdup et pas juste <code>c_str()</code> ?</strong>
+        Les pointeurs retourn&eacute;s par <code>c_str()</code> appartiennent aux <code>std::string</code> du vector :
+        si le vector est d&eacute;truit ou r&eacute;alloue, ils deviennent invalides.
+        <code>strdup()</code> fait des copies ind&eacute;pendantes qui survivent jusqu'&agrave; l'<code>execve()</code>.
+        Et comme cette fonction n'est appel&eacute;e que <strong>dans l'enfant</strong>, entre fork et execve,
+        la &laquo; fuite &raquo; n'en est pas une : la m&eacute;moire dispara&icirc;t avec l'execve.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 6 : CÔTÉ SCRIPT                -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="cote-script" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">C&ocirc;t&eacute; script</div>
+        <div class="step-subtitle">Comment nos scripts de www/cgi-bin/ consomment tout &ccedil;a</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="code-panel" style="--step-color: var(--accent-4)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">www/cgi-bin/*.py &mdash; lecture GET</span>
+          </div>
+        </div>
+        <pre><span class="macro">import</span> os
+
+<span class="cmt"># les paramètres d'un GET arrivent</span>
+<span class="cmt"># par QUERY_STRING</span>
+<span class="var">qs</span> = os.environ.<span class="fn-name">get</span>(<span class="str">"QUERY_STRING"</span>, <span class="str">""</span>)
+<span class="cmt"># ex: "a=4&amp;b=7"</span>
+
+<span class="var">method</span> = os.environ[<span class="str">"REQUEST_METHOD"</span>]
+<span class="var">client</span> = os.environ.<span class="fn-name">get</span>(<span class="str">"REMOTE_ADDR"</span>)</pre>
+      </div>
+      <div class="code-panel" style="--step-color: var(--accent-5)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">www/cgi-bin/*.py &mdash; lecture POST</span>
+          </div>
+        </div>
+        <pre><span class="macro">import</span> os, sys
+
+<span class="cmt"># le body arrive sur stdin ;</span>
+<span class="cmt"># CONTENT_LENGTH dit combien lire</span>
+<span class="var">length</span> = <span class="fn-name">int</span>(os.environ.<span class="fn-name">get</span>(<span class="str">"CONTENT_LENGTH"</span>, <span class="num">0</span>))
+<span class="var">body</span> = sys.stdin.<span class="fn-name">read</span>(<span class="var">length</span>)
+
+<span class="cmt"># ou lire jusqu'à EOF : notre serveur</span>
+<span class="cmt"># ferme le pipe quand tout est envoyé</span>
+<span class="var">body</span> = sys.stdin.<span class="fn-name">read</span>()</pre>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-top: 1.5rem;">
+      <div class="panel-label">Nos scripts de test</div>
+      <p>
+        Le dossier <code>www/cgi-bin/</code> du projet couvre tous les cas :
+        <code>hello.py</code> (GET simple), <code>post_echo.py</code> (renvoie le body re&ccedil;u),
+        <code>env.py</code> (dump de toutes les variables), <code>calc.sh</code> (CGI bash via
+        <code>cgi_pass .sh /usr/bin/bash</code>), <code>cookies.py</code> / <code>session.py</code>
+        (bonus Set-Cookie), <code>slow.py</code> (teste le timeout 504),
+        <code>crash.py</code> / <code>sigsegv.py</code> (testent les erreurs 500/502),
+        et la famille <code>test_*.py</code> (headers CGI mal form&eacute;s, sans Content-Type, LF vs CRLF&hellip;).
+      </p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; l'environnement <em>CGI</em></div>
+    <div class="summary-subtitle">La HttpRequest enti&egrave;re, traduite en variables pour un processus qui ne parle pas HTTP</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128230;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">Deux canaux, un contrat</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Body &rarr; stdin (via CGIWriteHandler). M&eacute;tadonn&eacute;es &rarr; environnement (via buildEnvp). Sortie du script &rarr; stdout (via CGIReadHandler).</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128295;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">vector&lt;string&gt; puis char**</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Nombre de variables inconnu d'avance &rarr; accumulation dynamique, conversion unique en <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">char**</code> NULL-terminated juste avant execve.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#127919;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">PATH_INFO = REQUEST_URI, sinon 500</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Le cgi_test officiel de 42 v&eacute;rifie ces deux variables. CONTENT_LENGTH vient du body d&eacute;j&agrave; d&eacute;-chunk&eacute;, jamais du header brut.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="cgi-pieges.html" class="back-link">Fiche suivante : EOF, chunked, exit codes &mdash; les pi&egrave;ges &rarr;</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; CGI : l'environnement. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['pourquoi','buildenvp','uri','headers','conversion','cote-script'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

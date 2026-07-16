@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La boucle événementielle — Gérer les I/O sans errno</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#contrainte" class="step-pill active" id="nav-contrainte"><span class="step-dot"></span>Contrainte</a>
+    <div class="step-connector"></div>
+    <a href="#piege" class="step-pill" id="nav-piege"><span class="step-dot"></span>Pi&egrave;ge</a>
+    <div class="step-connector"></div>
+    <a href="#architecture" class="step-pill" id="nav-architecture"><span class="step-dot"></span>Architecture</a>
+    <div class="step-connector"></div>
+    <a href="#read" class="step-pill" id="nav-read"><span class="step-dot"></span>Read</a>
+    <div class="step-connector"></div>
+    <a href="#write" class="step-pill" id="nav-write"><span class="step-dot"></span>Write</a>
+    <div class="step-connector"></div>
+    <a href="#mecanique" class="step-pill" id="nav-mecanique"><span class="step-dot"></span>M&eacute;canique</a>
+    <div class="step-connector"></div>
+    <a href="#final" class="step-pill" id="nav-final"><span class="step-dot"></span>Code final</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Concept critique &mdash; I/O sans errno</div>
+  <h1>La boucle <em>&eacute;v&eacute;nementielle</em><br>sans jamais checker <em>errno</em></h1>
+  <p class="header-desc">
+    Le sujet interdit de v&eacute;rifier <code>errno</code> apr&egrave;s <code>read</code>/<code>write</code>.
+    Pourtant, le pattern classique edge-triggered repose enti&egrave;rement sur <code>EAGAIN</code>.
+    Voici comment architecturer un serveur event-driven qui respecte cette contrainte
+    &mdash; en laissant <strong>epoll orchestrer tout le flux</strong>.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : LA CONTRAINTE DU SUJET   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="contrainte" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">La contrainte</div>
+        <div class="step-subtitle">Ce que le sujet interdit exactement</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; Interdiction de v&eacute;rifier errno pour ajuster le comportement du serveur apr&egrave;s une op&eacute;ration read ou write. &raquo;</p>
+      <cite>&mdash; webserv subject</cite>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Ce qui est interdit</div>
+        <p>
+          Utiliser la valeur de <code>errno</code> pour <strong>d&eacute;cider quoi faire</strong> apr&egrave;s un
+          <code>recv()</code> ou <code>send()</code>. Le cas typique :
+        </p>
+        <ul>
+          <li>Tester <code>errno == EAGAIN</code> pour savoir si le buffer est vide/plein</li>
+          <li>Tester <code>errno == EWOULDBLOCK</code> pour re-arm un fd</li>
+          <li>Boucler &laquo; tant que <code>EAGAIN</code> &raquo; pour drainer un buffer</li>
+        </ul>
+        <p>
+          Tout pattern qui utilise <code>errno</code> comme <strong>signal de contr&ocirc;le</strong> pour piloter
+          la machine &agrave; &eacute;tats du serveur est interdit.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Ce qui est autoris&eacute;</div>
+        <p>
+          Le <strong>retour de la fonction</strong> lui-m&ecirc;me (<code>n</code>) reste utilisable :
+        </p>
+        <ul>
+          <li><code>n &gt; 0</code> &mdash; des octets ont &eacute;t&eacute; lus/&eacute;crits</li>
+          <li><code>n == 0</code> &mdash; le client a ferm&eacute; la connexion (recv)</li>
+          <li><code>n &lt;= 0</code> &mdash; erreur r&eacute;elle &rarr; fermer proprement</li>
+        </ul>
+        <p>
+          On d&eacute;cide uniquement sur <strong>la valeur de retour</strong>, jamais sur <code>errno</code>.
+          C'est <code>epoll</code> qui nous dit quand un fd est pr&ecirc;t &mdash; pas <code>errno</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LE PIÈGE CLASSIQUE       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="piege" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">Le pi&egrave;ge classique</div>
+        <div class="step-subtitle">Pourquoi la plupart des tutos ne marchent pas pour nous</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le probl&egrave;me</div>
+      <p>
+        Tous les tutos epoll montrent le m&ecirc;me pattern edge-triggered :
+        <strong>boucler sur recv/send jusqu'&agrave; EAGAIN</strong>. C'est le pattern &laquo; drain loop &raquo;.
+        Il fonctionne parfaitement &mdash; mais il viole la r&egrave;gle du sujet.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Pattern classique ET</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Interdit par le sujet</span>
+      </div>
+      <pre><span class="cmt">// ❌ Le "drain loop" classique — INTERDIT</span>
+<span class="cmt">// On boucle jusqu'à EAGAIN pour vider le buffer kernel</span>
+
+<span class="type">void</span> <span class="fn-name">handle_read_INTERDIT</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="kw">while</span> (<span class="num">true</span>) {
+        <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);
+        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {
+<span class="highlight-bad">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>)  <span class="cmt">// ← INTERDIT</span></span>
+<span class="highlight-bad">                <span class="kw">break</span>;   <span class="cmt">// "buffer vide, on sort"</span></span>
+            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;
+        }
+        <span class="kw">if</span> (<span class="var">n</span> == <span class="num">0</span>) { <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>; }
+        <span class="var">request</span> += <span class="var">buf</span>;
+    }
+}
+
+<span class="type">void</span> <span class="fn-name">handle_write_INTERDIT</span>(<span class="type">int</span> <span class="var">fd</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="kw">while</span> (<span class="var">sent</span> &lt; <span class="var">total</span>) {
+        <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">fd</span>, <span class="var">data</span> + <span class="var">sent</span>, <span class="var">total</span> - <span class="var">sent</span>, <span class="num">0</span>);
+        <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {
+<span class="highlight-bad">            <span class="kw">if</span> (<span class="var">errno</span> == <span class="macro">EAGAIN</span> || <span class="var">errno</span> == <span class="macro">EWOULDBLOCK</span>)  <span class="cmt">// ← INTERDIT</span></span>
+<span class="highlight-bad">                <span class="kw">break</span>;   <span class="cmt">// "buffer plein, on attend"</span></span>
+            <span class="fn-name">close</span>(<span class="var">fd</span>); <span class="kw">return</span>;
+        }
+        <span class="var">sent</span> += <span class="var">n</span>;
+    }
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Pourquoi c'est tent&amp;ant ?</strong> En Edge Triggered classique, epoll ne te notifie qu'<strong>une fois</strong>
+        par changement d'&eacute;tat. Donc le r&eacute;flexe est de boucler jusqu'&agrave; <code>EAGAIN</code> pour tout drainer.
+        Mais le sujet dit non. On doit trouver une autre architecture.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : L'ARCHITECTURE CORRECTE  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="architecture" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">L'architecture correcte</div>
+        <div class="step-subtitle">Laisser epoll orchestrer &mdash; un seul appel par &eacute;v&eacute;nement</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le principe fondamental</div>
+      <p>
+        Au lieu de boucler jusqu'&agrave; <code>EAGAIN</code>, on fait <strong>un seul <code>recv()</code> ou
+        <code>send()</code> par &eacute;v&eacute;nement epoll</strong>. On met &agrave; jour l'&eacute;tat de la connexion.
+        Si ce n'est pas fini, on ne boucle pas &mdash; on laisse <strong>epoll nous re-notifier</strong> quand le fd
+        est &agrave; nouveau pr&ecirc;t.
+      </p>
+      <p>
+        C'est epoll qui pilote le flux, pas nous. On ne d&eacute;cide jamais &laquo; est-ce que le buffer est vide ? &raquo;
+        (ce serait checker <code>errno</code>). On dit simplement : &laquo; epoll, rappelle-moi quand il y a quelque chose &raquo;.
+      </p>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Avant &mdash; le drain loop</div>
+        <table class="compare-table">
+          <tr class="bad"><td>Qui d&eacute;cide ?</td><td><code>errno</code> &mdash; je boucle tant que pas <code>EAGAIN</code></td></tr>
+          <tr class="bad"><td>Combien d'appels ?</td><td>Autant que n&eacute;cessaire en une seule passe</td></tr>
+          <tr class="bad"><td>Quand je sors ?</td><td>Quand <code>errno == EAGAIN</code></td></tr>
+        </table>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Apr&egrave;s &mdash; epoll orchestre</div>
+        <table class="compare-table">
+          <tr class="good"><td>Qui d&eacute;cide ?</td><td><code>epoll_wait()</code> &mdash; il me r&eacute;veille quand c'est pr&ecirc;t</td></tr>
+          <tr class="good"><td>Combien d'appels ?</td><td><strong>Un seul</strong> <code>recv()</code>/<code>send()</code> par &eacute;v&eacute;nement</td></tr>
+          <tr class="good"><td>Quand je sors ?</td><td>Imm&eacute;diatement apr&egrave;s le <code>recv()</code>/<code>send()</code></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-top: 1.5rem;">
+      <div class="panel-label">&Eacute;tat par connexion &mdash; chez nous : ClientHandler</div>
+      <p>
+        Pour que &ccedil;a marche, chaque connexion doit garder son <strong>&eacute;tat en m&eacute;moire</strong> entre deux &eacute;v&eacute;nements.
+        Dans notre webserv, cet objet est le <code>ClientHandler</code> : il porte le parseur (qui accumule),
+        la r&eacute;ponse en cours et l'offset d'envoi. Et l'&eacute;v&eacute;nement epoll ne transporte pas le handler
+        directement, mais un <code>HandlerEntry</code> qui garde aussi le <strong>type</strong> d'enregistrement.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">includes/handlers/ClientHandler.hpp + includes/core/EventLoop.hpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre &eacute;tat par connexion</span>
+      </div>
+      <pre><span class="cmt">// L'état qui survit entre deux événements epoll (extrait) :</span>
+<span class="kw">class</span> <span class="type">ClientHandler</span> : <span class="kw">public</span> <span class="type">IEventHandler</span>, <span class="kw">public</span> <span class="type">IResponseSink</span> {
+    <span class="type">int</span>               <span class="var">_fd</span>;
+    <span class="type">size_t</span>            <span class="var">_sent</span>;        <span class="cmt">// combien d'octets d&eacute;j&agrave; envoy&eacute;s</span>
+    <span class="type">HttpParser</span>        <span class="var">_parser</span>;      <span class="cmt">// accumule la requ&ecirc;te entre les recv()</span>
+    <span class="type">std::string</span>       <span class="var">_response</span>;    <span class="cmt">// la r&eacute;ponse HTTP &agrave; envoyer</span>
+    <span class="type">bool</span>              <span class="var">_keepAlive</span>;
+    <span class="type">time_t</span>            <span class="var">_lastActivity</span>;
+    <span class="cmt">// ...</span>
+};
+
+<span class="cmt">// Ce que epoll nous rend dans ev.data.ptr :</span>
+<span class="kw">struct</span> <span class="type">HandlerEntry</span> {
+    <span class="type">IEventHandler</span>*  <span class="var">handler</span>;
+    <span class="type">EventType</span>       <span class="var">type</span>;    <span class="cmt">// ACCEPT_EVENT, READ_EVENT, WRITE_EVENT...</span>
+};</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/core/EventLoop.cpp &mdash; le dispatch r&eacute;el</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">while</span> (!<span class="var">g_stop</span>) {
+    <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">_epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, <span class="num">500</span>);
+
+    <span class="kw">for</span> (<span class="type">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++) {
+<span class="highlight-line">        <span class="type">HandlerEntry</span>* <span class="var">entry</span> = <span class="kw">static_cast</span>&lt;<span class="type">HandlerEntry</span>*&gt;(<span class="var">events</span>[<span class="var">i</span>].<span class="var">data</span>.<span class="var">ptr</span>);</span>
+<span class="highlight-line">        <span class="type">IEventHandler</span>* <span class="var">h</span>    = <span class="var">entry</span>-&gt;<span class="var">handler</span>;   <span class="cmt">// &larr; on retrouve le handler</span></span>
+        <span class="type">int</span> <span class="var">ret</span> = <span class="num">0</span>;
+
+        <span class="kw">try</span> {
+            <span class="kw">if</span> (<span class="var">entry</span>-&gt;<span class="var">type</span> == <span class="macro">ACCEPT_EVENT</span>)
+                <span class="var">ret</span> = <span class="var">h</span>-&gt;<span class="fn-name">handle_accept</span>();
+            <span class="kw">else</span> {
+                <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLIN</span> | <span class="macro">EPOLLHUP</span> | <span class="macro">EPOLLERR</span>))
+                    <span class="var">ret</span> = <span class="var">h</span>-&gt;<span class="fn-name">handle_input</span>();    <span class="cmt">// &larr; UN seul recv()/read()</span>
+                <span class="kw">if</span> (<span class="var">ret</span> != -<span class="num">1</span> &amp;&amp; <span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>)
+                    <span class="var">ret</span> = <span class="var">h</span>-&gt;<span class="fn-name">handle_output</span>();   <span class="cmt">// &larr; UN seul send()/write()</span>
+                <span class="kw">if</span> (<span class="var">ret</span> != -<span class="num">1</span> &amp;&amp; (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLHUP</span> | <span class="macro">EPOLLERR</span>))
+                    &amp;&amp; !(<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLIN</span> | <span class="macro">EPOLLOUT</span>)))
+                    <span class="var">ret</span> = -<span class="num">1</span>;                   <span class="cmt">// erreur "nue" &rarr; fermer (anti busy-loop)</span>
+            }
+        } <span class="kw">catch</span> (<span class="type">std::exception</span>&amp; <span class="var">e</span>) { <span class="var">ret</span> = -<span class="num">1</span>; } <span class="kw">catch</span> (...) { <span class="var">ret</span> = -<span class="num">1</span>; }
+
+        <span class="kw">if</span> (<span class="var">ret</span> == -<span class="num">1</span>) {
+            <span class="fn-name">remove_handler</span>(<span class="var">h</span>);   <span class="cmt">// epoll_ctl(DEL) + table</span>
+            <span class="kw">delete</span> <span class="var">h</span>;            <span class="cmt">// le destructeur ferme le fd</span>
+        }
+    }
+    <span class="fn-name">checkTimeOut</span>();              <span class="cmt">// chasse les inactifs &gt; 30s</span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong><code>ev.data.ptr</code> au lieu de <code>ev.data.fd</code>.</strong>
+        On stocke un <strong>pointeur vers le HandlerEntry</strong> directement dans l'&eacute;v&eacute;nement epoll.
+        Quand <code>epoll_wait()</code> nous r&eacute;veille, on retrouve imm&eacute;diatement le handler
+        <em>et</em> son type d'enregistrement, sans chercher dans une map. Le polymorphisme
+        (<code>IEventHandler</code>) fait le reste : le m&ecirc;me <code>handle_input()</code> appelle
+        <code>ClientHandler::handle_input</code> pour un socket ou <code>CGIReadHandler::handle_input</code>
+        pour un pipe CGI &mdash; l'EventLoop ne conna&icirc;t aucun type concret.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : HANDLE_READ SANS ERRNO   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="read" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">handle_read()</div>
+        <div class="step-subtitle">Lire sans jamais checker errno</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le principe</div>
+      <p>
+        <code>epoll_wait()</code> nous a dit <code>EPOLLIN</code> sur ce fd &rarr; il y a des donn&eacute;es.
+        On fait <strong>un seul <code>recv()</code></strong>. Trois cas possibles, tous d&eacute;cid&eacute;s
+        sur la <strong>valeur de retour <code>n</code></strong> :
+      </p>
+      <ul>
+        <li><code>n &gt; 0</code> &mdash; on a re&ccedil;u des donn&eacute;es &rarr; on les donne au <code>HttpParser</code>, qui accumule</li>
+        <li><code>n == 0</code> &mdash; le client a ferm&eacute; la connexion (EOF) &rarr; <code>return -1</code></li>
+        <li><code>n &lt; 0</code> &mdash; erreur r&eacute;elle &rarr; <code>return -1</code></li>
+      </ul>
+      <p>
+        Si la requ&ecirc;te n'est pas compl&egrave;te, on ne boucle pas. On sort avec <code>return 0</code>.
+        epoll nous rappellera quand il y aura <strong>plus de donn&eacute;es</strong> &agrave; lire.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ClientHandler.cpp &mdash; handle_input()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code &mdash; z&eacute;ro errno</span>
+      </div>
+      <pre><span class="type">int</span> <span class="type">ClientHandler</span>::<span class="fn-name">handle_input</span>() {
+    <span class="var">_lastActivity</span> = <span class="fn-name">time</span>(<span class="macro">NULL</span>);   <span class="cmt">// pour le timeout 30s de checkTimeOut()</span>
+
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+    <span class="cmt">// UN SEUL recv() — epoll nous a dit que le fd est pr&ecirc;t</span>
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);</span>
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>)
+<span class="highlight-new">        <span class="kw">return</span> -<span class="num">1</span>;   <span class="cmt">// d&eacute;connexion ou erreur &rarr; l'EventLoop nous d&eacute;truit</span></span>
+    <span class="type">std::string</span> <span class="fn-name">data</span>(<span class="var">buf</span>, <span class="var">n</span>);
+
+    <span class="cmt">// Le parseur accumule et avance sa machine &agrave; &eacute;tats</span>
+    <span class="cmt">// (R_HEADERS &rarr; R_BODY / R_CHUNKED &rarr; COMPLETE / ERROR)</span>
+<span class="highlight-line">    <span class="var">_parser</span>.<span class="fn-name">runParsing</span>(<span class="var">data</span>);</span>
+    <span class="kw">if</span> (<span class="var">_parser</span>.<span class="fn-name">getState</span>() == <span class="type">HttpParser</span>::<span class="macro">COMPLETE</span>)
+<span class="highlight-new">        <span class="fn-name">_handleComplete</span>();   <span class="cmt">// &rarr; Router &rarr; buildResponse &rarr; modify_handler(WRITE_EVENT)</span></span>
+    <span class="kw">else if</span> (<span class="var">_parser</span>.<span class="fn-name">getState</span>() == <span class="type">HttpParser</span>::<span class="macro">ERROR</span>)
+        <span class="fn-name">_handleError</span>();
+
+    <span class="kw">return</span> <span class="num">0</span>;   <span class="cmt">// requ&ecirc;te pas finie : epoll re-notifiera EPOLLIN</span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pas de boucle, pas d'errno.</strong> Si le client envoie une grosse requ&ecirc;te en plusieurs paquets TCP,
+        on re&ccedil;oit un <code>EPOLLIN</code> par paquet. Chaque appel fait <strong>un seul <code>recv()</code></strong>
+        et nourrit le <code>HttpParser</code> &mdash; c'est lui qui d&eacute;tecte le <code>\r\n\r\n</code>,
+        le Content-Length atteint ou le dernier chunk, pas un simple <code>find()</code>.
+        C'est epoll qui &laquo; boucle &raquo; pour nous en nous rappelant. Et le passage en
+        <code>WRITE_EVENT</code> se fait via <code>EventLoop::modify_handler()</code>, qui
+        encapsule le <code>epoll_ctl(EPOLL_CTL_MOD)</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : HANDLE_WRITE SANS ERRNO  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="write" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">handle_write()</div>
+        <div class="step-subtitle">&Eacute;crire sans jamais checker errno</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le principe</div>
+      <p>
+        <code>epoll_wait()</code> nous a dit <code>EPOLLOUT</code> &rarr; le buffer kernel a de la place.
+        On fait <strong>un seul <code>send()</code></strong>. Il envoie <strong>ce qu'il peut</strong>
+        (peut-&ecirc;tre tout, peut-&ecirc;tre une partie).
+      </p>
+      <ul>
+        <li><code>n &gt; 0</code> &mdash; on met &agrave; jour <code>_sent += n</code></li>
+        <li>Si <code>_sent &gt;= _response.size()</code> &mdash; tout est parti &rarr; <code>_reset()</code> + retour en <code>READ_EVENT</code> (keep-alive) ou <code>return -1</code> (close)</li>
+        <li>Si <code>_sent &lt; total</code> &mdash; pas tout parti &rarr; <strong>ne rien faire</strong>. epoll nous rappellera avec <code>EPOLLOUT</code></li>
+        <li><code>n &lt;= 0</code> &mdash; erreur r&eacute;elle &rarr; <code>return -1</code></li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ClientHandler.cpp &mdash; handle_output()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code &mdash; z&eacute;ro errno</span>
+      </div>
+      <pre><span class="type">int</span> <span class="type">ClientHandler</span>::<span class="fn-name">handle_output</span>() {
+    <span class="var">_lastActivity</span> = <span class="fn-name">time</span>(<span class="macro">NULL</span>);
+
+    <span class="kw">const</span> <span class="type">char</span>*  <span class="var">data</span> = <span class="var">_response</span>.<span class="fn-name">c_str</span>() + <span class="var">_sent</span>;
+    <span class="type">size_t</span>       <span class="var">left</span> = <span class="var">_response</span>.<span class="fn-name">size</span>()  - <span class="var">_sent</span>;
+
+    <span class="cmt">// epoll nous a dit que le fd est pr&ecirc;t &rarr; on envoie ce qu'on peut</span>
+    <span class="cmt">// MSG_NOSIGNAL : pas de SIGPIPE si le client a coup&eacute; entre-temps</span>
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">_fd</span>, <span class="var">data</span>, <span class="var">left</span>, <span class="macro">MSG_NOSIGNAL</span>);</span>
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>)
+<span class="highlight-new">        <span class="kw">return</span> -<span class="num">1</span>;   <span class="cmt">// erreur r&eacute;elle &rarr; l'EventLoop nous d&eacute;truit</span></span>
+
+    <span class="var">_sent</span> += <span class="kw">static_cast</span>&lt;<span class="type">size_t</span>&gt;(<span class="var">n</span>);
+    <span class="kw">if</span> (<span class="var">_sent</span> &gt;= <span class="var">_response</span>.<span class="fn-name">size</span>()) {
+        <span class="kw">if</span> (<span class="var">_keepAlive</span>) {
+<span class="highlight-new">            <span class="fn-name">_reset</span>();   <span class="cmt">// delete _rh, clear response, parser.reset()</span></span>
+<span class="highlight-new">            <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">modify_handler</span>(<span class="kw">this</span>, <span class="macro">READ_EVENT</span>);</span>
+            <span class="cmt">// Pipelining : une requ&ecirc;te enti&egrave;re peut d&eacute;j&agrave; &ecirc;tre dans le buffer</span>
+            <span class="cmt">// du parseur — aucun octet n'arrivera pour re-d&eacute;clencher</span>
+            <span class="cmt">// handle_input, il faut re-parser le reliquat maintenant.</span>
+            <span class="type">std::string</span> <span class="var">empty</span>;
+            <span class="var">_parser</span>.<span class="fn-name">runParsing</span>(<span class="var">empty</span>);
+            <span class="kw">if</span> (<span class="var">_parser</span>.<span class="fn-name">getState</span>() == <span class="type">HttpParser</span>::<span class="macro">COMPLETE</span>)
+                <span class="fn-name">_handleComplete</span>();
+            <span class="kw">else if</span> (<span class="var">_parser</span>.<span class="fn-name">getState</span>() == <span class="type">HttpParser</span>::<span class="macro">ERROR</span>)
+                <span class="fn-name">_handleError</span>();
+            <span class="kw">return</span> <span class="num">0</span>;
+        }
+<span class="highlight-new">        <span class="kw">return</span> -<span class="num">1</span>;   <span class="cmt">// Connection: close &rarr; EventLoop d&eacute;truira ce handler</span></span>
+    }
+
+    <span class="cmt">// Si _sent &lt; total : on ne fait RIEN. On ne boucle pas. Pas d'errno.</span>
+    <span class="cmt">// epoll nous rappellera avec EPOLLOUT quand le buffer kernel aura de la place.</span>
+    <span class="kw">return</span> <span class="num">0</span>;
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong><code>EPOLL_CTL_MOD</code>, pas <code>ADD</code> !</strong> Le client_fd est <strong>d&eacute;j&agrave;</strong> dans epoll
+        (ajout&eacute; lors de l'accept). On utilise <code>MOD</code> pour <strong>changer</strong> les &eacute;v&eacute;nements surveill&eacute;s
+        (de <code>EPOLLIN</code> &agrave; <code>EPOLLOUT</code>). <code>EPOLL_CTL_ADD</code> sur un fd d&eacute;j&agrave; enregistr&eacute; retournerait <code>EEXIST</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SECTION 6 : COMMENT ÇA MARCHE DERRIÈRE   -->
+  <!-- ══════════════════════════════════════════ -->
+  <section class="step-section" id="mecanique" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">La m&eacute;canique derri&egrave;re</div>
+        <div class="step-subtitle">Pourquoi &ccedil;a fonctionne sans errno</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le buffer kernel &mdash; la cl&eacute; de tout</div>
+      <p>
+        Chaque socket a <strong>deux buffers dans le kernel</strong> : un pour la lecture (recv), un pour l'&eacute;criture (send).
+        <code>epoll</code> surveille l'&eacute;tat de ces buffers et te pr&eacute;vient :
+      </p>
+      <ul>
+        <li><code>EPOLLIN</code> &mdash; le buffer de lecture contient des donn&eacute;es &rarr; <code>recv()</code> ne bloquera pas</li>
+        <li><code>EPOLLOUT</code> &mdash; le buffer d'&eacute;criture a de la place &rarr; <code>send()</code> ne bloquera pas</li>
+      </ul>
+      <p>
+        Quand on fait un <code>recv()</code>/<code>send()</code> apr&egrave;s une notification epoll, on a la
+        <strong>garantie</strong> que l'appel va fonctionner &mdash; au moins partiellement.
+        Pas besoin de <code>errno</code> pour v&eacute;rifier.
+      </p>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le cycle de vie d'une requ&ecirc;te &mdash; en d&eacute;tail</div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-step-num">1</div>
+          <div>Client se connecte &rarr; <code>ACCEPT_EVENT</code> sur le <code>ServerHandler</code> &rarr; <code>handle_accept()</code> fait <code>accept()</code> &rarr; <code>new ClientHandler</code> qui s'enregistre en <code>READ_EVENT</code></div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">2</div>
+          <div>Client envoie des donn&eacute;es &rarr; <code>EPOLLIN</code> sur son fd &rarr; <strong>un</strong> <code>recv()</code> dans <code>handle_input()</code> &rarr; le <code>HttpParser</code> accumule</div>
+        </div>
+        <div class="flow-arrow">&darr; (r&eacute;p&eacute;t&eacute; si la requ&ecirc;te arrive en plusieurs paquets)</div>
+        <div class="flow-step">
+          <div class="flow-step-num">3</div>
+          <div>Parser <code>COMPLETE</code> &rarr; <code>_handleComplete()</code> route et construit <code>_response</code> &rarr; <code>modify_handler(this, WRITE_EVENT)</code></div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">4</div>
+          <div>Buffer d'&eacute;criture a de la place &rarr; <code>EPOLLOUT</code> &rarr; <strong>un</strong> <code>send()</code> dans <code>handle_output()</code> &rarr; met &agrave; jour <code>_sent</code></div>
+        </div>
+        <div class="flow-arrow">&darr; (r&eacute;p&eacute;t&eacute; si la r&eacute;ponse est grande)</div>
+        <div class="flow-step">
+          <div class="flow-step-num">5</div>
+          <div><code>_sent &gt;= _response.size()</code> &rarr; keep-alive : <code>_reset()</code> + retour <code>READ_EVENT</code>, sinon <code>return -1</code> &rarr; l'EventLoop d&eacute;truit le handler (le destructeur ferme le fd)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="analogy-panel" style="border-color: rgba(192,132,252,0.3);">
+        <div class="analogy-icon">&#128230;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-3);">Analogie &mdash; le facteur</div>
+          <p>
+            Imagine que tu envoies un colis trop gros pour la bo&icirc;te aux lettres. Au lieu de forcer (&laquo; boucler &raquo;),
+            tu mets ce qui rentre, et tu laisses <strong>le facteur te pr&eacute;venir</strong> quand la bo&icirc;te est vid&eacute;e.
+            Le facteur, c'est <code>epoll</code>. Tu ne regardes jamais toi-m&ecirc;me si la bo&icirc;te est pleine (<code>errno</code>).
+          </p>
+        </div>
+      </div>
+      <div class="analogy-panel" style="border-color: rgba(74,224,255,0.3);">
+        <div class="analogy-icon">&#128260;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-2);">Analogie &mdash; LT re-notifications</div>
+          <p>
+            En Level Triggered (pas de <code>EPOLLET</code>), epoll te rappelle <strong>tant que</strong> la condition
+            est vraie. S'il reste des donn&eacute;es &agrave; lire ou de la place pour &eacute;crire, tu seras re-notifi&eacute;
+            au prochain <code>epoll_wait()</code>. C'est &ccedil;a qui remplace la boucle <code>EAGAIN</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-top: 1.5rem;">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pourquoi Level Triggered est notre alli&eacute;.</strong>
+        En Level Triggered (le mode par d&eacute;faut, sans <code>EPOLLET</code>), epoll re-notifie
+        <strong>tant que</strong> des donn&eacute;es sont disponibles ou que le buffer a de la place.
+        C'est exactement ce qu'il nous faut : un seul <code>recv()</code>/<code>send()</code> par &eacute;v&eacute;nement,
+        et epoll fait le reste. En Edge Triggered, on serait oblig&eacute; de drainer jusqu'&agrave; <code>EAGAIN</code>
+        &mdash; ce qui est interdit. <strong>LT + un appel par &eacute;v&eacute;nement = la solution parfaite.</strong>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 7 : CODE FINAL COMPLET       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="final" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">07</div>
+      <div>
+        <div class="step-fn">Code final</div>
+        <div class="step-subtitle">Le serveur complet &mdash; z&eacute;ro errno</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">main.cpp &mdash; serveur event-driven conforme au sujet</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Code final complet</span>
+      </div>
+      <pre><span class="cmt">// Chez nous, le "serveur complet" n'est pas un fichier unique : c'est</span>
+<span class="cmt">// l'assemblage EventLoop + handlers. Voici le vrai main.cpp, en entier :</span>
+
+<span class="type">int</span> <span class="fn-name">main</span>(<span class="type">int</span> <span class="var">argc</span>, <span class="type">char</span> **<span class="var">argv</span>) {
+    <span class="kw">try</span> {
+        <span class="type">ConfigLoader</span> <span class="fn-name">cl</span>(<span class="var">argc</span>, <span class="var">argv</span>);            <span class="cmt">// lexer → parser → validator</span>
+        <span class="type">Config</span> <span class="var">c</span> = <span class="var">cl</span>.<span class="fn-name">getConfig</span>();
+        <span class="kw">for</span> (<span class="type">size_t</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">c</span>.<span class="var">cfg</span>.<span class="fn-name">size</span>(); <span class="var">i</span>++) {
+            <span class="kw">for</span> (<span class="type">size_t</span> <span class="var">j</span> = <span class="num">0</span>; <span class="var">j</span> &lt; <span class="var">c</span>.<span class="var">cfg</span>[<span class="var">i</span>].<span class="var">listen</span>.<span class="fn-name">size</span>(); <span class="var">j</span>++) {
+                <span class="kw">try</span> {
+<span class="highlight-line">                    <span class="kw">new</span> <span class="type">ServerHandler</span>(<span class="var">c</span>.<span class="var">cfg</span>[<span class="var">i</span>].<span class="var">listen</span>[<span class="var">j</span>], <span class="var">c</span>.<span class="var">cfg</span>[<span class="var">i</span>]);   <span class="cmt">// s'auto-enregistre en ACCEPT_EVENT</span></span>
+                } <span class="kw">catch</span> (<span class="type">std::exception</span> &amp;<span class="var">e</span>) {
+                    <span class="type">std::cerr</span> &lt;&lt; <span class="var">e</span>.<span class="fn-name">what</span>() &lt;&lt; <span class="type">std::endl</span>;   <span class="cmt">// un port raté ≠ tout s'arrête</span>
+                }
+            }
+        }
+<span class="highlight-line">        <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">handle_events</span>();   <span class="cmt">// la boucle Reactor — un seul epoll</span></span>
+        <span class="type">EventLoop</span>::<span class="fn-name">destroy</span>();
+    } <span class="kw">catch</span> (<span class="type">std::exception</span> &amp;<span class="var">e</span>) {
+        <span class="type">std::cerr</span> &lt;&lt; <span class="var">e</span>.<span class="fn-name">what</span>() &lt;&lt; <span class="type">std::endl</span>;
+        <span class="kw">return</span> <span class="num">1</span>;
+    }
+    <span class="kw">return</span> <span class="num">0</span>;
+}
+
+<span class="cmt">// ── Qui fait quoi ──────────────────────────────────────────────</span>
+<span class="cmt">// srcs/core/EventLoop.cpp        epoll_create1/ctl/wait, dispatch, try/catch,</span>
+<span class="cmt">//                                checkTimeOut() 30s, signaux (g_stop, SIGPIPE)</span>
+<span class="cmt">// srcs/handlers/ServerHandler    socket/bind/listen + handle_accept()</span>
+<span class="cmt">// srcs/handlers/ClientHandler    handle_input (UN recv) / handle_output (UN send),</span>
+<span class="cmt">//                                keep-alive + pipelining, IResponseSink pour le CGI</span>
+<span class="cmt">// srcs/handlers/CGI*Handler      les pipes CGI, mêmes règles que les sockets</span>
+<span class="cmt">// srcs/http/HttpParser           la machine à états qui absorbe la fragmentation</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">&#9989;</span>
+        <span><strong>Z&eacute;ro errno.</strong> Aucun <code>errno</code> n'est test&eacute;. Toute la logique repose sur la valeur de retour de <code>recv()</code>/<code>send()</code> et les notifications <code>epoll</code>.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">&#128260;</span>
+        <span><strong>Un appel par &eacute;v&eacute;nement.</strong> Un seul <code>recv()</code> par <code>EPOLLIN</code>, un seul <code>send()</code> par <code>EPOLLOUT</code>. C'est epoll qui &laquo; boucle &raquo; pour nous via ses re-notifications LT.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">&#128203;</span>
+        <span><strong>ClientHandler = l'&eacute;tat qui survit.</strong> Le <code>HttpParser</code> accumule, <code>_response</code> attend, <code>_sent</code> progresse &mdash; entre deux &eacute;v&eacute;nements epoll.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">&#128164;</span>
+        <span><strong>Quasi 0% CPU au repos.</strong> <code>epoll_wait(&hellip;, 500)</code> dort par tranches de 500&nbsp;ms &mdash; juste le temps de re-v&eacute;rifier <code>g_stop</code> et les timeouts. Pas de busy-wait, pas de boucle EAGAIN.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; Le pattern <em>conforme au sujet</em></div>
+    <div class="summary-subtitle">Ni errno, ni boucle EAGAIN. epoll orchestre tout.</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128683;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Ce qui est interdit</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Tester <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">errno == EAGAIN</code> ou <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">errno == EWOULDBLOCK</code> apr&egrave;s recv/send. Boucler jusqu'&agrave; EAGAIN. Utiliser errno comme signal de contr&ocirc;le.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9989;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">Le pattern correct</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Un seul <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">recv()</code>/<code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">send()</code> par &eacute;v&eacute;nement. D&eacute;cider sur <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">n</code> (valeur de retour), pas sur <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-1);">errno</code>. Laisser epoll re-notifier en Level Triggered.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128260;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Le cycle de vie</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">handle_accept &rarr; READ_EVENT &rarr; handle_input (x N) &rarr; modify_handler(WRITE_EVENT) &rarr; handle_output (x N) &rarr; keep-alive ou return -1</code></div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128203;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-3); margin-bottom:0.2rem;">La cl&eacute; : IEventHandler + HandlerEntry dans data.ptr</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Chaque connexion garde son &eacute;tat (parser, _response, _sent) dans son ClientHandler. Le <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-3);">HandlerEntry*</code> stock&eacute; dans <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-3);">ev.data.ptr</code> le retrouve instantan&eacute;ment, et le polymorphisme appelle le bon handle_*.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; I/O sans errno. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['contrainte','piege','architecture','read','write','mecanique','final'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

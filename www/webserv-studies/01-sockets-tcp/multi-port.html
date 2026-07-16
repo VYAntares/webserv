@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Écouter sur plusieurs ports — Multi-port</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#concept" class="step-pill active" id="nav-concept">
+      <span class="step-dot"></span>Concept
+    </a>
+    <div class="step-connector"></div>
+    <a href="#config" class="step-pill" id="nav-config">
+      <span class="step-dot"></span>Config → Sockets
+    </a>
+    <div class="step-connector"></div>
+    <a href="#epoll" class="step-pill" id="nav-epoll">
+      <span class="step-dot"></span>Boucle epoll
+    </a>
+    <div class="step-connector"></div>
+    <a href="#data" class="step-pill" id="nav-data">
+      <span class="step-dot"></span>epoll_data
+    </a>
+    <div class="step-connector"></div>
+    <a href="#code" class="step-pill" id="nav-code">
+      <span class="step-dot"></span>Code complet
+    </a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Multi-port — Config</div>
+  <h1>Écouter sur <em>plusieurs ports</em></h1>
+  <p class="header-desc">
+    Un port = une porte d'entrée. Pourquoi il faut autant de sockets que de ports, comment la config
+    pilote la création des sockets, et comment <code style="font-family:'Space Mono',monospace;color:var(--accent-6)">epoll_data</code>
+    permet de lier chaque client à son bloc serveur.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 1 : LE CONCEPT       -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="concept" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Port = quai d'entrée</div>
+        <div class="step-subtitle">Un port, un socket, une porte</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Ce qu'est un port</div>
+        <p>
+          Un port est un <strong>numéro de quai</strong> que le kernel utilise pour router les paquets TCP
+          vers le bon destinataire. Quand un paquet arrive sur la machine, le kernel lit le port
+          de destination et le redirige vers le processus qui écoute sur ce numéro.
+        </p>
+        <p>
+          Il n'existe <strong>aucun raccourci kernel</strong> pour "un socket sur plusieurs ports".
+          Écouter sur deux ports = créer deux sockets distincts, deux <code>bind()</code>, deux <code>listen()</code>.
+        </p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🚉</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie</div>
+          <p>
+            Une gare avec plusieurs quais. Chaque quai (port) reçoit un train différent.
+            Un contrôleur sur le quai 8080 ne peut pas aussi surveiller le quai 8081 —
+            il faut un contrôleur distinct par quai.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>« Your server must be able to listen to multiple ports to deliver different content. »</p>
+      <cite>— webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <!-- Diagram: port → socket fd -->
+    <div class="port-diagram">
+      <div class="port-diagram-title">Un fd d'écoute par port — vue kernel</div>
+
+      <div class="port-row">
+        <div class="port-badge">:8080</div>
+        <div class="port-arrow">
+          <div class="port-arrow-label">socket() + bind() + listen()</div>
+        </div>
+        <div class="socket-block">
+          <div class="socket-block-fd">server_fd_a = 3</div>
+          <div class="socket-block-desc">socket d'écoute</div>
+        </div>
+        <div class="epoll-arrow">→ epoll</div>
+        <div class="epoll-block">
+          <div class="epoll-block-fn">epoll_ctl</div>
+          <div class="epoll-block-desc">ADD</div>
+        </div>
+      </div>
+
+      <div class="port-row">
+        <div class="port-badge">:8081</div>
+        <div class="port-arrow">
+          <div class="port-arrow-label">socket() + bind() + listen()</div>
+        </div>
+        <div class="socket-block">
+          <div class="socket-block-fd">server_fd_b = 4</div>
+          <div class="socket-block-desc">socket d'écoute</div>
+        </div>
+        <div class="epoll-arrow">→ epoll</div>
+        <div class="epoll-block">
+          <div class="epoll-block-fn">epoll_ctl</div>
+          <div class="epoll-block-desc">ADD</div>
+        </div>
+      </div>
+
+      <div class="port-row">
+        <div class="port-badge">:9090</div>
+        <div class="port-arrow">
+          <div class="port-arrow-label">socket() + bind() + listen()</div>
+        </div>
+        <div class="socket-block">
+          <div class="socket-block-fd">server_fd_c = 5</div>
+          <div class="socket-block-desc">socket d'écoute</div>
+        </div>
+        <div class="epoll-arrow">→ epoll</div>
+        <div class="epoll-block">
+          <div class="epoll-block-fn">epoll_ctl</div>
+          <div class="epoll-block-desc">ADD</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">🚪</span>
+        <span>Chaque port nécessite son propre <code>socket()</code> + <code>bind()</code> + <code>listen()</code></span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🔢</span>
+        <span>Chaque socket d'écoute a son propre <strong>file descriptor</strong> distinct</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">📡</span>
+        <span>Tous ces fds sont enregistrés dans le <strong>même epoll</strong> — un seul <code>epoll_wait()</code></span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">🎯</span>
+        <span>Quand <code>epoll_wait()</code> se réveille, l'événement indique <strong>quel fd</strong> est prêt</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 2 : CONFIG → SOCKETS -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="config" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">config → init</div>
+        <div class="step-subtitle">La config détermine le nombre de sockets</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Pourquoi des ports différents ?</div>
+        <p>
+          Dans un fichier de configuration nginx-style, chaque bloc <code>server</code>
+          déclare son propre <code>listen PORT</code> et son propre <code>root</code>.
+          Ce sont des services <strong>logiquement séparés</strong>.
+        </p>
+        <p>
+          Le <code>root</code> est le <strong>répertoire de fichiers servi</strong>, pas une IP.
+          Un seul processus, une seule machine — mais deux sites distincts accessibles
+          sur deux ports différents.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Pourquoi aussi virtual hosting ?</div>
+        <p>
+          En production (nginx réel), on sépare souvent par <strong>nom de domaine</strong>
+          via le header <code>Host:</code> sur le même port 80.
+        </p>
+        <p>
+          Pour Webserv, la séparation par <strong>port</strong> est beaucoup plus simple
+          à implémenter — un port différent = un socket différent = identification triviale.
+        </p>
+      </div>
+    </div>
+
+    <!-- Config → sockets flow -->
+    <div class="flow-diagram">
+      <div class="flow-col">
+        <div class="flow-col-title">Config (blocs server)</div>
+        <div class="flow-item config-item">
+          server { listen 8080; root /site_a; }
+          <div class="flow-item-sub">bloc serveur n°1</div>
+        </div>
+        <div class="flow-item config-item">
+          server { listen 8081; root /site_b; }
+          <div class="flow-item-sub">bloc serveur n°2</div>
+        </div>
+        <div class="flow-item config-item">
+          server { listen 9090; root /admin; }
+          <div class="flow-item-sub">bloc serveur n°3</div>
+        </div>
+      </div>
+      <div class="flow-connector">→</div>
+      <div class="flow-col">
+        <div class="flow-col-title">Sockets créés au démarrage</div>
+        <div class="flow-item socket-item">
+          server_fd_a = socket() + bind(8080) + listen()
+          <div class="flow-item-sub">fd = 3</div>
+        </div>
+        <div class="flow-item socket-item">
+          server_fd_b = socket() + bind(8081) + listen()
+          <div class="flow-item-sub">fd = 4</div>
+        </div>
+        <div class="flow-item socket-item">
+          server_fd_c = socket() + bind(9090) + listen()
+          <div class="flow-item-sub">fd = 5</div>
+        </div>
+      </div>
+      <div class="flow-connector">→</div>
+      <div class="flow-col">
+        <div class="flow-col-title">Enregistrés dans epoll</div>
+        <div class="flow-item epoll-item">
+          epoll_ctl(ADD, fd=3, …)
+          <div class="flow-item-sub">surveille connexions sur 8080</div>
+        </div>
+        <div class="flow-item epoll-item">
+          epoll_ctl(ADD, fd=4, …)
+          <div class="flow-item-sub">surveille connexions sur 8081</div>
+        </div>
+        <div class="flow-item epoll-item">
+          epoll_ctl(ADD, fd=5, …)
+          <div class="flow-item-sub">surveille connexions sur 9090</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">main.cpp — notre code réel</span>
+        </div>
+        <span class="code-tag">Init</span>
+      </div>
+      <pre><span class="cmt">// Pour chaque bloc server, pour chaque directive listen :</span>
+<span class="cmt">// un ServerHandler = un socket d'écoute qui s'auto-enregistre dans l'EventLoop.</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">i</span><span class="punct">++) {</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">j</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">j</span> <span class="punct">&lt;</span> <span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">listen</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">j</span><span class="punct">++) {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+<span class="highlight-line">            <span class="kw">new</span> <span class="fn-name">ServerHandler</span><span class="punct">(</span><span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">listen</span><span class="punct">[</span><span class="var">j</span><span class="punct">],</span> <span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">[</span><span class="var">i</span><span class="punct">]);</span>   <span class="cmt">// ← (addr, port) + config du bloc</span></span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="fn-name">std::exception</span> <span class="punct">&amp;</span><span class="var">e</span><span class="punct">) {</span>
+            <span class="fn-name">std::cerr</span> <span class="punct">&lt;&lt;</span> <span class="var">e</span><span class="punct">.</span><span class="fn-name">what</span><span class="punct">()</span> <span class="punct">&lt;&lt;</span> <span class="fn-name">std::endl</span><span class="punct">;</span>   <span class="cmt">// un port occupé ≠ tout s'arrête</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="cmt">// Et dans le constructeur de ServerHandler :</span>
+<span class="cmt">//   socket() + SO_REUSEADDR + O_NONBLOCK + FD_CLOEXEC</span>
+<span class="cmt">//   bind(addr résolue par la config) + listen(SOMAXCONN)</span>
+<span class="highlight-line"><span class="cmt">//   EventLoop::instance()->register_handler(this, ACCEPT_EVENT);  ← même epoll pour tous</span></span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <span>
+        <strong>La config pilote tout.</strong> Notre <code>default.conf</code> déclare deux serveurs
+        (8080 pour le site principal + tester, 8079 pour site2) → deux ServerHandler dans la même
+        <code>_table</code> de l'EventLoop. Et comme <code>listen</code> accepte plusieurs valeurs
+        (<code>listen 8080 8081;</code>), un même bloc server peut ouvrir plusieurs ports —
+        d'où la double boucle.
+      </span>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- SECTION 3 : BOUCLE EPOLL         -->
+  <!-- ══════════════════════════════════ -->
+  <section class="step-section" id="epoll" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">epoll_wait()</div>
+        <div class="step-subtitle">Identifier quel server_fd a déclenché</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:1.5rem;">
+      <div class="panel-label">La question clé</div>
+      <p>
+        Quand <code>epoll_wait()</code> se réveille et retourne un événement, ce fd peut être
+        <strong>n'importe lequel</strong> des server_fds ou des client_fds enregistrés.
+        Il faut savoir ce qu'on reçoit pour savoir quoi faire.
+      </p>
+      <p>
+        Si c'est un <strong>server_fd</strong> → une nouvelle connexion est en attente → appeler <code>accept()</code>.<br>
+        Si c'est un <strong>client_fd</strong> → des données à lire → appeler <code>recv()</code>.
+      </p>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">srcs/core/EventLoop.cpp — notre dispatch</span>
+        </div>
+        <span class="code-tag">Boucle principale</span>
+      </div>
+      <pre><span class="kw">while</span> <span class="punct">(!</span><span class="var">g_stop</span><span class="punct">) {</span>
+    <span class="type">int</span> <span class="var">n</span> <span class="punct">=</span> <span class="fn-name">epoll_wait</span><span class="punct">(</span><span class="var">_epfd</span><span class="punct">,</span> <span class="var">events</span><span class="punct">,</span> <span class="macro">MAX_EVENTS</span><span class="punct">,</span> <span class="num">500</span><span class="punct">);</span>
+
+    <span class="kw">for</span> <span class="punct">(</span><span class="type">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">n</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+        <span class="type">HandlerEntry</span><span class="punct">*</span> <span class="var">entry</span> <span class="punct">=</span> <span class="kw">static_cast</span><span class="punct">&lt;</span><span class="type">HandlerEntry</span><span class="punct">*&gt;(</span><span class="var">events</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">data</span><span class="punct">.</span><span class="var">ptr</span><span class="punct">);</span>
+        <span class="type">IEventHandler</span><span class="punct">*</span> <span class="var">h</span>    <span class="punct">=</span> <span class="var">entry</span><span class="punct">-&gt;</span><span class="var">handler</span><span class="punct">;</span>
+
+<span class="highlight-line">        <span class="kw">if</span> <span class="punct">(</span><span class="var">entry</span><span class="punct">-&gt;</span><span class="var">type</span> <span class="punct">==</span> <span class="macro">ACCEPT_EVENT</span><span class="punct">)</span>   <span class="cmt">// ← pas de is_server_fd() : le TYPE est dans l'entrée</span></span>
+            <span class="var">h</span><span class="punct">-&gt;</span><span class="fn-name">handle_accept</span><span class="punct">();</span>          <span class="cmt">// ServerHandler du port 8080 OU 8079, peu importe</span>
+        <span class="kw">else</span> <span class="punct">{</span>
+            <span class="cmt">// Client ou pipe CGI : le polymorphisme appelle le bon code</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">events</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">events</span> <span class="punct">&amp;</span> <span class="macro">EPOLLIN</span><span class="punct">)</span>  <span class="var">h</span><span class="punct">-&gt;</span><span class="fn-name">handle_input</span><span class="punct">();</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">events</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">events</span> <span class="punct">&amp;</span> <span class="macro">EPOLLOUT</span><span class="punct">)</span> <span class="var">h</span><span class="punct">-&gt;</span><span class="fn-name">handle_output</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+    <span class="fn-name">checkTimeOut</span><span class="punct">();</span>
+<span class="punct">}</span>
+
+<span class="cmt">// Pas de recherche linéaire "à qui est ce fd ?" : le HandlerEntry stocké</span>
+<span class="cmt">// dans ev.data.ptr transporte à la fois QUI (handler) et QUOI (type).</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-label">Événement sur un server_fd</div>
+        <p>
+          Le kernel a complété un handshake TCP et mis une connexion dans la accept queue.
+          Il faut appeler <code>accept()</code> pour extraire le client et obtenir son fd.
+          Le nouveau client_fd doit ensuite être enregistré dans epoll.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Événement sur un client_fd</div>
+        <p>
+          Des données sont disponibles dans le buffer de réception du kernel.
+          <code>recv()</code> peut être appelé sans bloquer. Après lecture,
+          on construit la réponse HTTP et on envoie avec <code>send()</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- SECTION 4 : EPOLL_DATA           -->
+  <!-- ══════════════════════════════════ -->
+  <section class="step-section" id="data" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">epoll_data_t</div>
+        <div class="step-subtitle">Associer chaque client à son bloc serveur</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:1.5rem;">
+      <div class="panel-label">Le problème</div>
+      <p>
+        Quand on accepte un client sur <code>server_fd_a</code> (port 8080), on sait qu'il
+        appartient au bloc serveur A. Mais après, son <code>client_fd</code> est enregistré
+        dans epoll. <strong>Comment se souvenir de son bloc serveur d'origine</strong>
+        quand <code>epoll_wait()</code> remonte cet événement plus tard ?
+      </p>
+    </div>
+
+    <!-- struct epoll_event diagram -->
+    <div class="epoll-data-diagram">
+      <div class="epoll-data-title">struct epoll_event — stocker un pointeur dans l'événement</div>
+      <div class="epoll-data-body">
+        <div class="struct-block">
+          <div class="struct-title">struct epoll_event</div>
+          <div class="struct-field">
+            <span class="struct-field-name">events</span>
+            <span class="struct-field-val">EPOLLIN</span>
+          </div>
+          <div class="struct-field">
+            <span class="struct-field-name">data.fd</span>
+            <span class="struct-field-val">int (le fd)</span>
+          </div>
+          <div class="struct-field">
+            <span class="struct-field-name">data.ptr</span>
+            <span class="struct-field-val pink">void* (pointeur libre)</span>
+          </div>
+          <div class="struct-field">
+            <span class="struct-field-name">data.u32</span>
+            <span class="struct-field-val green">uint32_t (index)</span>
+          </div>
+          <div class="struct-field">
+            <span class="struct-field-name">data.u64</span>
+            <span class="struct-field-val">uint64_t</span>
+          </div>
+        </div>
+        <div class="epoll-data-annotation">
+          <div class="annotation-item">
+            <div class="annotation-dot" style="background:var(--accent-6)"></div>
+            <span>
+              <strong style="color:var(--accent-6)">data.ptr</strong> — c'est le champ le plus puissant.
+              On peut y stocker un pointeur vers une structure qui contient à la fois
+              le fd et la config du bloc serveur associé.
+            </span>
+          </div>
+          <div class="annotation-item">
+            <div class="annotation-dot" style="background:var(--accent-4)"></div>
+            <span>
+              <strong style="color:var(--accent-4)">data.u32</strong> — alternative simple :
+              stocker l'index du bloc serveur dans le tableau de config.
+              Plus léger qu'un pointeur.
+            </span>
+          </div>
+          <div class="annotation-item">
+            <div class="annotation-dot" style="background:var(--text-muted)"></div>
+            <span>
+              <strong>data.fd</strong> — utilisation la plus courante mais la moins riche :
+              on ne stocke que le fd, sans métadonnées supplémentaires.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">epoll_data_usage.cpp</span>
+        </div>
+        <span class="code-tag">data.ptr</span>
+      </div>
+      <pre><span class="cmt">// Chez nous, la "structure qui porte les infos" existe à deux niveaux :</span>
+
+<span class="cmt">// 1. Le HandlerEntry, stocké dans ev.data.ptr (EventLoop.hpp) :</span>
+<span class="kw">struct</span> <span class="type">HandlerEntry</span> <span class="punct">{</span>
+    <span class="type">IEventHandler</span><span class="punct">*</span> <span class="var">handler</span><span class="punct">;</span>   <span class="cmt">// QUI est prêt (ServerHandler, ClientHandler, CGI*...)</span>
+    <span class="type">EventType</span>      <span class="var">type</span><span class="punct">;</span>      <span class="cmt">// QUOI faire (ACCEPT_EVENT, READ_EVENT, WRITE_EVENT)</span>
+<span class="punct">};</span>
+
+<span class="cmt">// 2. La config du bloc serveur, portée par les handlers eux-mêmes :</span>
+<span class="kw">class</span> <span class="type">ServerHandler</span> <span class="punct">{</span> <span class="type">Server</span> <span class="var">_server</span><span class="punct">;</span> <span class="cmt">/* ... */</span> <span class="punct">};</span>
+<span class="kw">class</span> <span class="type">ClientHandler</span> <span class="punct">{</span> <span class="type">Server</span> <span class="var">_server</span><span class="punct">;</span> <span class="cmt">/* ... */</span> <span class="punct">};</span>
+
+<span class="cmt">// L'héritage du contexte se fait à l'accept :</span>
+<span class="kw">int</span> <span class="fn-name">ServerHandler::handle_accept</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="cmt">// ...</span>
+<span class="highlight-line">    <span class="kw">new</span> <span class="fn-name">ClientHandler</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">_server</span><span class="punct">,</span> <span class="var">client_addr</span><span class="punct">);</span>   <span class="cmt">// ← le client reçoit LA config</span></span>
+    <span class="cmt">//                              ↑ du port par lequel il est entré (8080 ou 8079)</span>
+<span class="punct">}</span>
+
+<span class="cmt">// Plus tard, quand le client route sa requête :</span>
+<span class="cmt">//   Router::route(req, _server, ...) → les locations du BON bloc serveur.</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <span>
+        <strong>Héritage du contexte serveur.</strong> Quand <code>handle_accept()</code> crée le
+        <code>ClientHandler</code>, il lui passe son <code>_server</code> — le client "hérite"
+        du bloc serveur de la porte par laquelle il est entré. C'est comme ça qu'un client
+        du port 8079 est servi par <code>www/default/site2</code> et un client du 8080 par
+        <code>www</code> : deux contenus différents, exigence du sujet.
+      </span>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- SECTION 5 : CODE COMPLET         -->
+  <!-- ══════════════════════════════════ -->
+  <section class="step-section" id="code" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">Assemblage final</div>
+        <div class="step-subtitle">Squelette multi-port complet</div>
+      </div>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots">
+            <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+          </div>
+          <span class="code-filename">Notre assemblage réel — main.cpp + ServerHandler + EventLoop</span>
+        </div>
+        <span class="code-tag">Notre code</span>
+      </div>
+      <pre><span class="cmt">// ── main.cpp : un ServerHandler par listen de la config ──────────────</span>
+<span class="type">ConfigLoader</span> <span class="fn-name">cl</span><span class="punct">(</span><span class="var">argc</span><span class="punct">,</span> <span class="var">argv</span><span class="punct">);</span>
+<span class="type">Config</span> <span class="var">c</span> <span class="punct">=</span> <span class="var">cl</span><span class="punct">.</span><span class="fn-name">getConfig</span><span class="punct">();</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">i</span><span class="punct">++)</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">j</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">j</span> <span class="punct">&lt;</span> <span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">listen</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">j</span><span class="punct">++)</span>
+<span class="highlight-line">        <span class="kw">new</span> <span class="fn-name">ServerHandler</span><span class="punct">(</span><span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">listen</span><span class="punct">[</span><span class="var">j</span><span class="punct">],</span> <span class="var">c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">[</span><span class="var">i</span><span class="punct">]);</span>   <span class="cmt">// try/catch par port dans le vrai code</span></span>
+
+<span class="type">EventLoop</span><span class="punct">::</span><span class="fn-name">instance</span><span class="punct">()-&gt;</span><span class="fn-name">handle_events</span><span class="punct">();</span>
+
+<span class="cmt">// ── ServerHandler : chaque instance fait socket+bind+listen puis ─────</span>
+<span class="cmt">//    s'enregistre en ACCEPT_EVENT dans le MÊME epoll (singleton EventLoop).</span>
+<span class="cmt">//    À l'accept, le ClientHandler hérite du _server (config du bloc) :</span>
+<span class="kw">new</span> <span class="fn-name">ClientHandler</span><span class="punct">(</span><span class="var">client_fd</span><span class="punct">,</span> <span class="var">_server</span><span class="punct">,</span> <span class="var">client_addr</span><span class="punct">);</span>
+
+<span class="cmt">// ── EventLoop : dispatch par HandlerEntry, aucune connaissance des ports ──</span>
+<span class="type">HandlerEntry</span><span class="punct">*</span> <span class="var">entry</span> <span class="punct">=</span> <span class="kw">static_cast</span><span class="punct">&lt;</span><span class="type">HandlerEntry</span><span class="punct">*&gt;(</span><span class="var">events</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">data</span><span class="punct">.</span><span class="var">ptr</span><span class="punct">);</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">entry</span><span class="punct">-&gt;</span><span class="var">type</span> <span class="punct">==</span> <span class="macro">ACCEPT_EVENT</span><span class="punct">)</span>
+    <span class="var">entry</span><span class="punct">-&gt;</span><span class="var">handler</span><span class="punct">-&gt;</span><span class="fn-name">handle_accept</span><span class="punct">();</span>
+
+<span class="cmt">// ── Nettoyage : return -1 → remove_handler (DEL + delete entry) puis ──</span>
+<span class="cmt">//    delete handler (close du fd dans le destructeur). Aucun leak :</span>
+<span class="cmt">//    ~EventLoop() delete tout ce qui reste au shutdown.</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <span>
+        <strong>Fuite mémoire à éviter.</strong> Chaque <code>new HandlerEntry</code> (dans
+        <code>register_handler</code>) a son <code>delete</code> dans <code>remove_handler</code>,
+        et chaque handler est détruit par l'EventLoop sur <code>return -1</code> — jamais
+        ailleurs. C'est cette convention unique qui évite double-free et fd fantômes,
+        vérifiée avec <code>valgrind --track-fds=yes</code>.
+      </span>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SUMMARY                       -->
+  <!-- ══════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">En <em>résumé</em></div>
+    <div class="summary-subtitle">Les quatre mécanismes du multi-port dans Webserv</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">🚪</div>
+        <div>
+          <div class="summary-card-fn">N ports = N sockets d'écoute</div>
+          <div class="summary-card-desc">Chaque bloc server dans la config crée un socket distinct avec son propre bind() + listen(). Pas de raccourci kernel possible.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">📡</div>
+        <div>
+          <div class="summary-card-fn">Un seul epoll pour tous</div>
+          <div class="summary-card-desc">Tous les server_fds et tous les client_fds sont enregistrés dans le même epoll. Un seul epoll_wait() gère toutes les I/O.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🔍</div>
+        <div>
+          <div class="summary-card-fn">is_listener → accept() ou recv()</div>
+          <div class="summary-card-desc">À chaque événement, on détermine si c'est un server_fd (nouvelle connexion) ou un client_fd (données à lire) pour appeler le bon syscall.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🧬</div>
+        <div>
+          <div class="summary-card-fn">epoll_data.ptr = contexte hérité</div>
+          <div class="summary-card-desc">Le client hérite du pointeur vers le bloc serveur du listener par lequel il est entré. La config est toujours accessible sans recherche.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GLOSSARY -->
+  <section class="step-section" id="glossaire" style="--step-color: var(--accent-6); padding-top: 3rem;">
+    <div class="glossary">
+      <div class="glossary-item">
+        <div class="glossary-term">server_fd</div>
+        <div class="glossary-def">Socket d'écoute lié à un port précis. Créé une fois au démarrage par bloc server dans la config. Jamais utilisé pour recv() — uniquement pour accept().</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">client_fd</div>
+        <div class="glossary-def">Socket retourné par accept(). Représente une connexion TCP établie avec un client. C'est sur lui qu'on appelle recv() et send().</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">epoll_data.ptr</div>
+        <div class="glossary-def">Champ union dans struct epoll_event. Permet de stocker un pointeur arbitraire attaché à un fd enregistré dans epoll. Retourné intact par epoll_wait().</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">virtual hosting</div>
+        <div class="glossary-def">Servir plusieurs sites depuis une même machine. Par port (approche Webserv) ou par header Host: (approche production). Un seul processus, N services distincts.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-term">héritage de contexte</div>
+        <div class="glossary-def">Mécanisme par lequel un client_fd "hérite" du pointeur vers le bloc serveur du server_fd qui l'a accepté. Évite toute recherche en O(n) dans la boucle principale.</div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- .main -->
+
+<footer class="footer">
+  <p>Webserv 42 — <a href="../webserv-mindmap.html">Retour à la cartographie</a> — Multi-port</p>
+</footer>
+
+<script>
+  const sections = document.querySelectorAll('.step-section');
+  const navPills = document.querySelectorAll('.step-pill');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        const id = entry.target.id;
+        navPills.forEach(pill => {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.15 });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

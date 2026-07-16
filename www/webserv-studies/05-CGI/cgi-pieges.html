@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CGI — EOF, chunked, exit codes : les pièges, dans notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#chunked" class="step-pill active" id="nav-chunked"><span class="step-dot"></span>Chunked</a>
+    <div class="step-connector"></div>
+    <a href="#eof" class="step-pill" id="nav-eof"><span class="step-dot"></span>EOF</a>
+    <div class="step-connector"></div>
+    <a href="#parsecgi" class="step-pill" id="nav-parsecgi"><span class="step-dot"></span>parseCgi</a>
+    <div class="step-connector"></div>
+    <a href="#reap" class="step-pill" id="nav-reap"><span class="step-dot"></span>reapChild</a>
+    <div class="step-connector"></div>
+    <a href="#erreurs" class="step-pill" id="nav-erreurs"><span class="step-dot"></span>500 / 502 / 504</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">CGI &mdash; Les pi&egrave;ges, dans notre code</div>
+  <h1><em>EOF</em>, chunked &amp; exit codes<br>&mdash; la classe <em>CGIReadHandler</em></h1>
+  <p class="header-desc">
+    Trois v&eacute;rit&eacute;s d&eacute;sagr&eacute;ables : le CGI attend un flux termin&eacute; par EOF (pas des chunks),
+    sa sortie n'est <strong>pas</strong> une r&eacute;ponse HTTP (il faut la parser),
+    et un script peut crasher, boucler ou ne jamais r&eacute;pondre. Dans notre webserv,
+    tout &ccedil;a est g&eacute;r&eacute; par <code>CGIReadHandler</code> : <code>parseCgi()</code>,
+    <code>reapChild()</code> et le trio d'erreurs 500 / 502 / 504.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : CHUNKED → DÉ-CHUNKÉ       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="chunked" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">D&eacute;-chunker avant d'envoyer</div>
+        <div class="step-subtitle">Le CGI ne conna&icirc;t pas le protocole chunked</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; For chunked requests, your server needs to un-chunk them, the CGI will expect EOF as the end of the body. &raquo;</p>
+      <cite>&mdash; webserv.pdf, IV.3</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-6); margin-top: 1.5rem; margin-bottom: 1.5rem;">
+      <div class="panel-label">Comment c'est r&eacute;gl&eacute; chez nous : en amont, dans le parser</div>
+      <p>
+        Ce pi&egrave;ge est d&eacute;samorc&eacute; <strong>avant m&ecirc;me que le CGI existe</strong>.
+        Quand une requ&ecirc;te arrive en <code>Transfer-Encoding: chunked</code>, notre
+        <code>HttpParser</code> passe en &eacute;tat <code>R_CHUNKED</code> et
+        <code>readChunked()</code> reconstitue le body brut : il lit chaque taille en hexa,
+        extrait le contenu du chunk, et accumule dans <code>_body</code>.
+        Au moment o&ugrave; <code>Router::route()</code> s'ex&eacute;cute, <code>req.body</code> est
+        d&eacute;j&agrave; un bloc continu &mdash; <code>CGIWriteHandler</code> n'&eacute;crit jamais de chunks
+        dans le pipe, et <code>CONTENT_LENGTH</code> refl&egrave;te la taille reconstitu&eacute;e.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIWriteHandler.cpp &mdash; le body part d'un bloc</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-6); background:rgba(255,140,190,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">int</span> <span class="type">CGIWriteHandler</span>::<span class="fn-name">handle_output</span>() {
+    <span class="kw">if</span> (<span class="var">_sent</span> &gt;= <span class="var">_body</span>.<span class="fn-name">size</span>())          <span class="cmt">// body vide : rien à envoyer</span>
+        <span class="kw">return</span> -<span class="num">1</span>;
+
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">write</span>(<span class="var">_fd</span>, <span class="var">_body</span>.<span class="fn-name">data</span>() + <span class="var">_sent</span>, <span class="var">_body</span>.<span class="fn-name">size</span>() - <span class="var">_sent</span>);</span>
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>)                          <span class="cmt">// le child a fermé son stdin → abandon</span>
+        <span class="kw">return</span> -<span class="num">1</span>;
+
+    <span class="var">_sent</span> += <span class="kw">static_cast</span>&lt;<span class="type">size_t</span>&gt;(<span class="var">n</span>);
+<span class="highlight-new">    <span class="kw">return</span> (<span class="var">_sent</span> &gt;= <span class="var">_body</span>.<span class="fn-name">size</span>()) ? -<span class="num">1</span> : <span class="num">0</span>;   <span class="cmt">// -1 → EventLoop nous détruit</span></span>
+}
+
+<span class="type">CGIWriteHandler</span>::~<span class="fn-name">CGIWriteHandler</span>() {
+<span class="highlight-new">    <span class="fn-name">close</span>(<span class="var">_fd</span>);   <span class="cmt">// ← fermer notre bout d'écriture = EOF sur le stdin du script</span></span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le <code>return -1</code> qui vaut un EOF.</strong>
+        Quand tout le body est parti, <code>handle_output()</code> retourne <code>-1</code> :
+        l'EventLoop retire le handler et le <code>delete</code>. Son destructeur ferme <code>_fd</code>
+        &mdash; le dernier fd d'&eacute;criture sur ce pipe. C'est exactement &ccedil;a, &laquo; le CGI attend EOF &raquo; :
+        le <code>sys.stdin.read()</code> du script se termine &agrave; cet instant pr&eacute;cis.
+        Un body vide (GET) suit le m&ecirc;me chemin : premier passage &rarr; <code>-1</code> imm&eacute;diat &rarr; EOF.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : EOF EN SORTIE              -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="eof" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">read() == 0</div>
+        <div class="step-subtitle">L'EOF du pipe de sortie = &laquo; le script a fini de parler &raquo;</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Pas de Content-Length c&ocirc;t&eacute; CGI ? Pas grave.</div>
+      <p>
+        Un script CGI n'annonce presque jamais la taille de sa sortie. Le seul signal fiable de fin,
+        c'est l'<strong>EOF sur le pipe stdout</strong> : quand le script se termine (ou ferme sa sortie),
+        <code>read()</code> retourne <code>0</code>. Notre <code>CGIReadHandler::handle_input()</code>
+        accumule donc dans <code>_out</code> tant que <code>n &gt; 0</code>, et ne construit la r&eacute;ponse
+        qu'au moment du <code>n == 0</code>.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIReadHandler.cpp &mdash; handle_input()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code (essentiel)</span>
+      </div>
+      <pre><span class="type">int</span> <span class="type">CGIReadHandler</span>::<span class="fn-name">handle_input</span>() {
+    <span class="var">_lastActivity</span> = <span class="fn-name">time</span>(<span class="macro">NULL</span>);
+
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">read</span>(<span class="var">_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>));
+
+    <span class="kw">if</span> (<span class="var">n</span> &gt; <span class="num">0</span>) {
+        <span class="var">_out</span>.<span class="fn-name">append</span>(<span class="var">buf</span>, <span class="var">n</span>);
+        <span class="kw">return</span> <span class="num">0</span>;             <span class="cmt">// pas fini : epoll nous rappellera</span>
+    }
+    <span class="kw">if</span> (<span class="var">n</span> &lt; <span class="num">0</span>) {
+        <span class="kw">if</span> (<span class="var">_sink</span>) {
+            <span class="cmt">// erreur réelle (epoll a dit "lisible")</span>
+            <span class="type">ErrorHandler</span> <span class="fn-name">err</span>(*<span class="var">_loc</span>, <span class="num">502</span>, <span class="str">""</span>);
+            <span class="var">_sink</span>-&gt;<span class="fn-name">onCgiDone</span>(<span class="var">err</span>.<span class="fn-name">buildResponse</span>());
+            <span class="var">_responded</span> = <span class="num">true</span>;
+        }
+        <span class="kw">return</span> -<span class="num">1</span>;
+    }
+
+<span class="highlight-line">    <span class="cmt">// n == 0 : EOF — le CGI a fermé son stdout, _out est complet</span></span>
+    <span class="type">int</span> <span class="var">status</span> = <span class="num">0</span>;
+    <span class="fn-name">reapChild</span>(<span class="var">status</span>);
+    <span class="cmt">// ... analyse du status + parseCgi() → sections suivantes ...</span>
+    <span class="kw">return</span> -<span class="num">1</span>;                    <span class="cmt">// EventLoop nous retire et nous delete</span>
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Un <code>read()</code> par &eacute;v&eacute;nement, jamais de boucle.</strong>
+        M&ecirc;me r&egrave;gle que pour les sockets clients : le pipe est non-bloquant, on lit
+        4096 octets max par notification epoll, et on laisse epoll re-notifier
+        (level-triggered) tant qu'il reste des donn&eacute;es. Zero errno, zero drain-loop.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : PARSER LA SORTIE CGI       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="parsecgi" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">parseCgi()</div>
+        <div class="step-subtitle">La sortie CGI n'est PAS une r&eacute;ponse HTTP</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le format RFC 3875 : headers CGI + ligne vide + body</div>
+      <p>
+        Un script bien &eacute;lev&eacute; sort quelque chose comme
+        <code>Status: 404\r\nContent-Type: text/html\r\n\r\n&lt;h1&gt;...&lt;/h1&gt;</code>.
+        Ce ne sont <strong>pas</strong> des headers HTTP : <code>Status:</code> n'existe pas en HTTP,
+        et il manque la request line, Content-Length, Connection&hellip;
+        Avant ce parsing, notre serveur collait la sortie brute dans le body &mdash;
+        et les headers du script s'affichaient en haut de la page. <code>parseCgi()</code>
+        s&eacute;pare donc headers CGI et body, puis reconstruit une vraie r&eacute;ponse HTTP
+        via <code>StaticHandler::buildResponse()</code>.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIReadHandler.cpp &mdash; parseCgi()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="type">CGIReadHandler</span>::<span class="fn-name">parseCgi</span>() {
+    <span class="type">int</span>         <span class="var">code</span> = <span class="num">200</span>;
+    <span class="type">std::string</span> <span class="var">type</span>;
+    <span class="type">std::string</span> <span class="var">body</span>;
+    <span class="type">std::string</span> <span class="var">cookie</span>;
+
+<span class="highlight-line">    <span class="type">size_t</span> <span class="var">sep</span> = <span class="var">_out</span>.<span class="fn-name">find</span>(<span class="str">"\r\n\r\n"</span>);   <span class="cmt">// séparateur headers/body...</span></span>
+    <span class="type">size_t</span> <span class="var">s</span> = <span class="num">4</span>;
+    <span class="kw">if</span> (<span class="var">sep</span> == <span class="type">std::string</span>::<span class="var">npos</span>) {
+<span class="highlight-line">        <span class="var">sep</span> = <span class="var">_out</span>.<span class="fn-name">find</span>(<span class="str">"\n\n"</span>);            <span class="cmt">// ...tolérance : LF seul (script unix)</span></span>
+        <span class="var">s</span>   = <span class="num">2</span>;
+    }
+    <span class="kw">if</span> (<span class="var">sep</span> == <span class="type">std::string</span>::<span class="var">npos</span>)
+        <span class="var">body</span> = <span class="var">_out</span>;                        <span class="cmt">// aucun header : tout est body</span>
+    <span class="kw">else</span> {
+        <span class="type">std::string</span> <span class="var">headers</span> = <span class="var">_out</span>.<span class="fn-name">substr</span>(<span class="num">0</span>, <span class="var">sep</span>);
+        <span class="var">body</span>                = <span class="var">_out</span>.<span class="fn-name">substr</span>(<span class="var">sep</span> + <span class="var">s</span>);
+
+        <span class="type">std::istringstream</span>  <span class="var">iss</span>(<span class="var">headers</span>);
+        <span class="type">std::string</span>         <span class="var">line</span>;
+        <span class="kw">while</span> (<span class="fn-name">std::getline</span>(<span class="var">iss</span>, <span class="var">line</span>)) {
+            <span class="kw">if</span> (!<span class="var">line</span>.<span class="fn-name">empty</span>() &amp;&amp; <span class="var">line</span>[<span class="var">line</span>.<span class="fn-name">size</span>() - <span class="num">1</span>] == <span class="str">'\r'</span>)
+                <span class="var">line</span>.<span class="fn-name">erase</span>(<span class="var">line</span>.<span class="fn-name">size</span>() - <span class="num">1</span>);
+            <span class="kw">if</span> (<span class="var">line</span>.<span class="fn-name">compare</span>(<span class="num">0</span>, <span class="num">7</span>, <span class="str">"Status:"</span>) == <span class="num">0</span>)
+<span class="highlight-new">                <span class="var">code</span> = <span class="fn-name">std::atoi</span>(<span class="var">line</span>.<span class="fn-name">c_str</span>() + <span class="num">7</span>);       <span class="cmt">// Status: 404 → code 404</span></span>
+            <span class="kw">else if</span> (<span class="var">line</span>.<span class="fn-name">compare</span>(<span class="num">0</span>, <span class="num">13</span>, <span class="str">"Content-Type:"</span>) == <span class="num">0</span>) {
+                <span class="type">size_t</span> <span class="var">v</span> = <span class="num">13</span>;
+                <span class="kw">while</span> (<span class="var">v</span> &lt; <span class="var">line</span>.<span class="fn-name">size</span>() &amp;&amp; <span class="var">line</span>[<span class="var">v</span>] == <span class="str">' '</span>)
+                    <span class="var">v</span>++;
+                <span class="var">type</span> = <span class="var">line</span>.<span class="fn-name">substr</span>(<span class="var">v</span>);
+            }
+            <span class="kw">else if</span> (<span class="var">line</span>.<span class="fn-name">compare</span>(<span class="num">0</span>, <span class="num">11</span>, <span class="str">"Set-Cookie:"</span>) == <span class="num">0</span>) {
+                <span class="type">size_t</span> <span class="var">v</span> = <span class="num">11</span>;
+                <span class="kw">while</span> (<span class="var">v</span> &lt; <span class="var">line</span>.<span class="fn-name">size</span>() &amp;&amp; <span class="var">line</span>[<span class="var">v</span>] == <span class="str">' '</span>)
+                    <span class="var">v</span>++;
+<span class="highlight-new">                <span class="var">cookie</span> = <span class="var">line</span>.<span class="fn-name">substr</span>(<span class="var">v</span>);                   <span class="cmt">// bonus cookies/sessions</span></span>
+            }
+        }
+    }
+    <span class="kw">if</span> (<span class="var">code</span> &lt;= <span class="num">0</span>)
+        <span class="var">code</span> = <span class="num">200</span>;
+
+<span class="highlight-new">    <span class="type">StaticHandler</span> <span class="fn-name">st</span>(*<span class="var">_loc</span>, <span class="var">code</span>, <span class="var">body</span>);   <span class="cmt">// reconstruit une VRAIE réponse HTTP</span></span>
+    <span class="kw">if</span> (!<span class="var">type</span>.<span class="fn-name">empty</span>())
+        <span class="var">st</span>.<span class="fn-name">setType</span>(<span class="var">type</span>);
+    <span class="kw">if</span> (!<span class="var">cookie</span>.<span class="fn-name">empty</span>())
+        <span class="var">st</span>.<span class="fn-name">setCookie</span>(<span class="var">cookie</span>);
+
+    <span class="kw">return</span> <span class="var">st</span>.<span class="fn-name">buildResponse</span>();
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Trois headers CGI reconnus</div>
+        <ul>
+          <li><code>Status:</code> &rarr; devient le status code HTTP (200 par d&eacute;faut)</li>
+          <li><code>Content-Type:</code> &rarr; recopi&eacute; dans la r&eacute;ponse via <code>setType()</code></li>
+          <li><code>Set-Cookie:</code> &rarr; recopi&eacute; via <code>setCookie()</code> (bonus sessions)</li>
+        </ul>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">Tol&eacute;rance CRLF / LF</div>
+        <p>
+          La RFC veut du <code>\r\n</code>, mais un script Python &eacute;crit naturellement
+          <code>\n</code>. On cherche d'abord <code>\r\n\r\n</code>, puis on retombe sur
+          <code>\n\n</code>. Nos scripts <code>test_crlf.py</code> et <code>test_lf.py</code>
+          valident les deux chemins, et <code>test_no_headers.py</code> le cas
+          &laquo; aucun header : tout est body &raquo;.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : REAP SANS BLOQUER          -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="reap" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">reapChild()</div>
+        <div class="step-subtitle">waitpid(WNOHANG) &mdash; r&eacute;cup&eacute;rer l'enfant sans geler le serveur</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIReadHandler.cpp &mdash; reapChild()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// Récupère le statut de l'enfant sans jamais bloquer la boucle : si le CGI a</span>
+<span class="cmt">// fermé son stdout mais tourne encore (ex: boucle infinie après le print),</span>
+<span class="cmt">// l'ancien waitpid bloquant gelait TOUT le serveur. On le tue proprement et</span>
+<span class="cmt">// on sert quand même la sortie déjà reçue.</span>
+<span class="type">void</span> <span class="type">CGIReadHandler</span>::<span class="fn-name">reapChild</span>(<span class="type">int</span>&amp; <span class="var">status</span>) {
+    <span class="cmt">// WNOHANG dit au noyau : "regarde si le process _pid est déjà mort.</span>
+    <span class="cmt">// S'il l'est, rends-moi son status.</span>
+    <span class="cmt">// S'il ne l'est PAS, ne m'endors pas, rends-moi 0 tout de suite."</span>
+<span class="highlight-line">    <span class="type">pid_t</span> <span class="var">r</span> = <span class="fn-name">waitpid</span>(<span class="var">_pid</span>, &amp;<span class="var">status</span>, <span class="macro">WNOHANG</span>);</span>
+    <span class="kw">if</span> (<span class="var">r</span> == <span class="num">0</span>) {
+<span class="highlight-new">        <span class="fn-name">kill</span>(<span class="var">_pid</span>, <span class="macro">SIGKILL</span>);          <span class="cmt">// encore vivant → on le tue</span></span>
+<span class="highlight-new">        <span class="fn-name">waitpid</span>(<span class="var">_pid</span>, &amp;<span class="var">status</span>, <span class="num">0</span>);   <span class="cmt">// reap immédiat : il vient d'être SIGKILLé</span></span>
+        <span class="var">status</span> = <span class="num">0</span>;
+    }
+    <span class="var">_reaped</span> = <span class="num">true</span>;
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pourquoi pas de handler SIGCHLD ?</strong>
+        On n'en a pas besoin : le cycle de vie de l'enfant est enti&egrave;rement pilot&eacute; par
+        les <strong>&eacute;v&eacute;nements du pipe</strong>. EOF sur stdout &rarr; on reap. Timeout 30s &rarr;
+        le destructeur reap. Un signal handler global apporterait de la concurrence
+        (interruption au milieu de n'importe quel code) pour z&eacute;ro b&eacute;n&eacute;fice.
+        Aucun zombie possible : chaque chemin de sortie passe par un <code>waitpid()</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : 500 / 502 / 504            -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="erreurs" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">WIFEXITED / WIFSIGNALED</div>
+        <div class="step-subtitle">Traduire la mort du script en status code HTTP</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIReadHandler.cpp &mdash; suite du handle_input(), après l'EOF</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="var">raw</span>;
+<span class="cmt">// Retourne vrai si le processus a été tué par un signal qu'il n'a pas géré —</span>
+<span class="cmt">// par exemple un segfault (SIGSEGV), un SIGKILL, un SIGTERM, etc.</span>
+<span class="cmt">// Dans ce cas il n'y a pas de "code de sortie" au sens normal.</span>
+<span class="kw">if</span> (<span class="fn-name">WIFSIGNALED</span>(<span class="var">status</span>)) {
+<span class="highlight-line">    <span class="type">ErrorHandler</span> <span class="fn-name">err</span>(*<span class="var">_loc</span>, <span class="num">502</span>, <span class="str">""</span>);   <span class="cmt">// crash (SIGSEGV...) → 502 Bad Gateway</span></span>
+    <span class="var">raw</span> = <span class="var">err</span>.<span class="fn-name">buildResponse</span>();
+}
+<span class="cmt">// WIFEXITED → terminé normalement (return / exit).</span>
+<span class="cmt">// WEXITSTATUS → le code passé à exit(), l'équivalent du $? du shell.</span>
+<span class="kw">else if</span> (<span class="fn-name">WIFEXITED</span>(<span class="var">status</span>) &amp;&amp; <span class="fn-name">WEXITSTATUS</span>(<span class="var">status</span>) != <span class="num">0</span>) {
+<span class="highlight-line">    <span class="type">ErrorHandler</span> <span class="fn-name">err</span>(*<span class="var">_loc</span>, <span class="num">500</span>, <span class="var">_out</span>);  <span class="cmt">// exit(1) → 500 Internal Server Error</span></span>
+    <span class="var">raw</span> = <span class="var">err</span>.<span class="fn-name">buildResponse</span>();
+}
+<span class="kw">else</span>
+<span class="highlight-line">    <span class="var">raw</span> = <span class="fn-name">parseCgi</span>();                    <span class="cmt">// sortie propre → réponse normale</span></span>
+
+<span class="kw">if</span> (<span class="var">_sink</span>) {
+    <span class="var">_sink</span>-&gt;<span class="fn-name">onCgiDone</span>(<span class="var">raw</span>);               <span class="cmt">// livrer au client via l'interface</span>
+    <span class="var">_responded</span> = <span class="num">true</span>;
+}
+<span class="kw">return</span> -<span class="num">1</span>;</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIReadHandler.cpp &mdash; le destructeur, filet de s&eacute;curit&eacute;</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">504 Gateway Timeout</span>
+      </div>
+      <pre><span class="cmt">// Trois responsabilités à la destruction (EOF normal, timeout, arrêt serveur) :</span>
+<span class="cmt">// 1. fermer notre bout du pipe</span>
+<span class="cmt">// 2. tuer + reaper l'enfant s'il ne l'a pas déjà été (pas de zombie)</span>
+<span class="cmt">// 3. si aucun client n'a encore reçu de réponse (timeout CGI), envoyer 504 —</span>
+<span class="cmt">//    "une requête ne doit jamais rester en attente indéfiniment" (sujet)</span>
+<span class="type">CGIReadHandler</span>::~<span class="fn-name">CGIReadHandler</span>() {
+    <span class="fn-name">close</span>(<span class="var">_fd</span>);
+    <span class="kw">if</span> (!<span class="var">_reaped</span>) {
+        <span class="fn-name">kill</span>(<span class="var">_pid</span>, <span class="macro">SIGKILL</span>);
+        <span class="fn-name">waitpid</span>(<span class="var">_pid</span>, <span class="macro">NULL</span>, <span class="num">0</span>);
+    }
+    <span class="cmt">// destructeur appelé sans passer par handle_input() (ex: timeout après</span>
+    <span class="cmt">// 30s d'inactivité dans EventLoop::checkTimeOut) -&gt; client jamais servi</span>
+    <span class="kw">if</span> (<span class="var">_sink</span> &amp;&amp; !<span class="var">_responded</span>) {
+<span class="highlight-new">        <span class="type">ErrorHandler</span> <span class="fn-name">err</span>(*<span class="var">_loc</span>, <span class="num">504</span>, <span class="str">""</span>);</span>
+<span class="highlight-new">        <span class="var">_sink</span>-&gt;<span class="fn-name">onCgiDone</span>(<span class="var">err</span>.<span class="fn-name">buildResponse</span>());</span>
+    }
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-top: 1.5rem;">
+      <div class="panel-label">La table de traduction compl&egrave;te</div>
+      <table class="compare-table">
+        <tr class="good"><td>Script sort proprement, exit 0</td><td><code>parseCgi()</code> &rarr; 200 (ou le <code>Status:</code> qu'il annonce)</td></tr>
+        <tr class="bad"><td>Script fait <code>exit(1)</code> (ou execve rat&eacute;)</td><td><strong>500</strong> Internal Server Error &mdash; test&eacute; par <code>test_fail.py</code> / <code>crash.py</code></td></tr>
+        <tr class="bad"><td>Script tu&eacute; par un signal (segfault&hellip;)</td><td><strong>502</strong> Bad Gateway &mdash; test&eacute; par <code>sigsegv.py</code></td></tr>
+        <tr class="bad"><td><code>read()</code> &lt; 0 alors qu'epoll a dit lisible</td><td><strong>502</strong> Bad Gateway</td></tr>
+        <tr class="bad"><td>Script muet pendant 30s (CLIENT_TIMEOUT)</td><td><strong>504</strong> Gateway Timeout &mdash; test&eacute; par <code>slow.py</code></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; les <em>pi&egrave;ges</em> d&eacute;samorc&eacute;s</div>
+    <div class="summary-subtitle">Chunked r&eacute;gl&eacute; en amont, EOF comme signal, sortie parsers, enfant toujours reap&eacute;</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128260;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-6); margin-bottom:0.2rem;">Chunked &rarr; d&eacute;j&agrave; d&eacute;-chunk&eacute;</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">HttpParser::readChunked() reconstitue le body avant le routing. Le CGI re&ccedil;oit un flux continu + un EOF quand CGIWriteHandler ferme le pipe.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128221;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">Sortie CGI &ne; r&eacute;ponse HTTP</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">parseCgi() extrait Status: / Content-Type: / Set-Cookie:, puis StaticHandler reconstruit la vraie r&eacute;ponse (status line, Content-Length, Connection).</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9986;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Jamais de zombie, jamais de gel</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">waitpid(WNOHANG) au moment de l'EOF ; si l'enfant vit encore : SIGKILL + reap. Le destructeur refait le m&ecirc;me travail pour les chemins timeout/arr&ecirc;t.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128680;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">500 / 502 / 504</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">exit&ne;0 &rarr; 500. Tu&eacute; par signal ou pipe en erreur &rarr; 502. Muet 30 secondes &rarr; 504 depuis le destructeur. Le client re&ccedil;oit toujours une r&eacute;ponse.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="cgi-event-loop.html" class="back-link">Fiche suivante : int&eacute;grer le CGI dans l'event loop &rarr;</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; CGI : les pi&egrave;ges. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['chunked','eof','parsecgi','reap','erreurs'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

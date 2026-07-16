@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robustesse — Limites & protections : 431, 413, traversal, dans notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#headers431" class="step-pill active" id="nav-headers431"><span class="step-dot"></span>431</a>
+    <div class="step-connector"></div>
+    <a href="#body413" class="step-pill" id="nav-body413"><span class="step-dot"></span>413</a>
+    <div class="step-connector"></div>
+    <a href="#traversal" class="step-pill" id="nav-traversal"><span class="step-dot"></span>Traversal</a>
+    <div class="step-connector"></div>
+    <a href="#upload" class="step-pill" id="nav-upload"><span class="step-dot"></span>Upload</a>
+    <div class="step-connector"></div>
+    <a href="#access" class="step-pill" id="nav-access"><span class="step-dot"></span>Permissions</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Robustesse &mdash; Les garde-fous, dans notre code</div>
+  <h1><em>Limites</em> &amp; protections<br>&mdash; m&eacute;moire born&eacute;e, racine verrouill&eacute;e</h1>
+  <p class="header-desc">
+    Un serveur expos&eacute; au r&eacute;seau re&ccedil;oit du n'importe quoi : headers sans fin, bodies g&eacute;ants,
+    URI en <code>/../../etc/passwd</code>, filenames d'upload pi&eacute;g&eacute;s. Chaque entr&eacute;e du client
+    est born&eacute;e ou normalis&eacute;e <strong>avant</strong> d'&ecirc;tre utilis&eacute;e :
+    <code>MAX_HEADER_SIZE</code>, <code>client_max_body_size</code> par location,
+    <code>normalizePath()</code>, et la sanitization des filenames multipart.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : 431 HEADERS                -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="headers431" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">MAX_HEADER_SIZE &rarr; 431</div>
+        <div class="step-subtitle">Des headers sans fin ne doivent pas manger la RAM</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">L'attaque</div>
+      <p>
+        Le parser accumule dans <code>_buffer</code> jusqu'&agrave; trouver <code>\r\n\r\n</code>.
+        Un client malveillant qui envoie des headers <strong>sans jamais</strong> envoyer la ligne vide
+        ferait grossir ce buffer &agrave; l'infini &mdash; un d&eacute;ni de service par la m&eacute;moire.
+        La parade : un plafond de 32&nbsp;Ko (<code>#define MAX_HEADER_SIZE 32768</code> dans
+        <code>HttpParser.hpp</code>) v&eacute;rifi&eacute; &agrave; chaque tentative.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/HttpParser.cpp &mdash; treatHeader()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">void</span> <span class="type">HttpParser</span>::<span class="fn-name">treatHeader</span>() {
+    <span class="var">_req</span>.<span class="var">isMultipart</span> = <span class="num">false</span>;
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="var">_buffer</span>.<span class="fn-name">find</span>(<span class="str">"\r\n\r\n"</span>);
+    <span class="kw">if</span> (<span class="var">pos</span> == <span class="type">std::string</span>::<span class="var">npos</span>) {
+        <span class="cmt">// garde-fou : des headers sans fin ne doivent pas faire grossir</span>
+        <span class="cmt">// le buffer indéfiniment (résilience exigée par le sujet)</span>
+<span class="highlight-line">        <span class="kw">if</span> (<span class="var">_buffer</span>.<span class="fn-name">size</span>() &gt; <span class="macro">MAX_HEADER_SIZE</span>)</span>
+<span class="highlight-line">            <span class="fn-name">setError</span>(<span class="num">431</span>);   <span class="cmt">// Request Header Fields Too Large</span></span>
+        <span class="kw">return</span>;
+    }
+    <span class="cmt">// ...</span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Test&eacute; par la suite maison.</strong> La page <code>/default/stress.html</code>
+        envoie une requ&ecirc;te avec un header monstrueux et v&eacute;rifie que le serveur r&eacute;pond
+        <code>431</code> avec la page <code>www/default/errors/431.html</code> configur&eacute;e
+        dans <code>default.conf</code> &mdash; sans consommer plus de 32&nbsp;Ko.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : 413 BODY                   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="body413" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">client_max_body_size &rarr; 413</div>
+        <div class="step-subtitle">Limite par location, r&eacute;solue d&egrave;s les headers, body jet&eacute; pas stock&eacute;</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Trois subtilit&eacute;s dans notre impl&eacute;mentation</div>
+      <ul>
+        <li><strong>La limite d&eacute;pend de la location</strong> : <code>/post_body</code> accepte 100 octets,
+        <code>/directory</code> 1&nbsp;Go. On r&eacute;sout donc la bonne limite <em>d&egrave;s les headers</em>,
+        avant de lire le moindre octet de body, via <code>findLocation()</code> &mdash; la m&ecirc;me fonction
+        de longest-prefix que le Router.</li>
+        <li><strong>On continue de lire&hellip; en jetant</strong> : r&eacute;pondre 413 imm&eacute;diatement et fermer
+        couperait le client en plein upload (il verrait une erreur r&eacute;seau, pas notre 413).
+        On draine le body sans le stocker, puis on r&eacute;pond.</li>
+        <li><strong>Le chunked compte aussi</strong> : <code>readChunked()</code> incr&eacute;mente
+        <code>_bodyReceived</code> chunk par chunk et flague 413 d&egrave;s d&eacute;passement.</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/HttpParser.cpp &mdash; headerParser() puis treatBody()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// --- dans headerParser() : résoudre la limite AVANT le body ---</span>
+<span class="cmt">// la limite de body dépend de la location matchée (client_max_body_size</span>
+<span class="cmt">// par location) : on la résout dès les headers, avant de lire le body</span>
+<span class="kw">const</span> <span class="type">Location</span>* <span class="var">loc</span> = <span class="fn-name">findLocation</span>(<span class="var">_req</span>.<span class="var">uri</span>.<span class="fn-name">substr</span>(<span class="num">0</span>, <span class="var">_req</span>.<span class="var">uri</span>.<span class="fn-name">find</span>(<span class="str">'?'</span>)), *<span class="var">_server</span>);
+<span class="kw">if</span> (<span class="var">loc</span>)
+    <span class="var">_maxBodySize</span> = <span class="var">loc</span>-&gt;<span class="var">max_body_client</span>;
+
+<span class="fn-name">findHeaders</span>();
+<span class="highlight-line"><span class="kw">if</span> (<span class="var">_bodyExcepted</span> &gt; <span class="var">_maxBodySize</span>)</span>
+<span class="highlight-line">    <span class="kw">return</span> <span class="fn-name">setError</span>(<span class="num">413</span>);   <span class="cmt">// Content-Length annonce déjà trop → flag immédiat</span></span>
+
+
+<span class="cmt">// --- dans treatBody() : drainer sans stocker ---</span>
+<span class="kw">if</span> (<span class="var">_errorCode</span> == <span class="num">413</span>) {
+    <span class="cmt">// corps trop gros : jeter les données au lieu de les</span>
+    <span class="cmt">// accumuler, pour ne pas exploser la mémoire</span>
+<span class="highlight-new">    <span class="var">_buffer</span>.<span class="fn-name">erase</span>(<span class="num">0</span>, <span class="var">acceptable</span>);</span>
+} <span class="kw">else</span> {
+    <span class="var">_body</span>.<span class="fn-name">append</span>(<span class="var">_buffer</span>, <span class="num">0</span>, <span class="var">acceptable</span>);
+    <span class="var">_buffer</span>.<span class="fn-name">erase</span>(<span class="num">0</span>, <span class="var">acceptable</span>);
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/HttpParser.cpp &mdash; readChunked(), le comptage exact</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Bug corrig&eacute; &mdash; le faux 413</span>
+      </div>
+      <pre><span class="type">size_t</span> <span class="var">needed</span> = <span class="var">pos</span> + <span class="num">2</span> + <span class="var">size</span> + <span class="num">2</span>;
+<span class="kw">if</span> (<span class="var">_buffer</span>.<span class="fn-name">size</span>() &lt; <span class="var">needed</span>)
+    <span class="kw">return</span>;
+
+<span class="cmt">// compter le chunk UNIQUEMENT quand il est entier dans le buffer :</span>
+<span class="cmt">// avant, l'incrément se faisait avant le check de complétude, donc un</span>
+<span class="cmt">// chunk arrivant en plusieurs recv() était re-compté à chaque appel</span>
+<span class="cmt">// (jusqu'à ~16x avec des chunks de 64k et un buffer de 4k) → faux 413</span>
+<span class="highlight-line"><span class="var">_bodyReceived</span> += <span class="var">size</span>;</span>
+<span class="kw">if</span> (<span class="var">_bodyReceived</span> &gt; <span class="var">_maxBodySize</span>) {
+    <span class="fn-name">setError</span>(<span class="num">413</span>);
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>setError(413) ne bascule pas l'&eacute;tat tout de suite.</strong>
+        Regarde <code>setError()</code> : pour un 413 en mode normal, l'&eacute;tat reste
+        <code>R_BODY</code> &mdash; on continue de consommer (et jeter) jusqu'&agrave;
+        <code>_bodyReceived == _bodyExcepted</code>, et c'est seulement l&agrave; que
+        <code>_state = ERROR</code> d&eacute;clenche la r&eacute;ponse. Le client peut finir son envoi
+        <em>puis</em> lire notre 413 proprement.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : PATH TRAVERSAL             -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="traversal" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">normalizePath() &rarr; 403</div>
+        <div class="step-subtitle">GET /../../etc/passwd ne sortira pas du root</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">L'algorithme : r&eacute;soudre puis comparer</div>
+      <p>
+        Un chemin comme <code>www/../../etc/passwd</code> doit &ecirc;tre <strong>r&eacute;solu</strong> avant
+        d'&ecirc;tre compar&eacute; &agrave; la racine autoris&eacute;e. <code>letNormalize()</code> d&eacute;coupe le chemin
+        en segments : <code>.</code> et les segments vides sont ignor&eacute;s, <code>..</code> d&eacute;pile le
+        segment pr&eacute;c&eacute;dent. Puis <code>normalizePath()</code> v&eacute;rifie que le r&eacute;sultat
+        <strong>commence toujours par le root normalis&eacute;</strong> &mdash; sinon cha&icirc;ne vide,
+        que le Router transforme en 403.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/utils/utils.cpp &mdash; normalizePath()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="fn-name">normalizePath</span>(<span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">p</span>, <span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">root</span>) {
+    <span class="type">std::string</span> <span class="var">nroot</span> = <span class="fn-name">letNormalize</span>(<span class="var">root</span>);
+    <span class="type">std::string</span> <span class="var">res</span> = <span class="fn-name">letNormalize</span>(<span class="var">p</span>);
+
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">res</span>.<span class="fn-name">compare</span>(<span class="num">0</span>, <span class="var">nroot</span>.<span class="fn-name">size</span>(), <span class="var">nroot</span>) != <span class="num">0</span>)</span>
+<span class="highlight-line">        <span class="kw">return</span> <span class="str">""</span>;   <span class="cmt">// le chemin résolu sort du root → refusé</span></span>
+
+    <span class="cmt">// "wwwevil" commence bien par "www" : vérifier que le caractère</span>
+    <span class="cmt">// suivant est un '/' pour ne pas accepter un préfixe partiel</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">res</span>.<span class="fn-name">size</span>() &gt; <span class="var">nroot</span>.<span class="fn-name">size</span>() &amp;&amp; <span class="var">res</span>[<span class="var">nroot</span>.<span class="fn-name">size</span>()] != <span class="str">'/'</span>)</span>
+<span class="highlight-line">        <span class="kw">return</span> <span class="str">""</span>;</span>
+    <span class="kw">return</span> <span class="var">res</span>;
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/Router.cpp &mdash; la sanction</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="var">path</span> = <span class="fn-name">resolvePath</span>(<span class="var">loc</span>, <span class="var">uriPath</span>);
+<span class="kw">if</span> (<span class="var">path</span>.<span class="fn-name">empty</span>())  <span class="cmt">// le chemin normalisé sort de root (ex: /../..)</span>
+<span class="highlight-line">    <span class="kw">return</span> <span class="kw">new</span> <span class="type">ErrorHandler</span>(*<span class="var">loc</span>, <span class="num">403</span>, <span class="str">""</span>);</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Et l'encodage %2e%2e ?</strong> Pas d'&eacute;chappatoire : <code>checkFirstLine()</code>
+        d&eacute;code les <code>%XX</code> de l'URI (<code>decodeHexa()</code>) <strong>avant</strong> le routing.
+        Un <code>/%2e%2e/%2e%2e/etc/passwd</code> devient <code>/../../etc/passwd</code>&hellip;
+        et se fait attraper par normalizePath comme les autres.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : UPLOAD                     -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="upload" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">MultipartHandler</div>
+        <div class="step-subtitle">Le filename vient du client &mdash; donc il ment peut-&ecirc;tre</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-6); margin-bottom: 1.5rem;">
+      <div class="panel-label">L'attaque de l'upload</div>
+      <p>
+        Dans un POST multipart, le nom du fichier est fourni par le client dans
+        <code>Content-Disposition: form-data; name="file"; filename="..."</code>.
+        Rien ne l'emp&ecirc;che d'envoyer <code>filename="../../../home/user/.bashrc"</code> :
+        concat&eacute;n&eacute; na&iuml;vement &agrave; <code>upload_store</code>, il &eacute;crirait
+        <strong>hors du dossier d'upload</strong>. La parade : ne garder que le basename.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/MultipartHandler.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-6); background:rgba(255,140,190,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">for</span> (<span class="var">i</span> = <span class="var">_req</span>-&gt;<span class="var">mp</span>.<span class="var">uploadedFiles</span>.<span class="fn-name">begin</span>(); <span class="var">i</span> != <span class="var">_req</span>-&gt;<span class="var">mp</span>.<span class="var">uploadedFiles</span>.<span class="fn-name">end</span>(); <span class="var">i</span>++) {
+    <span class="cmt">// ne garder que le nom de fichier : un filename client contenant</span>
+    <span class="cmt">// "../../x" permettait d'écrire hors du dossier d'upload</span>
+    <span class="type">std::string</span> <span class="var">fname</span> = <span class="var">i</span>-&gt;<span class="var">second</span>.<span class="var">filename</span>;
+<span class="highlight-line">    <span class="type">size_t</span> <span class="var">slash</span> = <span class="var">fname</span>.<span class="fn-name">rfind</span>(<span class="str">'/'</span>);</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">slash</span> != <span class="type">std::string</span>::<span class="var">npos</span>)</span>
+<span class="highlight-line">        <span class="var">fname</span> = <span class="var">fname</span>.<span class="fn-name">substr</span>(<span class="var">slash</span> + <span class="num">1</span>);   <span class="cmt">// "../../x" → "x"</span></span>
+    <span class="kw">if</span> (<span class="var">fname</span>.<span class="fn-name">empty</span>())
+        <span class="kw">continue</span>;
+
+    <span class="type">std::string</span>   <span class="var">path</span>  = <span class="var">_path</span> + <span class="str">"/"</span> + <span class="var">fname</span>;
+    <span class="type">std::ofstream</span> <span class="fn-name">file</span>(<span class="var">path</span>.<span class="fn-name">c_str</span>(), <span class="type">std::ios</span>::<span class="var">binary</span>);
+    <span class="kw">if</span> (!<span class="var">file</span>.<span class="fn-name">is_open</span>()) {
+        <span class="var">_ncode</span> = <span class="num">500</span>;                          <span class="cmt">// dossier absent ou non inscriptible</span>
+        <span class="var">body</span> += <span class="str">"&lt;li&gt;"</span> + <span class="var">fname</span> + <span class="str">" failed&lt;/li&gt;"</span>;
+        <span class="kw">continue</span>;
+    }
+    <span class="cmt">// ...écriture binaire + 201 si création...</span>
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-6)">
+        <div class="panel-label">upload_store, pas root + URI</div>
+        <p>
+          Exigence du sujet : la config d&eacute;cide <em>o&ugrave;</em> vont les uploads.
+          Dans <code>Router::route()</code>, un POST sur une location avec
+          <code>upload_store</code> voit son chemin cible <strong>remplac&eacute;</strong> par ce dossier
+          (<code>./www/upload</code> chez nous). Le <code>Validator</code> v&eacute;rifie d'ailleurs
+          &agrave; froid que <code>upload_store</code> s'accompagne bien de POST dans
+          <code>allowed_methods</code>.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">&Eacute;criture binaire, taille exacte</div>
+        <p>
+          <code>file.write(data.c_str(), size)</code> en mode <code>std::ios::binary</code> :
+          une image PNG upload&eacute;e ressort octet pour octet identique. Le
+          <code>MultipartParser</code> a d&eacute;coup&eacute; les parts sur le boundary exact,
+          y compris pour plusieurs fichiers partageant le m&ecirc;me nom de champ
+          (d'o&ugrave; le <code>std::multimap</code> dans la struct <code>Multipart</code>).
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : PERMISSIONS                -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="access" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">access() &rarr; 403 / 404</div>
+        <div class="step-subtitle">V&eacute;rifier les permissions avant d'agir &mdash; le bon mode pour la bonne m&eacute;thode</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/Router.cpp &mdash; forbiddenAccess()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">int</span> <span class="type">Router</span>::<span class="fn-name">forbiddenAccess</span>(<span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">uri</span>, <span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">method</span>) {
+    <span class="type">int</span>         <span class="var">mode</span> = <span class="num">0</span>;
+    <span class="type">std::string</span> <span class="var">pathtoaccess</span> = <span class="var">uri</span>;
+
+    <span class="kw">if</span> (<span class="var">method</span> == <span class="str">"DELETE"</span>)
+<span class="highlight-line">        <span class="var">mode</span> = <span class="macro">W_OK</span>;                              <span class="cmt">// supprimer = pouvoir écrire</span></span>
+    <span class="kw">else if</span> (<span class="var">method</span> == <span class="str">"GET"</span>)
+<span class="highlight-line">        <span class="var">mode</span> = <span class="macro">R_OK</span>;                              <span class="cmt">// lire = pouvoir lire</span></span>
+    <span class="kw">else if</span> (<span class="var">method</span> == <span class="str">"POST"</span>)
+<span class="highlight-line">        <span class="var">pathtoaccess</span> = <span class="fn-name">getParentDirectory</span>(<span class="var">uri</span>);   <span class="cmt">// créer = le DOSSIER doit exister/être accessible</span></span>
+    <span class="kw">if</span> (<span class="fn-name">access</span>(<span class="var">pathtoaccess</span>.<span class="fn-name">c_str</span>(), <span class="var">mode</span>) == -<span class="num">1</span>)
+        <span class="kw">return</span> <span class="num">1</span>;
+    <span class="kw">return</span> <span class="num">0</span>;
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-top: 1.5rem; margin-bottom: 1.5rem;">
+      <div class="panel-label">L'ordre des v&eacute;rifications dans Router::route()</div>
+      <div class="flow-steps">
+        <div class="flow-step"><div class="flow-step-num">1</div><div><code>req.error != 200</code> &rarr; ErrorHandler direct (le parser a d&eacute;j&agrave; jug&eacute;)</div></div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step"><div class="flow-step-num">2</div><div>Pas de location &rarr; <strong>404</strong> &middot; M&eacute;thode inconnue (PUT, PATCH&hellip;) &rarr; <strong>501</strong> &middot; M&eacute;thode non autoris&eacute;e par <code>allowed_methods</code> &rarr; <strong>405</strong></div></div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step"><div class="flow-step-num">3</div><div><code>return</code> configur&eacute; &rarr; redirection <strong>avant tout acc&egrave;s disque</strong> (sinon un return sur URL virtuelle donnait 404)</div></div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step"><div class="flow-step-num">4</div><div><code>resolvePath</code> vide &rarr; <strong>403</strong> (traversal) &middot; fichier absent &rarr; <strong>404</strong> &middot; <code>forbiddenAccess</code> &rarr; <strong>403</strong></div></div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step"><div class="flow-step-num">5</div><div>Seulement maintenant : CGI, multipart ou statique. Le filesystem n'est touch&eacute; qu'apr&egrave;s tous les refus &laquo; gratuits &raquo;.</div></div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Fichiers r&eacute;guliers : exempt&eacute;s d'epoll, pas de pr&eacute;cautions.</strong>
+        Le sujet exempte les fichiers disque de la r&egrave;gle epoll &mdash; c'est pourquoi
+        <code>StaticHandler</code> lit avec un simple <code>std::ifstream</code>, &eacute;crit avec
+        <code>std::ofstream</code>, liste avec <code>opendir/readdir/closedir</code> et supprime avec
+        <code>unlink()</code>. Mais &laquo; exempt&eacute; d'epoll &raquo; ne veut pas dire &laquo; exempt&eacute; de checks &raquo; :
+        stat, access et is_open() gardent chaque op&eacute;ration.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; ne jamais faire <em>confiance</em> au client</div>
+    <div class="summary-subtitle">Chaque entr&eacute;e est born&eacute;e, normalis&eacute;e ou v&eacute;rifi&eacute;e avant usage</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128207;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">M&eacute;moire born&eacute;e</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Headers plafonn&eacute;s &agrave; 32 Ko (431). Body plafonn&eacute; par location (413), r&eacute;solu d&egrave;s les headers, drain&eacute; sans stockage en cas de d&eacute;passement &mdash; chunked compris.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128274;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Racine verrouill&eacute;e</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">URI d&eacute;cod&eacute;e (%XX) puis normalis&eacute;e segment par segment ; tout chemin r&eacute;solu qui sort du root &rarr; 403. Le filename multipart est r&eacute;duit &agrave; son basename avant &eacute;criture.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128737;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">Permissions v&eacute;rifi&eacute;es par m&eacute;thode</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">GET &rarr; R_OK, DELETE &rarr; W_OK, POST &rarr; acc&egrave;s au dossier parent. Ordre du Router : erreurs du parser &rarr; 404/501/405 &rarr; redirect &rarr; 403 traversal &rarr; 404 &rarr; 403 access &rarr; traitement.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="stress-tests-outils.html" class="back-link">Fiche suivante : stress tests &amp; outils de validation &rarr;</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Robustesse : limites &amp; protections. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['headers431','body413','traversal','upload','access'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

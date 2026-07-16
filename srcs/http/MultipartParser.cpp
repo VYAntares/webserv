@@ -12,7 +12,7 @@ Multipart MultipartParser::parsePart() {
             f.filename    = it->filename;
             f.contentType = it->contentType;
             f.size        = it->content.size();
-            mp.uploadedFiles[it->name] = f;
+            mp.uploadedFiles.insert(std::make_pair(it->name, f));
         }
     }
     return mp;

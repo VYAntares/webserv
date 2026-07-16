@@ -23,7 +23,7 @@
 			<a href="/files/" target="_blank">/files/ (autoindex)</a> ·
 			<a href="/old-page" target="_blank">/old-page (301)</a> ·
 			<a href="/private/" target="_blank">/private/ (403, demo.conf)</a> ·
-			<a href="http://localhost:8081/" target="_blank">port 8081 (autre contenu)</a>
+			<a href="http://localhost:8079/" target="_blank">port 8079 (autre contenu)</a>
 		</p>
 	</div>
 
@@ -133,12 +133,12 @@
 		return "404 ✔";
 	});
 
-	T.add("GET port 8081 (multi-port)", "le 2e serveur répond (demo.conf)", async () => {
+	T.add("GET port 8079 (multi-port)", "le 2e serveur répond (demo.conf)", async () => {
 		// cross-origin : sans en-têtes CORS le navigateur cache la réponse,
 		// on vérifie donc seulement que la connexion aboutit (mode no-cors).
 		// Contenu différent à vérifier via le lien manuel ou run_all_tests.sh.
-		await fetch("http://" + location.hostname + ":8081/", { mode: "no-cors", cache: "no-store" });
-		return "le serveur du port 8081 répond ✔ (contenu : voir lien manuel ci-dessous)";
+		await fetch("http://" + location.hostname + ":8079/", { mode: "no-cors", cache: "no-store" });
+		return "le serveur du port 8079 répond ✔ (contenu : voir lien manuel ci-dessous)";
 	});
 
 	document.addEventListener("DOMContentLoaded", function () { T.mount("#tests"); });

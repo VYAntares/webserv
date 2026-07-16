@@ -1,0 +1,603 @@
+1|<!DOCTYPE html>
+2|<html lang="fr">
+3|<head>
+4|<meta charset="UTF-8">
+5|<meta name="viewport" content="width=device-width, initial-scale=1.0">
+6|<title>Glossaire configuration Webserv — Termes à maîtriser</title>
+7|<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+8|<link rel="stylesheet" href="../assets/webserv-shared.css">
+9|</head>
+10|<body>
+11|<div class="bg-glow bg-glow-1"></div>
+12|<div class="bg-glow bg-glow-2"></div>
+13|<div class="bg-glow bg-glow-3"></div>
+14|
+15|<div class="progress-bar">
+16|  <div class="progress-inner">
+17|    <a href="../webserv-mindmap.html" class="back-link">← Retour à la cartographie</a>
+18|    <div class="progress-back-divider"></div>
+19|    <a href="#sample" class="step-pill active"><span class="step-dot"></span>Exemple</a>
+20|    <div class="step-connector"></div>
+21|    <a href="#core" class="step-pill"><span class="step-dot"></span>Core</a>
+22|    <div class="step-connector"></div>
+23|    <a href="#routing" class="step-pill"><span class="step-dot"></span>Routage</a>
+24|    <div class="step-connector"></div>
+25|    <a href="#behavior" class="step-pill"><span class="step-dot"></span>Effets</a>
+26|    <div class="step-connector"></div>
+27|    <a href="#custom" class="step-pill"><span class="step-dot"></span>Webserv</a>
+28|    <div class="step-connector"></div>
+29|    <a href="#checklist" class="step-pill"><span class="step-dot"></span>Checklist</a>
+30|  </div>
+31|</div>
+32|
+33|<div class="header">
+34|  <div class="header-tag">04 — Fichier de configuration</div>
+35|  <h1>Glossaire des <em>termes</em> à maîtriser</h1>
+36|  <p class="header-desc">
+37|    Chaque directive expliquée avec ce qu'elle fait <em>réellement</em> à runtime — pas juste sa définition.
+38|    Les directives core NGINX (<code>server</code>, <code>listen</code>, <code>location</code>, <code>root</code>…)
+39|    sont alignées sur le module HTTP core officiel. Les directives custom webserv (<code>allowed_methods</code>,
+40|    <code>upload_store</code>, <code>cgi_pass</code>) sont expliquées avec leur effet attendu dans ton implémentation.
+41|  </p>
+42|</div>
+43|
+44|<div class="main">
+45|
+46|  <!-- ══════════════════════════════ -->
+47|  <!-- 01 — SAMPLE CONFIG            -->
+48|  <!-- ══════════════════════════════ -->
+49|  <section class="step-section" id="sample" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+50|    <div class="step-header">
+51|      <div class="step-number-badge">01</div>
+52|      <div>
+53|        <div class="step-fn">config sample</div>
+54|        <div class="step-subtitle">Le fichier de référence qu'on va décortiquer</div>
+55|      </div>
+56|    </div>
+57|
+58|    <div class="code-panel" style="--step-color: var(--accent-3);">
+59|      <div class="code-header">
+60|        <div class="code-header-left">
+61|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+62|          <span class="code-filename">webserv.conf</span>
+63|        </div>
+64|        <span class="code-tag">Fichier de référence complet</span>
+65|      </div>
+66|      <pre><span class="cmt"># Serveur principal — port 8080</span>
+67|<span class="dir">server</span> {
+68|    <span class="dir">listen</span>               <span class="num">8080</span>;
+69|    <span class="dir">server_name</span>          localhost;
+70|    <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+71|
+72|    <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+73|    <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
+74|
+75|    <span class="dir">location</span> / {
+76|        <span class="dir">root</span>            /var/www/html;
+77|        <span class="dir">index</span>           index.html;
+78|        <span class="dir">allowed_methods</span> GET;
+79|        <span class="dir">autoindex</span>       off;
+80|    }
+81|
+82|    <span class="dir">location</span> /api {
+83|        <span class="dir">root</span>            /var/www/api;
+84|        <span class="dir">allowed_methods</span> GET POST DELETE;
+85|        <span class="dir">autoindex</span>       off;
+86|    }
+87|
+88|    <span class="dir">location</span> /upload {
+89|        <span class="dir">root</span>            /var/www;
+90|        <span class="dir">allowed_methods</span> POST;
+91|        <span class="dir">upload_store</span>    /tmp/uploads;
+92|    }
+93|
+94|    <span class="dir">location</span> /files {
+95|        <span class="dir">root</span>            /var/www/shared;
+96|        <span class="dir">allowed_methods</span> GET;
+97|        <span class="dir">autoindex</span>       on;
+98|    }
+99|
+100|    <span class="dir">location</span> /old-page {
+101|        <span class="dir">return</span> <span class="num">301</span> /new-page;
+102|    }
+103|
+104|    <span class="dir">location</span> /cgi-bin {
+105|        <span class="dir">root</span>            /var/www/cgi-bin;
+106|        <span class="dir">allowed_methods</span> GET POST;
+107|        <span class="dir">cgi_pass</span>        .py  /usr/bin/python3;
+108|        <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
+109|    }
+110|}
+111|
+112|<span class="cmt"># Deuxième serveur — port 8081</span>
+113|<span class="dir">server</span> {
+114|    <span class="dir">listen</span>               <span class="num">8081</span>;
+115|    <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+116|
+117|    <span class="dir">location</span> / {
+118|        <span class="dir">root</span>            /var/www/site2;
+119|        <span class="dir">index</span>           index.html;
+120|        <span class="dir">allowed_methods</span> GET;
+121|        <span class="dir">autoindex</span>       off;
+122|    }
+123|}</pre>
+124|    </div>
+125|
+126|    <div class="two-col">
+127|      <div class="panel" style="--step-color: var(--accent-3);">
+128|        <div class="panel-label">Structure globale</div>
+129|        <p>
+130|          Deux blocs <code>server</code> = deux serveurs virtuels distincts.
+131|          Chacun écoute un port différent (<code>8080</code> et <code>8081</code>).
+132|          Dans chaque serveur, les blocs <code>location</code> définissent les règles par préfixe d'URI.
+133|        </p>
+134|        <p>
+135|          Webserv lit ce fichier <strong>une seule fois au démarrage</strong>, construit ses structures en mémoire,
+136|          puis les applique à chaque requête sans jamais relire le fichier.
+137|        </p>
+138|      </div>
+139|      <div class="panel" style="--step-color: var(--accent-3);">
+140|        <div class="panel-label">Core NGINX vs directives custom</div>
+141|        <p>
+142|          <code>server</code>, <code>listen</code>, <code>server_name</code>, <code>location</code>,
+143|          <code>root</code>, <code>index</code>, <code>autoindex</code>, <code>error_page</code>,
+144|          <code>client_max_body_size</code>, <code>return</code> → directives du module HTTP core NGINX.
+145|        </p>
+146|        <p>
+147|          <code>allowed_methods</code>, <code>upload_store</code>, <code>cgi_pass</code> → directives
+148|          <strong>custom webserv</strong>, inspirées du sujet mais non standard NGINX.
+149|        </p>
+150|      </div>
+151|    </div>
+152|  </section>
+153|
+154|  <div class="step-divider"></div>
+155|
+156|  <!-- ══════════════════════════════ -->
+157|  <!-- 02 — DIRECTIVES CORE          -->
+158|  <!-- ══════════════════════════════ -->
+159|  <section class="step-section" id="core" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+160|    <div class="step-header">
+161|      <div class="step-number-badge">02</div>
+162|      <div>
+163|        <div class="step-fn">directives core</div>
+164|        <div class="step-subtitle">Ce que chaque mot-clé fait exactement</div>
+165|      </div>
+166|    </div>
+167|
+168|    <div class="terms-grid">
+169|      <article class="term-card" style="--step-color: var(--accent-2);">
+170|        <div class="term-name">server { ... }</div>
+171|        <p>Définit un <strong>serveur virtuel</strong> HTTP. Le bloc rassemble toutes les règles d'un "site" logique : ports d'écoute, pages d'erreur, limite de body, routes.</p>
+172|        <div class="term-extra">Contexte: http • Ce fichier: 2 serveurs (8080, 8081) dans un même processus</div>
+173|      </article>
+174|
+175|      <article class="term-card" style="--step-color: var(--accent-2);">
+176|        <div class="term-name">listen address:port;</div>
+177|        <p>Définit le port (et optionnellement l'adresse IP) sur lequel ce serveur accepte les connexions. Chaque <code>listen</code> distinct = un socket serveur ouvert par webserv.</p>
+178|        <div class="term-extra">Contexte: server • Exemple: listen 8080; — listen 8081;</div>
+179|      </article>
+180|
+181|      <article class="term-card" style="--step-color: var(--accent-2);">
+182|        <div class="term-name">server_name name ...;</div>
+183|        <p>Nomme le serveur virtuel. Utile pour le <strong>virtual hosting</strong> : si deux <code>server</code> partagent le même port, le header <code>Host</code> de la requête est comparé aux <code>server_name</code> pour choisir le bon bloc. Optionnel dans webserv.</p>
+184|        <div class="term-extra">Contexte: server • Exemple: server_name localhost;</div>
+185|      </article>
+186|
+187|      <article class="term-card" style="--step-color: var(--accent-2);">
+188|        <div class="term-name">client_max_body_size size;</div>
+189|        <p>Taille maximale autorisée pour le corps d'une requête. Le check se fait <strong>tôt</strong>, sur le header <code>Content-Length</code>, avant de lire le body. Si dépassé : réponse <code>413 Request Entity Too Large</code> immédiate.</p>
+190|        <div class="term-extra">Contexte: http, server, location • Exemples: 10m (serveur 8080), 1m (serveur 8081)</div>
+191|      </article>
+192|
+193|      <article class="term-card" style="--step-color: var(--accent-2);">
+194|        <div class="term-name">error_page code ... uri;</div>
+195|        <p>Associe un code d'erreur HTTP à une page personnalisée. Si le serveur produit ce code, il tente de servir la page. Si la page elle-même est introuvable, il faut un fallback HTML inline — jamais de réponse vide.</p>
+196|        <div class="term-extra">Contexte: http, server, location • Exemples: 404 /errors/404.html — 500 /errors/500.html</div>
+197|      </article>
+198|
+199|      <article class="term-card" style="--step-color: var(--accent-2);">
+200|        <div class="term-name">location [prefix] uri { ... }</div>
+201|        <p>Applique une configuration en fonction de l'URI de la requête. Le matching se fait par <strong>plus long préfixe</strong> : <code>/api/users</code> matche <code>/api</code> plutôt que <code>/</code>. Pas de regex — préfixe uniquement.</p>
+202|        <div class="term-extra">Contexte: server, location • Exemples: /, /api, /upload, /files, /old-page, /cgi-bin</div>
+203|      </article>
+204|
+205|      <article class="term-card" style="--step-color: var(--accent-2);">
+206|        <div class="term-name">root path;</div>
+207|        <p>Répertoire racine pour résoudre le chemin physique d'un fichier. La règle du sujet (Cas 2) : <code>chemin = root + (URI − préfixe location)</code>. Exemple : <code>location /api</code> + <code>root /var/www/api</code> + URI <code>/api/users.json</code> → fichier à <code>/var/www/api/users.json</code>.</p>
+208|        <div class="term-extra">Contexte: http, server, location • Exemple: root /var/www/html;</div>
+209|      </article>
+210|
+211|      <article class="term-card" style="--step-color: var(--accent-2);">
+212|        <div class="term-name">index file ...;</div>
+213|        <p>Fichier servi automatiquement quand l'URI pointe sur un répertoire. Le serveur vérifie l'index <strong>avant</strong> d'envisager <code>autoindex</code>. Si l'index est absent et <code>autoindex off</code> : <code>403 Forbidden</code> (répertoire inaccessible). Si le chemin lui-même n'existe pas : <code>404 Not Found</code>.</p>
+214|        <div class="term-extra">Contexte: http, server, location • Exemple: index index.html;</div>
+215|      </article>
+216|
+217|      <article class="term-card" style="--step-color: var(--accent-2);">
+218|        <div class="term-name">autoindex on | off;</div>
+219|        <p>Active le listing du contenu d'un répertoire quand aucun fichier <code>index</code> n'est trouvé. Génère une réponse HTML avec les entrées du dossier. Implémenté avec <code>opendir</code> / <code>readdir</code>.</p>
+220|        <div class="term-extra">Contexte: http, server, location • Exemple: /files = on, toutes les autres locations = off</div>
+221|      </article>
+222|
+223|      <article class="term-card" style="--step-color: var(--accent-2);">
+224|        <div class="term-name">return code [URL|URI];</div>
+225|        <p>Renvoie <strong>immédiatement</strong> un statut HTTP sans résoudre de fichier. Court-circuite tout le reste du pipeline (root, index, CGI, upload). Utilisé pour les redirections permanentes (<code>301</code>) ou temporaires (<code>302</code>).</p>
+226|        <div class="term-extra">Contexte: server, location • Exemple: return 301 /new-page;</div>
+227|      </article>
+228|    </div>
+229|
+230|    <div class="analogy-panel">
+231|      <div class="analogy-icon">📚</div>
+232|      <div class="analogy-text">
+233|        <div class="analogy-label">Analogie — le répertoire téléphonique</div>
+234|        <p>
+235|          Le fichier de config, c'est un <strong>répertoire téléphonique structuré</strong>.
+236|          Chaque bloc <code>server</code> est une entreprise (son numéro = le port).
+237|          Les blocs <code>location</code> sont les <strong>services internes</strong> de cette entreprise
+238|          ("/accueil", "/comptabilité", "/archives").
+239|          <br><br>
+240|          Quand un appel arrive, on regarde d'abord au bon numéro de téléphone (port),
+241|          puis on lit l'annuaire interne pour trouver le service le plus précis.
+242|          <code>return</code> = "le standard te redirige directement, tu n'attends pas".
+243|        </p>
+244|      </div>
+245|    </div>
+246|
+247|    <div class="key-points">
+248|      <div class="key-point"><span class="key-point-icon">🔑</span><span><code>client_max_body_size</code> : le check se fait sur <code>Content-Length</code> <strong>avant</strong> de lire le body. Ne pas attendre la fin de la lecture pour rejeter.</span></div>
+249|      <div class="key-point"><span class="key-point-icon">📐</span><span>Résolution de chemin : <code>root + (URI − préfixe_location)</code>. C'est le Cas 2 du sujet — toujours retirer le préfixe de la location avant de concaténer avec root.</span></div>
+250|      <div class="key-point"><span class="key-point-icon">⚡</span><span><code>return</code> court-circuite tout. Aucune résolution de fichier, aucun CGI, aucun upload. La réponse est envoyée dès que la directive est trouvée.</span></div>
+251|    </div>
+252|
+253|    <div class="quote-box" style="--step-color: var(--accent-2);">
+254|      <p>« Sets configuration depending on a request URI. » et « Sets the root directory for requests. »</p>
+255|      <cite>— ngx_http_core_module: location, root</cite>
+256|    </div>
+257|  </section>
+258|
+259|  <div class="step-divider"></div>
+260|
+261|  <!-- ══════════════════════════════ -->
+262|  <!-- 03 — MATCHING / ROUTAGE       -->
+263|  <!-- ══════════════════════════════ -->
+264|  <section class="step-section" id="routing" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+265|    <div class="step-header">
+266|      <div class="step-number-badge">03</div>
+267|      <div>
+268|        <div class="step-fn">matching</div>
+269|        <div class="step-subtitle">Comment une requête choisit son bloc — et quel fichier elle lit</div>
+270|      </div>
+271|    </div>
+272|
+273|    <div class="analogy-panel">
+274|      <div class="analogy-icon">📬</div>
+275|      <div class="analogy-text">
+276|        <div class="analogy-label">Analogie — le centre de tri postal</div>
+277|        <p>
+278|          Imagine un centre de tri qui reçoit des colis.
+279|          Le <strong>code postal</strong> (port) détermine d'abord à quelle agence le colis est affecté (bloc <code>server</code>).
+280|          <br><br>
+281|          Dans l'agence, le <strong>début de l'adresse</strong> (préfixe d'URI) détermine le service :
+282|          un colis pour "/api/..." va au guichet "/api", pas au guichet généraliste "/".
+283|          On choisit toujours le guichet dont l'adresse est la <strong>plus précise</strong> (plus long préfixe).
+284|          <br><br>
+285|          Ensuite, l'adresse physique finale est calculée : <code>root</code> + le reste de l'adresse sans le préfixe
+286|          → c'est là où le fichier est lu sur le disque.
+287|        </p>
+288|      </div>
+289|    </div>
+290|
+291|    <div class="two-col">
+292|      <div class="panel" style="--step-color: var(--accent-4);">
+293|        <div class="panel-label">Les 3 étapes du routage</div>
+294|        <p>
+295|          <strong>1. Sélection du serveur</strong> : le port d'arrivée de la connexion détermine quel bloc <code>server</code> répond.
+296|          Si plusieurs serveurs partagent le même port, on compare le header <code>Host</code> avec <code>server_name</code>.
+297|        </p>
+298|        <p>
+299|          <strong>2. Sélection de la location</strong> : on compare l'URI à tous les préfixes déclarés.
+300|          La location dont le préfixe est le plus long et qui matche l'URI est retenue.
+301|        </p>
+302|        <p>
+303|          <strong>3. Résolution du chemin</strong> : <code>root + (URI − préfixe_location)</code>.
+304|          Le préfixe est retiré de l'URI avant de concaténer avec <code>root</code>.
+305|        </p>
+306|      </div>
+307|      <div class="panel" style="--step-color: var(--accent-4);">
+308|        <div class="panel-label">Exemples de résolution complète</div>
+309|        <p>
+310|          <code>GET /api/users.json</code><br>
+311|          → location choisie : <code>/api</code> (plus long que <code>/</code>)<br>
+312|          → <code>root /var/www/api</code> + <code>/users.json</code><br>
+313|          → fichier : <code>/var/www/api/users.json</code>
+314|        </p>
+315|        <p>
+316|          <code>GET /files/doc.pdf</code><br>
+317|          → location choisie : <code>/files</code><br>
+318|          → <code>root /var/www/shared</code> + <code>/doc.pdf</code><br>
+319|          → fichier : <code>/var/www/shared/doc.pdf</code> — puis <code>autoindex on</code> si dossier
+320|        </p>
+321|        <p>
+322|          <code>GET /old-page</code><br>
+323|          → location choisie : <code>/old-page</code><br>
+324|          → <code>return 301 /new-page</code> → réponse immédiate, pas de fichier
+325|        </p>
+326|      </div>
+327|    </div>
+328|
+329|    <div class="code-panel" style="--step-color: var(--accent-4);">
+330|      <div class="code-header">
+331|        <div class="code-header-left">
+332|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+333|          <span class="code-filename">routing-trace.txt</span>
+334|        </div>
+335|        <span class="code-tag">Trace complète de chaque requête</span>
+336|      </div>
+337|      <pre>GET /api/users HTTP/1.1
+338|  → port 8080 → server A
+339|  → plus long préfixe : <span class="dir">location</span> /api
+340|  → <span class="dir">root</span> /var/www/api + /users → <span class="num">/var/www/api/users</span>
+341|
+342|GET /files/ HTTP/1.1
+343|  → port 8080 → server A
+344|  → plus long préfixe : <span class="dir">location</span> /files
+345|  → <span class="dir">root</span> /var/www/shared + / → tente index → <span class="dir">autoindex</span> on → listing
+346|
+347|GET /old-page HTTP/1.1
+348|  → port 8080 → server A
+349|  → plus long préfixe : <span class="dir">location</span> /old-page
+350|  → <span class="dir">return</span> <span class="num">301</span> /new-page → réponse immédiate
+351|
+352|POST /upload HTTP/1.1  (body: 15 Mo)
+353|  → port 8080 → server A
+354|  → Content-Length 15m > client_max_body_size <span class="num">10m</span> → <span class="num">413</span> immédiat
+355|
+356|POST /cgi-bin/script.py HTTP/1.1
+357|  → port 8080 → server A
+358|  → plus long préfixe : <span class="dir">location</span> /cgi-bin
+359|  → extension .py → cgi_pass /usr/bin/python3 → fork + execve</pre>
+360|    </div>
+361|
+362|    <div class="key-points">
+363|      <div class="key-point"><span class="key-point-icon">📏</span><span>Le matching est <strong>toujours</strong> par plus long préfixe. <code>/api/v2/users</code> matche <code>/api/v2</code> si elle existe, sinon <code>/api</code>, jamais les deux.</span></div>
+364|      <div class="key-point"><span class="key-point-icon">➖</span><span>Formule path = <code>root + (URI − préfixe)</code>. Webserv retire le préfixe de la location avant de coller à root — c'est l'exemple exact du sujet (<code>/kapouet/pouic/toto</code> → <code>/tmp/www/pouic/toto</code>).</span></div>
+365|      <div class="key-point"><span class="key-point-icon">🚦</span><span>Ordre de priorité dans la location : <code>return</code> en premier → puis path resolution → puis CGI si extension matche → sinon fichier statique.</span></div>
+366|    </div>
+367|  </section>
+368|
+369|  <div class="step-divider"></div>
+370|
+371|  <!-- ══════════════════════════════ -->
+372|  <!-- 04 — EFFETS RUNTIME           -->
+373|  <!-- ══════════════════════════════ -->
+374|  <section class="step-section" id="behavior" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+375|    <div class="step-header">
+376|      <div class="step-number-badge">04</div>
+377|      <div>
+378|        <div class="step-fn">effets runtime</div>
+379|        <div class="step-subtitle">Ce que chaque directive change dans la réponse HTTP</div>
+380|      </div>
+381|    </div>
+382|
+383|    <div class="terms-grid">
+384|      <article class="term-card" style="--step-color: var(--accent-5);">
+385|        <div class="term-name">error_page 404 /errors/404.html</div>
+386|        <p>Quand le serveur ne trouve pas la ressource demandée, il tente de servir cette page d'erreur dédiée. Si elle-même est absente : réponse <code>404</code> avec un body HTML minimal inline.</p>
+387|      </article>
+388|
+389|      <article class="term-card" style="--step-color: var(--accent-5);">
+390|        <div class="term-name">client_max_body_size 10m</div>
+391|        <p>Sur le serveur 8080, tout body déclaré ≥ 10 Mo est rejeté en <code>413</code> dès la lecture du header <code>Content-Length</code>, sans toucher au body. Sur 8081 : limite de 1 Mo.</p>
+392|      </article>
+393|
+394|      <article class="term-card" style="--step-color: var(--accent-5);">
+395|        <div class="term-name">root + URI (path resolution)</div>
+396|        <p>
+397|          <code>location /api</code> + <code>root /var/www/api</code> + URI <code>/api/data.json</code><br>
+398|          → retire le préfixe <code>/api</code><br>
+399|          → ajoute le suffixe <code>/data.json</code> à root<br>
+400|          → lit <code>/var/www/api/data.json</code> sur le disque.
+401|        </p>
+402|      </article>
+403|
+404|      <article class="term-card" style="--step-color: var(--accent-5);">
+405|        <div class="term-name">index index.html</div>
+406|        <p>Requête sur <code>GET /</code> → URI est un répertoire → le serveur tente <code>/var/www/html/index.html</code>. Si absent et <code>autoindex off</code> : <code>403</code> (répertoire existe mais inaccessible). Si le répertoire lui-même n'existe pas : <code>404</code>.</p>
+407|      </article>
+408|
+409|      <article class="term-card" style="--step-color: var(--accent-5);">
+410|        <div class="term-name">autoindex on (location /files)</div>
+411|        <p>Requête sur <code>GET /files/</code> → si aucun index trouvé → le serveur génère une page HTML listant le contenu du dossier via <code>opendir</code> + <code>readdir</code>. Réponse <code>200</code> avec ce listing.</p>
+412|      </article>
+413|
+414|      <article class="term-card" style="--step-color: var(--accent-5);">
+415|        <div class="term-name">return 301 /new-page</div>
+416|        <p>Requête sur <code>GET /old-page</code> → réponse immédiate : <code>301 Moved Permanently</code> avec header <code>Location: /new-page</code>. Zéro accès disque, aucun CGI, aucun traitement body.</p>
+417|      </article>
+418|    </div>
+419|
+420|    <div class="key-points">
+421|      <div class="key-point"><span class="key-point-icon">🗂️</span><span>Ordre de résolution : chemin absent → <code>404</code>. Chemin est un fichier → <code>200</code>. Chemin est un répertoire : index présent → <code>200</code> ; index absent + <code>autoindex on</code> → listing <code>200</code> ; index absent + <code>autoindex off</code> → <code>403</code>. Le <code>403</code> ne s'applique qu'aux répertoires qui <em>existent</em> — jamais à un chemin manquant.</span></div>
+422|      <div class="key-point"><span class="key-point-icon">🔁</span><span>La page <code>error_page</code> doit être résolvable par tes propres règles <code>root/location</code>. Une page d'erreur introuvable → fallback body inline obligatoire (jamais de réponse vide).</span></div>
+423|      <div class="key-point"><span class="key-point-icon">🧮</span><span>Toutes ces décisions — 413, 301, listing, index, 403 — sont prises à runtime sur chaque requête, à partir des structures C++ chargées une fois au démarrage.</span></div>
+424|    </div>
+425|  </section>
+426|
+427|  <div class="step-divider"></div>
+428|
+429|  <!-- ══════════════════════════════ -->
+430|  <!-- 05 — DIRECTIVES CUSTOM WEBSERV-->
+431|  <!-- ══════════════════════════════ -->
+432|  <section class="step-section" id="custom" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+433|    <div class="step-header">
+434|      <div class="step-number-badge">05</div>
+435|      <div>
+436|        <div class="step-fn">webserv-only</div>
+437|        <div class="step-subtitle">Les directives propres à ton projet</div>
+438|      </div>
+439|    </div>
+440|
+441|    <div class="panel" style="--step-color: var(--accent-1);">
+442|      <div class="panel-label">Directives non standard NGINX</div>
+443|      <p>
+444|        <code>allowed_methods</code>, <code>upload_store</code> et <code>cgi_pass</code> ne sont pas dans le module core officiel NGINX.
+445|        Elles sont conçues pour répondre explicitement aux exigences du sujet webserv.
+446|      </p>
+447|    </div>
+448|
+449|    <div class="two-col">
+450|      <div class="panel" style="--step-color: var(--accent-1);">
+451|        <div class="panel-label">allowed_methods GET POST DELETE</div>
+452|        <p>
+453|          Liste les méthodes HTTP autorisées pour cette location.
+454|          Si la méthode de la requête n'est pas dans la liste :
+455|          réponse <code>405 Method Not Allowed</code> avec le header <code>Allow: GET POST DELETE</code>
+456|          listant les méthodes acceptées.
+457|        </p>
+458|        <p>
+459|          La vérification se fait <strong>tôt</strong> dans le pipeline, avant la résolution de chemin ou le CGI.
+460|        </p>
+461|      </div>
+462|      <div class="panel" style="--step-color: var(--accent-1);">
+463|        <div class="panel-label">upload_store /tmp/uploads</div>
+464|        <p>
+465|          Dossier de destination pour les fichiers uploadés via <code>multipart/form-data</code>.
+466|          Le serveur décode le body (boundary splitting), extrait le fichier, et écrit le contenu binaire
+467|          dans ce dossier.
+468|        </p>
+469|        <p>
+470|          Le dossier <strong>doit exister</strong> et être writable. À vérifier à la validation de la config,
+471|          pas à runtime. Nettoyer le nom de fichier : path traversal (<code>..</code>), caractères interdits,
+472|          collisions.
+473|        </p>
+474|      </div>
+475|    </div>
+476|
+477|    <div class="panel" style="--step-color: var(--accent-1);">
+478|      <div class="panel-label">cgi_pass .py /usr/bin/python3  +  .php /usr/bin/php-cgi</div>
+479|      <p>
+480|        Associe une extension de fichier à un interpréteur CGI. Quand l'URI correspond à un fichier
+481|        avec cette extension, le serveur l'exécute via <code>fork</code> + <code>execve</code>.
+482|      </p>
+483|      <p>
+484|        Le processus enfant reçoit les variables CGI en environnement (<code>REQUEST_METHOD</code>,
+485|        <code>QUERY_STRING</code>, <code>CONTENT_TYPE</code>, <code>CONTENT_LENGTH</code>, etc.),
+486|        le body via <code>stdin</code>, et retourne sa réponse sur <code>stdout</code>.
+487|        Le serveur fait <code>chdir</code> dans le répertoire du script avant <code>execve</code>
+488|        pour que les chemins relatifs fonctionnent.
+489|      </p>
+490|      <p>
+491|        <strong>Règle du sujet :</strong> <code>fork</code> est réservé <strong>exclusivement</strong> aux CGI.
+492|        Le process enfant doit être attendu avec <code>waitpid</code>.
+493|        Si le CGI ne retourne pas de <code>Content-Length</code>, <code>EOF</code> sur stdout marque la fin.
+494|      </p>
+495|    </div>
+496|
+497|    <div class="warning">
+498|      <span>⚠️</span>
+499|      <div><strong>fork est une règle dure :</strong> utiliser <code>fork</code> en dehors du CGI = note 0 immédiate selon le sujet. La seule exception autorisée est l'exécution d'un script CGI via <code>fork</code> + <code>execve</code>.</div>
+500|    </div>
+501|
+502|    <div class="key-points">
+503|      <div class="key-point"><span class="key-point-icon">🔱</span><span><code>fork</code> réservé au CGI uniquement. Le processus enfant hérite des pipes (stdin/stdout), des variables d'environnement CGI, et doit être <code>waitpid</code>-é.</span></div>
+504|      <div class="key-point"><span class="key-point-icon">🔒</span><span><code>upload_store</code> : valider l'existence et les droits du dossier au démarrage. Sanitizer le nom de fichier (retirer <code>..</code>, espaces, caractères interdits) avant l'écriture.</span></div>
+505|      <div class="key-point"><span class="key-point-icon">🚫</span><span><code>allowed_methods</code> → <code>405</code> + header <code>Allow:</code> obligatoire. La vérification se fait avant la résolution de chemin — ne pas chercher le fichier si la méthode est interdite.</span></div>
+506|    </div>
+507|  </section>
+508|
+509|  <div class="step-divider"></div>
+510|
+511|  <!-- ══════════════════════════════ -->
+512|  <!-- 06 — CHECKLIST                -->
+513|  <!-- ══════════════════════════════ -->
+514|  <section class="step-section" id="checklist" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+515|    <div class="step-header">
+516|      <div class="step-number-badge">06</div>
+517|      <div>
+518|        <div class="step-fn">checklist d'implémentation</div>
+519|        <div class="step-subtitle">Ce que ton code doit prouver pour chaque terme</div>
+520|      </div>
+521|    </div>
+522|
+523|    <div class="key-points">
+524|      <div class="key-point"><span class="key-point-icon">🏗️</span><span>Chaque <code>server { }</code> correspond à une structure <code>Server</code> en mémoire. Chaque <code>location { }</code> à une <code>Location</code>. Chargées au démarrage, immutables ensuite.</span></div>
+525|      <div class="key-point"><span class="key-point-icon">🔌</span><span>Chaque port distinct dans les blocs <code>listen</code> = un socket serveur ouvert. Tous ces sockets sont enregistrés dans <code>poll()</code> / <code>epoll</code> dès le démarrage.</span></div>
+526|      <div class="key-point"><span class="key-point-icon">📏</span><span>Le matching location est déterministe : itérer tous les préfixes, retenir le plus long qui matche l'URI. Implémenter un test avec plusieurs locations chevauchantes.</span></div>
+527|      <div class="key-point"><span class="key-point-icon">📁</span><span>La résolution de chemin suit <code>root + (URI − préfixe_location)</code>. Vérifier avec l'exemple du sujet : <code>/kapouet/pouic/toto</code> + <code>root /tmp/www</code> → <code>/tmp/www/pouic/toto</code>.</span></div>
+528|      <div class="key-point"><span class="key-point-icon">📊</span><span>Les codes de statut doivent être précis : <code>200</code>, <code>301</code>, <code>403</code>, <code>404</code>, <code>405</code>, <code>413</code>, <code>500</code>. Tester chaque cas avec <code>curl</code> ou le navigateur.</span></div>
+529|      <div class="key-point"><span class="key-point-icon">🧪</span><span>Fournir un fichier de config de test qui couvre tous les cas : statique, redirection, 404 custom, 413, autoindex, upload, CGI. Le sujet demande explicitement ces fichiers pour la soutenance.</span></div>
+530|    </div>
+531|
+532|    <div class="quote-box" style="--step-color: var(--accent-6);">
+533|      <p>Référence principale : ngx_http_core_module — server, listen, server_name, location, root, index, autoindex, error_page, client_max_body_size, return.</p>
+534|      <cite>— https://nginx.org/en/docs/http/ngx_http_core_module.html</cite>
+535|    </div>
+536|  </section>
+537|
+538|</div>
+539|
+540|<footer class="footer">
+541|  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+542|  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — Glossaire configuration</p>
+543|</footer>
+544|
+545|<script>
+546|  document.body.style.opacity = '0';
+547|  document.body.style.transition = 'opacity 0.14s ease';
+548|
+549|  window.addEventListener('DOMContentLoaded', function() {
+550|    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+551|  });
+552|
+553|  function navigateTo(href) {
+554|    document.body.style.opacity = '0';
+555|    setTimeout(function() { window.location.href = href; }, 140);
+556|  }
+557|
+558|  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+559|    a.addEventListener('click', function(e) {
+560|      e.preventDefault();
+561|      navigateTo(a.href);
+562|    });
+563|  });
+564|
+565|  function scrollToId(id) {
+566|    if (id === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+567|    var el = document.getElementById(id);
+568|    if (!el) return;
+569|    var nav = document.querySelector('.progress-bar');
+570|    var navH = nav ? nav.offsetHeight : 0;
+571|    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+572|    window.scrollTo({ top: top, behavior: 'smooth' });
+573|  }
+574|
+575|  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+576|    el.addEventListener('click', function(e) {
+577|      var href = this.getAttribute('href');
+578|      if (!href || href.length < 2) return;
+579|      e.preventDefault();
+580|      scrollToId(href.slice(1));
+581|    });
+582|  });
+583|
+584|  var sections = document.querySelectorAll('.step-section');
+585|  var navPills = document.querySelectorAll('.step-pill');
+586|
+587|  var observer = new IntersectionObserver(function(entries) {
+588|    entries.forEach(function(entry) {
+589|      if (entry.isIntersecting) {
+590|        entry.target.classList.add('visible');
+591|        var id = entry.target.id;
+592|        navPills.forEach(function(pill) {
+593|          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+594|        });
+595|      }
+596|    });
+597|  }, { threshold: 0.2 });
+598|
+599|  sections.forEach(function(s) { observer.observe(s); });
+600|</script>
+601|</body>
+602|</html>
+603|

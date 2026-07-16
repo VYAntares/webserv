@@ -7,7 +7,7 @@ MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req,
     _ncode = 200;
     std::string body;
 
-    std::map<std::string, UploadedFile>::const_iterator i;
+    std::multimap<std::string, UploadedFile>::const_iterator i;
     for (i = _req->mp.uploadedFiles.begin(); i != _req->mp.uploadedFiles.end(); i++) {
         // ne garder que le nom de fichier : un filename client contenant
         // "../../x" permettait d'écrire hors du dossier d'upload

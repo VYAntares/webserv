@@ -1,21 +1,55 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
 	<meta charset="utf-8">
-	<title>webserv - demo</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>webserv</title>
+	<link rel="stylesheet" href="/default/assets/style.css">
 </head>
 <body>
-	<h1>webserv works!</h1>
-	<p><a href="/default/"><strong>➜ Suite de tests complète (/default/)</strong></a></p>
-	<ul>
-		<li><a href="/files/">/files/ (autoindex)</a></li>
-		<li><a href="/cgi-bin/hello.py">/cgi-bin/hello.py (CGI)</a></li>
-		<li><a href="/old-page">/old-page (redirection 301)</a></li>
-	</ul>
-	<h2>Upload (multipart)</h2>
-	<form action="/upload" method="post" enctype="multipart/form-data">
-		<input type="file" name="file">
-		<input type="submit" value="Upload">
-	</form>
+<main>
+	<h1>webserv</h1>
+	<p class="desc">
+		Serveur HTTP en C++98, non-bloquant, un seul <code>epoll()</code> pour toutes les I/O.
+		Racine servie : <code>www</code>, port <code>8080</code>.
+	</p>
+
+	<div class="note info">
+		Pour la démonstration complète (tests automatisés couvrant tout le sujet), aller sur
+		<a href="/default/"><strong>/default/</strong></a> — lancer le serveur avec
+		<code>./webserv conf/demo.conf</code> pour débloquer tous les scénarios (413, 403, redirection,
+		second port, etc.).
+	</div>
+
+	<h2>Racine du site (<code>default.conf</code>)</h2>
+	<div class="grid2">
+		<div class="card">
+			<h3><a href="/default/">Suite de tests</a></h3>
+			<p class="desc">Pages de démonstration interactives : GET/HEAD, POST, upload, DELETE, CGI, erreurs, stress.</p>
+		</div>
+		<div class="card">
+			<h3><a href="/files/">/files/</a></h3>
+			<p class="desc">Autoindex : listing de répertoire généré par le serveur.</p>
+		</div>
+		<div class="card">
+			<h3><a href="/cgi-bin/hello.py">/cgi-bin/hello.py</a></h3>
+			<p class="desc">Script CGI exécuté par le serveur (Python).</p>
+		</div>
+		<div class="card">
+			<h3><a href="/old-page">/old-page</a></h3>
+			<p class="desc">Redirection 301 configurée côté serveur.</p>
+		</div>
+	</div>
+
+	<h2>Upload rapide (multipart)</h2>
+	<div class="card">
+		<form action="/upload" method="post" enctype="multipart/form-data">
+			<input type="file" name="file">
+			<button type="submit" class="btn primary">Envoyer</button>
+		</form>
+	</div>
+</main>
 </body>
 </html>
+</content>
+</invoke>

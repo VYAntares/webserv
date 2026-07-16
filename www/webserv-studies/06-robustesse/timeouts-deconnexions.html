@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robustesse — Timeouts & déconnexions dans notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#pourquoi" class="step-pill active" id="nav-pourquoi"><span class="step-dot"></span>Pourquoi</a>
+    <div class="step-connector"></div>
+    <a href="#lastactivity" class="step-pill" id="nav-lastactivity"><span class="step-dot"></span>lastActivity</a>
+    <div class="step-connector"></div>
+    <a href="#checktimeout" class="step-pill" id="nav-checktimeout"><span class="step-dot"></span>checkTimeOut</a>
+    <div class="step-connector"></div>
+    <a href="#deconnexions" class="step-pill" id="nav-deconnexions"><span class="step-dot"></span>D&eacute;connexions</a>
+    <div class="step-connector"></div>
+    <a href="#fdlifecycle" class="step-pill" id="nav-fdlifecycle"><span class="step-dot"></span>Vie des fd</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Robustesse &mdash; Le temps, dans notre code</div>
+  <h1><em>Timeouts</em> &amp; d&eacute;connexions<br>&mdash; <em>checkTimeOut()</em> et la vie des fd</h1>
+  <p class="header-desc">
+    Un client qui n'envoie jamais la fin de sa requ&ecirc;te, un script CGI qui boucle, un navigateur
+    ferm&eacute; brutalement : sans strat&eacute;gie temporelle, chacun laisserait un fd zombie dans epoll.
+    Notre r&eacute;ponse : un horodatage <code>_lastActivity</code> par handler, une chasse
+    p&eacute;riodique dans <code>EventLoop::checkTimeOut()</code>, et une seule convention de
+    destruction pour tout le monde.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : POURQUOI                   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="pourquoi" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Le probl&egrave;me</div>
+        <div class="step-subtitle">Trois fant&ocirc;mes qui s'accumulent sans timeout</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; A request to your server should never hang indefinitely. &raquo;</p>
+      <cite>&mdash; webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-top: 1.5rem;">
+      <div class="panel-label">Sans timeout, qui reste coinc&eacute; ?</div>
+      <table class="compare-table">
+        <tr class="bad"><td>Le client &laquo; slowloris &raquo;</td><td>ouvre une connexion, envoie <code>GET /index.ht</code>&hellip; puis plus rien. Le parser attend son <code>\r\n\r\n</code> pour toujours, le fd reste dans epoll.</td></tr>
+        <tr class="bad"><td>Le CGI muet</td><td><code>slow.py</code> dort 60 secondes : sans timeout, le client attend ind&eacute;finiment sa r&eacute;ponse et le processus enfant vit sa vie.</td></tr>
+        <tr class="bad"><td>Le keep-alive dormant</td><td>un navigateur garde la connexion ouverte apr&egrave;s sa derni&egrave;re requ&ecirc;te, puis part d&eacute;jeuner. Des centaines de fd occup&eacute;s pour rien.</td></tr>
+      </table>
+      <p style="margin-top: 1rem;">
+        Multipli&eacute; par un stress test, chacun de ces cas &eacute;puise la limite de fd du processus
+        &mdash; et un serveur sans fd disponible ne peut plus <code>accept()</code> personne.
+      </p>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : GETLASTACTIVITY            -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="lastactivity" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">getLastActivity()</div>
+        <div class="step-subtitle">Un horodatage par handler, expos&eacute; par l'interface</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le contrat dans IEventHandler</div>
+      <p>
+        L'interface <code>IEventHandler</code> d&eacute;clare
+        <code>virtual time_t getLastActivity() const { return 0; }</code>.
+        La convention : <strong>retourner 0 = immortel</strong>. <code>ServerHandler</code>
+        n'override pas cette m&eacute;thode &mdash; un socket d'&eacute;coute ne doit jamais &ecirc;tre timeout&eacute;.
+        <code>ClientHandler</code> et <code>CGIReadHandler</code>, eux, horodatent chaque I/O.
+      </p>
+    </div>
+
+    <div class="two-col">
+      <div class="code-panel" style="--step-color: var(--accent-2)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">ClientHandler.cpp</span>
+          </div>
+        </div>
+        <pre><span class="type">int</span> <span class="type">ClientHandler</span>::<span class="fn-name">handle_input</span>() {
+<span class="highlight-line">    <span class="var">_lastActivity</span> = <span class="fn-name">time</span>(<span class="macro">NULL</span>);</span>
+    <span class="cmt">// ... recv + parsing ...</span>
+}
+
+<span class="type">int</span> <span class="type">ClientHandler</span>::<span class="fn-name">handle_output</span>() {
+<span class="highlight-line">    <span class="var">_lastActivity</span> = <span class="fn-name">time</span>(<span class="macro">NULL</span>);</span>
+    <span class="cmt">// ... send ...</span>
+}</pre>
+      </div>
+      <div class="code-panel" style="--step-color: var(--accent-5)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">CGIReadHandler.hpp</span>
+          </div>
+        </div>
+        <pre><span class="cmt">// le CGI participe au timeout de la</span>
+<span class="cmt">// boucle : un script qui ne répond</span>
+<span class="cmt">// jamais est tué au bout de</span>
+<span class="cmt">// CLIENT_TIMEOUT au lieu de pendre à vie</span>
+<span class="type">time_t</span> <span class="fn-name">getLastActivity</span>() <span class="kw">const</span> {
+    <span class="kw">return</span> <span class="var">_lastActivity</span>;
+}</pre>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Un seul m&eacute;canisme pour tous.</strong> Pas de timer par connexion, pas de
+        <code>timerfd</code>, pas de file de priorit&eacute; : juste un <code>time_t</code> mis &agrave; jour
+        &agrave; chaque I/O r&eacute;ussie. La pr&eacute;cision (&plusmn;500&nbsp;ms, le timeout d'epoll_wait) est
+        largement suffisante pour un timeout de 30 secondes &mdash; et le co&ucirc;t est nul.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : CHECKTIMEOUT               -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="checktimeout" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">checkTimeOut()</div>
+        <div class="step-subtitle">La chasse aux inactifs, apr&egrave;s chaque epoll_wait</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/core/EventLoop.cpp &mdash; checkTimeOut()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">static const</span> <span class="type">int</span> <span class="macro">CLIENT_TIMEOUT</span> = <span class="num">30</span>; <span class="cmt">// secondes</span>
+
+<span class="cmt">// Collecte les handlers inactifs depuis plus de CLIENT_TIMEOUT secondes et</span>
+<span class="cmt">// les ferme, pour ne pas garder indéfiniment un fd enregistré si le client</span>
+<span class="cmt">// ne renvoie plus jamais rien.</span>
+<span class="type">void</span> <span class="type">EventLoop</span>::<span class="fn-name">checkTimeOut</span>() {
+    <span class="type">time_t</span> <span class="var">now</span> = <span class="fn-name">time</span>(<span class="macro">NULL</span>);
+
+    <span class="cmt">// On collecte d'abord dans un vecteur separé car remove_handler() appelle</span>
+    <span class="cmt">// _table.erase(), ce qui invaliderait les index si on supprimait en plein scan.</span>
+    <span class="type">std::vector</span>&lt;<span class="type">IEventHandler</span>*&gt; <span class="var">timedOut</span>;
+    <span class="kw">for</span> (<span class="type">std::map</span>&lt;<span class="type">IEventHandler</span>*, <span class="type">HandlerEntry</span>*&gt;::<span class="type">iterator</span> <span class="var">it</span> = <span class="var">_table</span>.<span class="fn-name">begin</span>();
+            <span class="var">it</span> != <span class="var">_table</span>.<span class="fn-name">end</span>(); ++<span class="var">it</span>) {
+        <span class="type">time_t</span> <span class="var">last</span> = <span class="var">it</span>-&gt;<span class="var">first</span>-&gt;<span class="fn-name">getLastActivity</span>();
+<span class="highlight-line">        <span class="kw">if</span> (<span class="var">last</span> != <span class="num">0</span> &amp;&amp; (<span class="var">now</span> - <span class="var">last</span>) &gt; <span class="macro">CLIENT_TIMEOUT</span>)   <span class="cmt">// 0 = immortel (ServerHandler)</span></span>
+            <span class="var">timedOut</span>.<span class="fn-name">push_back</span>(<span class="var">it</span>-&gt;<span class="var">first</span>);
+    }
+
+    <span class="kw">for</span> (<span class="type">size_t</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">timedOut</span>.<span class="fn-name">size</span>(); <span class="var">i</span>++) {
+        <span class="cmt">// avant de supprimer le client, il faut verifier si il nya pas un cgi en cours (erreur 504)</span>
+<span class="highlight-new">        <span class="kw">if</span> (<span class="var">timedOut</span>[<span class="var">i</span>]-&gt;<span class="fn-name">handle_timeout</span>())</span>
+<span class="highlight-new">            <span class="kw">continue</span>;   <span class="cmt">// sursis : le client va livrer son 504 avant de mourir</span></span>
+        <span class="cmt">// ensuite on peut le supprimer.</span>
+        <span class="fn-name">remove_handler</span>(<span class="var">timedOut</span>[<span class="var">i</span>]);
+        <span class="kw">delete</span> <span class="var">timedOut</span>[<span class="var">i</span>];
+    }
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Pourquoi collecter puis d&eacute;truire ?</div>
+        <p>
+          Supprimer un &eacute;l&eacute;ment d'une <code>std::map</code> <strong>pendant</strong> qu'on l'it&egrave;re
+          invalide l'it&eacute;rateur courant. La passe en deux temps (collecte dans un vector,
+          puis destruction) &eacute;vite ce pi&egrave;ge classique de C++98 &mdash; le m&ecirc;me raisonnement
+          qui fait qu'on ne <code>delete</code> jamais un handler au milieu du for d'&eacute;v&eacute;nements
+          sans passer par <code>ret == -1</code>.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Hors du if (n &gt; 0) &mdash; volontairement</div>
+        <p>
+          <code>checkTimeOut()</code> est appel&eacute; &agrave; <strong>chaque</strong> tour de boucle, m&ecirc;me
+          quand <code>epoll_wait()</code> expire sans &eacute;v&eacute;nement (retour 0). C'est crucial :
+          les timeouts doivent tomber pr&eacute;cis&eacute;ment quand le serveur est <strong>inactif</strong>
+          &mdash; un client silencieux ne g&eacute;n&egrave;re, par d&eacute;finition, aucun &eacute;v&eacute;nement.
+          C'est le timeout de 500&nbsp;ms d'epoll_wait qui garantit ce battement de c&oelig;ur.
+        </p>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#9200;</span>
+      <div>
+        <strong>Le sursis 504.</strong> <code>handle_timeout()</code> retourne 1 seulement si un CGI
+        est en cours (<code>_cgiRead != NULL</code>) : le client pr&eacute;pare alors sa r&eacute;ponse
+        <strong>504 Gateway Timeout</strong>, passe en WRITE_EVENT avec <code>_keepAlive = false</code>,
+        et sera d&eacute;truit naturellement apr&egrave;s l'envoi. Les d&eacute;tails c&ocirc;t&eacute; CGI sont dans la fiche
+        <a href="../05-CGI/cgi-event-loop.html">CGI dans l'event loop</a>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : DÉCONNEXIONS               -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="deconnexions" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">recv() == 0, EPOLLHUP, send() &lt;= 0</div>
+        <div class="step-subtitle">Les trois visages d'une d&eacute;connexion</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
+      <div class="panel-label">Notre matrice de d&eacute;tection</div>
+      <table class="compare-table">
+        <tr><td>Client ferme proprement (FIN)</td><td>epoll signale EPOLLIN &rarr; <code>recv()</code> retourne <strong>0</strong> &rarr; <code>handle_input()</code> retourne -1 &rarr; destruction.</td></tr>
+        <tr><td>Client dispara&icirc;t brutalement (RST)</td><td>epoll signale EPOLLHUP/EPOLLERR &rarr; rout&eacute;s vers <code>handle_input()</code> (le <code>recv()</code> &eacute;choue &rarr; -1), ou fermeture forc&eacute;e si aucun EPOLLIN/EPOLLOUT n'accompagne l'erreur.</td></tr>
+        <tr><td>Client coupe pendant notre r&eacute;ponse</td><td><code>send(&hellip;, MSG_NOSIGNAL)</code> retourne &le; 0 (sans SIGPIPE) &rarr; <code>handle_output()</code> retourne -1 &rarr; destruction.</td></tr>
+        <tr><td>Client coupe pendant un CGI</td><td>masque epoll vide mais EPOLLHUP toujours signal&eacute; &rarr; destruction du client &rarr; <code>detachSink()</code> pr&eacute;vient le CGIReadHandler.</td></tr>
+      </table>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ClientHandler.cpp &mdash; les deux points de d&eacute;tection</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">int</span> <span class="type">ClientHandler</span>::<span class="fn-name">handle_input</span>() {
+    <span class="var">_lastActivity</span> = <span class="fn-name">time</span>(<span class="macro">NULL</span>);
+
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>), <span class="num">0</span>);
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>)</span>
+<span class="highlight-line">        <span class="kw">return</span> -<span class="num">1</span>;   <span class="cmt">// 0 = fermeture propre, &lt;0 = erreur : même traitement, zéro errno</span></span>
+    <span class="cmt">// ...</span>
+}
+
+<span class="type">int</span> <span class="type">ClientHandler</span>::<span class="fn-name">handle_output</span>() {
+    <span class="cmt">// ...</span>
+<span class="highlight-line">    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">send</span>(<span class="var">_fd</span>, <span class="var">data</span>, <span class="var">left</span>, <span class="macro">MSG_NOSIGNAL</span>);</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>)</span>
+<span class="highlight-line">        <span class="kw">return</span> -<span class="num">1</span>;   <span class="cmt">// client parti : on abandonne la réponse, destruction propre</span></span>
+    <span class="cmt">// ...</span>
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Jamais de errno, m&ecirc;me ici.</strong> On ne distingue pas &laquo; erreur r&eacute;seau &raquo;
+        de &laquo; buffer plein &raquo; en lisant errno (interdit par le sujet). La d&eacute;cision repose
+        uniquement sur la valeur de retour &mdash; et comme on n'appelle recv/send
+        <strong>qu'apr&egrave;s notification epoll</strong>, un retour &le; 0 signifie forc&eacute;ment
+        un vrai probl&egrave;me, pas un EAGAIN d&eacute;guis&eacute;.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : CYCLE DE VIE DES FD        -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="fdlifecycle" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">La vie des fd</div>
+        <div class="step-subtitle">Chaque fd a exactement un propri&eacute;taire qui le ferme</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">La r&egrave;gle : le destructeur ferme, personne d'autre</div>
+      <table class="compare-table">
+        <tr><td>Socket d'&eacute;coute</td><td><code>~ServerHandler()</code> &rarr; <code>close(_fd)</code></td></tr>
+        <tr><td>Socket client</td><td><code>~ClientHandler()</code> &rarr; <code>detachSink()</code> &eacute;ventuel + <code>delete _rh</code> + <code>close(_fd)</code></td></tr>
+        <tr><td>Pipe stdin CGI (&eacute;criture)</td><td><code>~CGIWriteHandler()</code> &rarr; <code>close(_fd)</code> &mdash; c'est l'EOF du script</td></tr>
+        <tr><td>Pipe stdout CGI (lecture)</td><td><code>~CGIReadHandler()</code> &rarr; <code>close(_fd)</code> + kill/waitpid si besoin + 504 si client jamais servi</td></tr>
+        <tr><td>fd epoll</td><td><code>~EventLoop()</code> &rarr; delete de tous les handlers restants, puis <code>close(_epfd)</code></td></tr>
+      </table>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/core/EventLoop.cpp &mdash; le destructeur, dernier filet</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">EventLoop</span>::~<span class="fn-name">EventLoop</span>() {
+    <span class="kw">for</span> (<span class="type">std::map</span>&lt;<span class="type">IEventHandler</span>*, <span class="type">HandlerEntry</span>*&gt;::<span class="type">iterator</span> <span class="var">it</span> = <span class="var">_table</span>.<span class="fn-name">begin</span>();
+            <span class="var">it</span> != <span class="var">_table</span>.<span class="fn-name">end</span>(); ++<span class="var">it</span>) {
+<span class="highlight-line">        <span class="kw">delete</span> <span class="var">it</span>-&gt;<span class="var">first</span>;    <span class="cmt">// chaque destructeur ferme son fd, tue son CGI...</span></span>
+        <span class="kw">delete</span> <span class="var">it</span>-&gt;<span class="var">second</span>;   <span class="cmt">// ...et on libère l'entrée de la table</span>
+    }
+    <span class="fn-name">close</span>(<span class="var">_epfd</span>);
+    <span class="var">_instance</span> = <span class="macro">NULL</span>;
+    <span class="type">std::cout</span> &lt;&lt; <span class="str">"\nServer closing..."</span> &lt;&lt; <span class="type">std::endl</span>;
+    <span class="type">std::cout</span> &lt;&lt; <span class="str">"cya babyyyy"</span> &lt;&lt; <span class="type">std::endl</span>;
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pourquoi &ccedil;a suffit contre les leaks.</strong> Tout objet vivant est dans
+        <code>_table</code> (il s'y enregistre &agrave; sa cr&eacute;ation), et il n'en sort que par
+        <code>remove_handler + delete</code>. Au Ctrl-C, le destructeur balaie ce qui reste.
+        V&eacute;rifiable avec <code>valgrind --track-fds=yes ./webserv</code> : z&eacute;ro fd ouvert,
+        z&eacute;ro fuite m&eacute;moire &agrave; la sortie &mdash; m&ecirc;me avec des clients et des CGI en vol
+        au moment de l'arr&ecirc;t.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; rien ne <em>pend</em>, rien ne <em>fuit</em></div>
+    <div class="summary-subtitle">30 secondes d'inactivit&eacute; max, une seule convention de destruction</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#8986;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Un time_t par handler</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">_lastActivity mis &agrave; jour &agrave; chaque I/O ; getLastActivity() == 0 = immortel (socket d'&eacute;coute). Le CGI joue avec les m&ecirc;mes r&egrave;gles que les clients.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128269;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">checkTimeOut &agrave; chaque tour</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Gr&acirc;ce au timeout 500ms d'epoll_wait, la chasse tourne m&ecirc;me sans trafic. Collecte puis destruction en deux passes (map C++98 oblige). handle_timeout() offre un sursis aux clients qui doivent livrer un 504.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128227;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">D&eacute;connexion = valeur de retour</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">recv() &le; 0 ou send() &le; 0 &rarr; return -1, sans jamais lire errno. MSG_NOSIGNAL + SIG_IGN neutralisent SIGPIPE. EPOLLHUP/EPOLLERR isol&eacute;s sont ferm&eacute;s d'office (anti busy-loop).</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128273;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-3); margin-bottom:0.2rem;">Un fd = un propri&eacute;taire</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Chaque destructeur ferme son propre fd, et uniquement le sien. ~EventLoop() delete tout ce qui reste au shutdown : valgrind-clean m&ecirc;me en plein trafic.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="limites-protections.html" class="back-link">Fiche suivante : limites &amp; protections du parsing &rarr;</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Robustesse : timeouts. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['pourquoi','lastactivity','checktimeout','deconnexions','fdlifecycle'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

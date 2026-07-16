@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>listen() internals — Ouvrir la file d'attente</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../socket-lifecycle.html#listen-deepdive" class="back-link">← socket lifecycle</a>
+    <div class="progress-back-divider"></div>
+    <a href="#what" class="step-pill active" id="nav-01"><span class="step-dot"></span>01 · deux effets</a>
+    <div class="step-connector"></div>
+    <a href="#backlog" class="step-pill" id="nav-02"><span class="step-dot"></span>02 · backlog</a>
+    <div class="step-connector"></div>
+    <a href="#handshake" class="step-pill" id="nav-03"><span class="step-dot"></span>03 · TCP handshake</a>
+    <div class="step-connector"></div>
+    <a href="#kernel-state" class="step-pill" id="nav-04"><span class="step-dot"></span>04 · état kernel</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">listen() internals — Kernel deep dive</div>
+  <h1>Ouvrir la file<br>d'<em>attente</em></h1>
+  <p class="header-desc">
+    Backlog, TCP handshake automatique, et l'état LISTEN dans le kernel —
+    ce que fait vraiment ce seul appel système.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 01 : deux effets      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="what" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div class="step-title-block">
+        <div class="step-fn">listen()</div>
+        <div class="step-subtitle">Deux effets, un seul appel</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">server.cpp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">listen()</div>
+      </div>
+<pre><span class="fn-name">listen</span><span class="punct">(</span><span class="var">server_fd</span><span class="punct">,</span> <span class="num">10</span><span class="punct">);</span>
+<span class="cmt">//               ^^</span>
+<span class="cmt">//               backlog — taille de la file d'attente</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Effet 1 — Socket passif</div>
+        <p>
+          Avant <code style="color:var(--accent-3)">listen()</code>, le socket peut théoriquement
+          initier une connexion (mode <strong>actif</strong>).
+          <br><br>
+          Après <code>listen()</code>, il ne peut plus que <strong>recevoir</strong> des connexions entrantes.
+          Ce changement est <strong>irréversible</strong> — tu ne peux pas désactiver le mode passif.
+          <br><br>
+          C'est ce qui distingue un socket serveur d'un socket client.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Effet 2 — File d'attente kernel</div>
+        <p>
+          Le kernel va maintenant <strong>accepter automatiquement</strong> les connexions TCP entrantes
+          et les stocker dans une file interne.
+          <br><br>
+          Ton code peut être occupé ailleurs — les clients arrivent quand même,
+          le kernel les met en attente jusqu'à ce que tu appelles <code>accept()</code>.
+          <br><br>
+          C'est le <strong>découplage</strong> fondamental entre réseau et application.
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔒</span><span><strong>Irréversible</strong> — un socket en mode listen ne peut pas revenir en mode actif. Si tu veux changer, tu fermes et tu recrées.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span>Le kernel commence à répondre aux SYN entrants <strong>immédiatement</strong> après listen() — sans attendre ton accept().</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 02 : backlog           -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="backlog" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-5)">Le backlog</div>
+        <div class="step-subtitle">La salle d'attente, pas le nombre de clients</div>
+      </div>
+    </div>
+
+    <div class="backlog-diagram">
+      <div class="backlog-header">
+        <span class="backlog-title">File d'attente kernel — listen(fd, 10)</span>
+        <span class="backlog-badge">backlog = 10</span>
+      </div>
+      <div class="backlog-body">
+        <div class="backlog-label">Connexions TCP établies attendant accept()</div>
+        <div class="backlog-queue">
+          <div class="queue-slot slot-filled">
+            <span class="slot-icon">🖥️</span>
+            <span class="slot-label">client A</span>
+          </div>
+          <div class="queue-slot slot-filled">
+            <span class="slot-icon">🖥️</span>
+            <span class="slot-label">client B</span>
+          </div>
+          <div class="queue-slot slot-filled">
+            <span class="slot-icon">🖥️</span>
+            <span class="slot-label">client C</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-empty">
+            <span class="slot-icon">·</span>
+            <span class="slot-label">libre</span>
+          </div>
+          <div class="queue-slot slot-overflow">
+            <span class="slot-icon">✕</span>
+            <span class="slot-label">client 11</span>
+          </div>
+        </div>
+        <div class="backlog-flow">
+          <div class="flow-item"><div class="flow-dot" style="background:var(--accent-3)"></div>handshake terminé — connexion établie</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-item"><div class="flow-dot" style="background:var(--accent-5)"></div>stocké dans la file</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-item"><div class="flow-dot" style="background:var(--accent-4)"></div>accept() récupère</div>
+          <span style="margin-left:auto; font-size:0.65rem; color:var(--accent-1)">11e client → ECONNREFUSED ou ignoré</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">💡</span>
+      <div>
+        Le backlog n'est <strong>pas</strong> le nombre maximum de clients simultanés.
+        C'est le nombre de connexions <strong>déjà établies</strong> qui peuvent attendre en file
+        pendant que ton code est occupé ailleurs — dans un <code>recv()</code> ou un traitement long.
+        Dès que <code>accept()</code> les récupère, un slot se libère.
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">En pratique pour Webserv</div>
+        <p>
+          Notre code passe <code>SOMAXCONN</code> — le plafond du système — dans
+          <code>ServerHandler</code> : <code>listen(_fd, SOMAXCONN)</code>.
+          Sous stress test (siege -c 255), une petite file ferait refuser des
+          connexions pour rien.
+          <br><br>
+          Le noyau Linux <strong>ignore les valeurs trop grandes</strong> et applique
+          le plafond système <code>/proc/sys/net/core/somaxconn</code> (souvent 128 ou 4096).
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Deux queues en réalité</div>
+        <p>
+          Linux maintient en fait <strong>deux files</strong> :
+          <br><br>
+          <strong>SYN queue</strong> — connexions dont le handshake est en cours (SYN reçu, SYN-ACK envoyé, ACK pas encore arrivé).
+          <br><br>
+          <strong>Accept queue</strong> — connexions dont le handshake est <strong>terminé</strong>,
+          prêtes pour <code>accept()</code>. C'est ce que le backlog contrôle.
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📋</span><span>Backlog plein → le kernel répond <code>ECONNREFUSED</code> ou ignore silencieusement le SYN, selon <code>tcp_abort_on_overflow</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔢</span><span>Le kernel peut arrondir le backlog à la puissance de 2 supérieure. <code>listen(fd, 10)</code> peut donner une file de 16.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 03 : TCP handshake    -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="handshake" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-4)">TCP handshake</div>
+        <div class="step-subtitle">Le kernel s'en occupe seul</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.88rem; color:var(--text-dim); font-weight:300; margin-bottom:1.5rem; line-height:1.75">
+      Tu n'écris pas une ligne pour le SYN / SYN-ACK / ACK.
+      Tout se passe <strong style="color:var(--text)">sans que ton code intervienne</strong>,
+      dès que <code style="color:var(--accent-3)">listen()</code> est appelé.
+    </p>
+
+    <div class="handshake-diagram">
+      <div class="handshake-header">
+        <span class="handshake-title">TCP three-way handshake</span>
+        <span class="handshake-badge">automatique après listen()</span>
+      </div>
+      <div class="handshake-cols">
+        <div class="hs-col-header">
+          <span class="hs-col-dot"></span>CLIENT
+        </div>
+        <div class="hs-col-header">
+          <span class="hs-col-dot" style="background:var(--accent-4)"></span>KERNEL (pour toi)
+        </div>
+      </div>
+      <div class="handshake-body">
+        <div class="hs-step">
+          <div class="hs-client" style="text-align:right">
+            <span class="hs-msg hs-msg-send">SYN</span>
+          </div>
+          <div class="hs-arrow-col"><span class="hs-arrow hs-arrow-right">→</span></div>
+          <div class="hs-kernel">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted); font-style:italic">"je veux me connecter"</span>
+          </div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-client">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted); font-style:italic">"ok, j'accepte"</span>
+          </div>
+          <div class="hs-arrow-col"><span class="hs-arrow hs-arrow-left">←</span></div>
+          <div class="hs-kernel">
+            <span class="hs-msg hs-msg-kernel">SYN-ACK</span>
+          </div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-client" style="text-align:right">
+            <span class="hs-msg hs-msg-send">ACK</span>
+          </div>
+          <div class="hs-arrow-col"><span class="hs-arrow hs-arrow-right">→</span></div>
+          <div class="hs-kernel">
+            <span style="font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--text-muted); font-style:italic">"parfait, c'est établi"</span>
+          </div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-note">connexion placée dans la file d'attente — état ESTABLISHED côté kernel</div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-note" style="color:var(--text-muted); border-top:none">· · · ton code appelle accept() · · ·</div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-client" style="text-align:center; grid-column:1/-1">
+            <div class="hs-final">échange de données via recv() / send() — connexion ESTABLISHED des deux côtés</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span class="info-icon">🔑</span>
+      <div>
+        Ton <code>accept()</code> arrive <strong>après</strong> le handshake — la connexion est déjà
+        établie quand tu la récupères. Tu reçois un fd vers un socket <strong>déjà connecté</strong>,
+        prêt pour <code>recv()</code> et <code>send()</code>.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🤝</span><span>Le kernel répond aux SYN <strong>en microsecondes</strong>. Ton application n'est pas sur le chemin critique du handshake.</span></div>
+      <div class="key-point"><span class="key-point-icon">🛡️</span><span>Le kernel gère aussi les <strong>retransmissions</strong> si un SYN-ACK est perdu — transparent pour ton code.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- SECTION 04 : état kernel      -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="kernel-state" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div class="step-title-block">
+        <div class="step-fn" style="color:var(--accent-2)">L'état dans le kernel</div>
+        <div class="step-subtitle">Avant et après listen()</div>
+      </div>
+    </div>
+
+    <div class="state-comparison">
+      <div class="state-block state-before">
+        <div class="state-block-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-1);flex-shrink:0;display:inline-block"></span>
+          Avant listen()
+        </div>
+        <div class="state-fields">
+          <div class="state-field">
+            <span class="sf-name">state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">SS_UNCONNECTED</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">tcp_state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">CLOSE (07)</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">accept_q</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">NULL</span>
+            <span class="sf-comment">pas de file</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">SYN entrants</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-before">ignorés</span>
+          </div>
+        </div>
+      </div>
+      <div class="state-block state-after">
+        <div class="state-block-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-4);flex-shrink:0;display:inline-block"></span>
+          Après listen()
+        </div>
+        <div class="state-fields">
+          <div class="state-field">
+            <span class="sf-name">state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">SS_UNCONNECTED</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">tcp_state</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">LISTEN (0A)</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">accept_q</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">allouée</span>
+            <span class="sf-comment">backlog slots</span>
+          </div>
+          <div class="state-field">
+            <span class="sf-name">SYN entrants</span>
+            <span class="sf-eq">=</span>
+            <span class="sf-val-after">traités auto</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-filename">/proc/net/tcp</div>
+        </div>
+        <div class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">observer l'état</div>
+      </div>
+<pre><span class="fn-name">cat</span> /proc/net/tcp <span class="punct">|</span> <span class="fn-name">grep</span> <span class="str">1F90</span>
+
+<span class="cmt">#  local_address   rem_address  st  ...  inode</span>
+<span class="highlight-line">   <span class="str">00000000:1F90</span>  <span class="str">00000000:0000</span>  <span class="macro">0A</span>  ...  <span class="num">49051</span></span>
+<span class="cmt">#                               ^^</span>
+<span class="cmt">#                               0A = 10 = TCP_LISTEN ← c'est nous</span>
+
+<span class="cmt"># Vérifier la taille de la file d'attente en direct :</span>
+<span class="fn-name">ss</span> <span class="str">-tlnp</span> <span class="punct">|</span> <span class="fn-name">grep</span> <span class="num">8080</span>
+<span class="cmt"># LISTEN  0  10  0.0.0.0:8080  0.0.0.0:*  users:(("webserv",pid=5358,fd=3))</span>
+<span class="cmt">#          ^   ^</span>
+<span class="cmt">#          |   backlog configuré</span>
+<span class="cmt">#          connexions actuellement en attente dans la file</span></pre>
+    </div>
+
+    <!-- Recap table -->
+    <div style="font-family:'Space Mono',monospace; font-size:0.58rem; text-transform:uppercase; letter-spacing:0.2em; color:var(--text-muted); margin:2rem 0 0.7rem;">Récapitulatif</div>
+    <div class="summary-table-wrap">
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>État</th>
+            <th>Avant listen()</th>
+            <th>Après listen()</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Mode socket</td>
+            <td>actif (peut connecter)</td>
+            <td>passif (attend connexions)</td>
+          </tr>
+          <tr>
+            <td>SYN entrants</td>
+            <td>ignorés</td>
+            <td>traités automatiquement</td>
+          </tr>
+          <tr>
+            <td>File d'attente</td>
+            <td>inexistante</td>
+            <td>allouée (backlog slots)</td>
+          </tr>
+          <tr>
+            <td>État TCP</td>
+            <td>CLOSE (07)</td>
+            <td>LISTEN (0A)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔍</span><span>Le changement d'état vers <strong>LISTEN (0A)</strong> est ce qui autorise le kernel à traiter les SYN — visible dans <code>/proc/net/tcp</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">📡</span><span><code>ss -tlnp</code> affiche les connexions en attente dans la file (<code>Recv-Q</code>) et le backlog configuré (<code>Send-Q</code>) en mode LISTEN.</span></div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../socket-lifecycle.html#listen-deepdive">Retour à Socket Lifecycle</a> &nbsp;·&nbsp; <a href="bind-internals.html">bind() internals</a> &nbsp;·&nbsp; <a href="socket-internals.html">socket() internals</a> &nbsp;·&nbsp; <a href="../../webserv-mindmap.html">Cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — listen() internals. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../socket-lifecycle.html#listen-deepdive"], a[href="bind-internals.html"], a[href="socket-internals.html"], a[href="../../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      navigateTo(a.href);
+    });
+  });
+
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  sections.forEach(s => observer.observe(s));
+
+  const sectionIds = ['what','backlog','handshake','kernel-state'];
+  const navPills   = document.querySelectorAll('.step-pill');
+
+  function updateNav() {
+    let current = 0;
+    sectionIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.getBoundingClientRect().top < window.innerHeight * 0.4) current = i;
+    });
+    navPills.forEach((p, i) => p.classList.toggle('active', i === current));
+  }
+  window.addEventListener('scroll', updateNav, { passive: true });
+  updateNav();
+</script>
+</body>
+</html>

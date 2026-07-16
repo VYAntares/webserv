@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chunked Transfer-Encoding &mdash; Quand le client ne conna&icirc;t pas la taille</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour</a>
+    <div class="progress-back-divider"></div>
+    <a href="#normal" class="step-pill active" id="nav-normal"><span class="step-dot"></span>Normal</a>
+    <div class="step-connector"></div>
+    <a href="#probleme" class="step-pill" id="nav-probleme"><span class="step-dot"></span>Probl&egrave;me</a>
+    <div class="step-connector"></div>
+    <a href="#format" class="step-pill" id="nav-format"><span class="step-dot"></span>Format</a>
+    <div class="step-connector"></div>
+    <a href="#tshark" class="step-pill" id="nav-tshark"><span class="step-dot"></span>tshark</a>
+    <div class="step-connector"></div>
+    <a href="#parser" class="step-pill" id="nav-parser"><span class="step-dot"></span>Parser</a>
+    <div class="step-connector"></div>
+    <a href="#tcp" class="step-pill" id="nav-tcp"><span class="step-dot"></span>TCP</a>
+    <div class="step-connector"></div>
+    <a href="#cgi" class="step-pill" id="nav-cgi"><span class="step-dot"></span>CGI</a>
+    <div class="step-connector"></div>
+    <a href="#mime" class="step-pill" id="nav-mime"><span class="step-dot"></span>MIME</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">03 &mdash; HTTP Protocol &mdash; Parsing avanc&eacute;</div>
+  <h1>Chunked <em>Transfer-Encoding</em><br>Quand le client ne conna&icirc;t pas la taille</h1>
+  <p class="header-desc">
+    Avec <code>Content-Length</code>, le serveur sait combien d'octets lire.
+    Avec <code>Transfer-Encoding: chunked</code>, les donn&eacute;es arrivent morceau par morceau,
+    chacun pr&eacute;c&eacute;d&eacute; de sa taille en hexad&eacute;cimal. Le serveur doit les reconstituer.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : LE CAS NORMAL             -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="normal" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">01</div>
+      <div>
+        <div class="ch-fn">Content-Length</div>
+        <div class="ch-subtitle">Le cas normal &mdash; on conna&icirc;t la taille</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4)">
+      <div class="panel-label">Ce qu'on sait d&eacute;j&agrave;</div>
+      <p>
+        Quand un client envoie un <code>POST</code> avec un body, il met
+        <code>Content-Length: 102400</code> dans ses headers. Le serveur sait
+        <strong>exactement combien d'octets lire</strong> avant de traiter la requ&ecirc;te.
+      </p>
+      <p>
+        C'est le cas qu'on a d&eacute;j&agrave; vu fonctionner avec <code>tshark</code> et notre serveur <code>main3.cpp</code>.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Requ&ecirc;te POST avec Content-Length</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Cas normal</span>
+      </div>
+      <pre><span class="str">POST /upload HTTP/1.1</span>
+<span class="str">Host: localhost:8080</span>
+<span class="str">Content-Type: application/octet-stream</span>
+<span class="highlight-line"><span class="str">Content-Length: 102400</span>                    <span class="cmt">&larr; le serveur SAIT : 102400 octets &agrave; lire</span></span>
+<span class="str"></span>
+<span class="cmt">[102400 octets de body]</span></pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4)">
+      <div class="panel-label">Ce qu'on a vu dans tshark</div>
+      <p>
+        L'envoi de 100KB avec <code>curl</code> &mdash; TCP fragmente le body en plusieurs paquets,
+        le serveur accumule avec <code>recv()</code> jusqu'&agrave; atteindre <code>Content-Length</code> :
+      </p>
+    </div>
+
+    <table class="tshark-table">
+      <tr><th>#</th><th>Len</th><th>Info</th></tr>
+      <tr class="tcp"><td class="pkt-num">1-3</td><td>&mdash;</td><td><span class="tag-syn">SYN</span> TCP 3-way handshake</td></tr>
+      <tr class="http"><td class="pkt-num">4</td><td>149</td><td><span class="tag-http">POST</span> /upload HTTP/1.1 + headers</td></tr>
+      <tr class="http"><td class="pkt-num">6</td><td>32741</td><td><span class="tag-data">DATA</span> body partie 1</td></tr>
+      <tr class="http"><td class="pkt-num">8</td><td>32741</td><td><span class="tag-data">DATA</span> body partie 2</td></tr>
+      <tr class="http"><td class="pkt-num">10</td><td>54</td><td><span class="tag-data">DATA</span> body partie 3</td></tr>
+      <tr class="http"><td class="pkt-num">12</td><td>32741</td><td><span class="tag-data">DATA</span> body partie 4</td></tr>
+      <tr class="http"><td class="pkt-num">13</td><td>4123</td><td><span class="tag-data">DATA</span> body partie 5 &mdash; total = <strong>102400</strong></td></tr>
+      <tr class="tcp"><td class="pkt-num">15</td><td>105</td><td><span class="tag-http">HTTP</span> 200 OK (r&eacute;ponse du serveur)</td></tr>
+      <tr class="tcp"><td class="pkt-num">17-19</td><td>&mdash;</td><td><span class="tag-fin">FIN</span> fermeture TCP</td></tr>
+    </table>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le serveur sait quand s'arr&ecirc;ter :</strong> il a lu <code>Content-Length: 102400</code>
+        dans les headers, donc il accumule les <code>recv()</code> jusqu'&agrave; ce que
+        <code>body_received &gt;= 102400</code>. Simple.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LE PROBLÈME               -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="probleme" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">02</div>
+      <div>
+        <div class="ch-fn">Le probl&egrave;me</div>
+        <div class="ch-subtitle">Quand le client ne conna&icirc;t pas la taille &agrave; l'avance</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1)">
+      <div class="panel-label">Pourquoi Content-Length ne suffit pas toujours</div>
+      <p>
+        Parfois le client <strong>ne conna&icirc;t pas la taille totale</strong> avant de commencer &agrave; envoyer.
+        Exemples concrets :
+      </p>
+      <ul>
+        <li>Un script qui g&eacute;n&egrave;re un rapport <strong>ligne par ligne</strong> depuis une base de donn&eacute;es &mdash; combien de lignes ? inconnu</li>
+        <li>Un outil qui <strong>streame</strong> de la vid&eacute;o ou de l'audio en temps r&eacute;el</li>
+        <li><code>curl</code> qui lit depuis <strong>stdin</strong> &mdash; il ne peut pas pr&eacute;dire combien de donn&eacute;es vont arriver</li>
+        <li>Un proxy qui <strong>retransmet</strong> sans tout bufferiser d'abord</li>
+      </ul>
+      <p>
+        Pour &eacute;crire <code>Content-Length: ???</code>, il faudrait tout g&eacute;n&eacute;rer en m&eacute;moire d'abord,
+        compter, puis envoyer. Sur des gigabytes, c'est impossible.
+      </p>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Sans chunked &mdash; impossible</div>
+        <p>
+          Le client devrait :
+        </p>
+        <ul>
+          <li>G&eacute;n&eacute;rer <strong>tout</strong> le body en m&eacute;moire</li>
+          <li>Compter les octets</li>
+          <li>&Eacute;crire <code>Content-Length</code></li>
+          <li><em>Puis</em> envoyer</li>
+        </ul>
+        <p>
+          Si le body fait 2GB, il faut 2GB de RAM juste pour compter la taille.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Avec chunked &mdash; on streame</div>
+        <p>
+          Le client dit :
+        </p>
+        <ul>
+          <li><code>Transfer-Encoding: chunked</code></li>
+          <li>Envoie morceau par morceau</li>
+          <li>Chaque morceau avec <strong>sa propre taille</strong></li>
+          <li>Chunk de taille <code>0</code> = &laquo; c'est fini &raquo;</li>
+        </ul>
+        <p>
+          Pas besoin de conna&icirc;tre la taille totale. On envoie au fur et &agrave; mesure.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : LE FORMAT SUR LE WIRE     -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="format" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">03</div>
+      <div>
+        <div class="ch-fn">Le format chunked</div>
+        <div class="ch-subtitle">D&eacute;crypt&eacute; octet par octet</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">R&egrave;gle d'or</div>
+      <p>
+        La taille de chaque chunk est <strong>toujours en hexad&eacute;cimal</strong>, suivie de <code>\r\n</code>.
+        Puis les donn&eacute;es du chunk (exactement N octets), suivies de <code>\r\n</code>.
+        Un chunk de taille <code>0</code> signale la fin.
+      </p>
+    </div>
+
+    <div class="two-col">
+      <div class="code-panel" style="--step-color: var(--accent-4)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">Cas normal</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Content-Length</span>
+        </div>
+        <pre><span class="str">POST /upload HTTP/1.1</span>
+<span class="str">Content-Length: 26</span>
+
+<span class="var">abcdefghijklmnopqrstuvwxyz</span></pre>
+      </div>
+
+      <div class="code-panel" style="--step-color: var(--accent-3)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">Chunked</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Transfer-Encoding</span>
+        </div>
+        <pre><span class="str">POST /upload HTTP/1.1</span>
+<span class="str">Transfer-Encoding: chunked</span>
+
+<span class="macro">a</span><span class="cmt">\r\n</span>
+<span class="var">abcdefghij</span><span class="cmt">\r\n</span>
+<span class="macro">10</span><span class="cmt">\r\n</span>
+<span class="var">klmnopqrstuvwxyz</span><span class="cmt">\r\n</span>
+<span class="macro">0</span><span class="cmt">\r\n</span>
+<span class="cmt">\r\n</span></pre>
+      </div>
+    </div>
+
+    <div class="wire-box">
+      <div class="wire-title">D&eacute;cryptage octet par octet</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-size"><span style="color:var(--accent-3)">a</span>\r\n</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation">Taille du chunk : <strong style="color:var(--accent-3)">0xa = 10</strong> en d&eacute;cimal</div>
+      </div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-data"><span style="color:var(--accent-2)">abcdefghij</span>\r\n</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation">Les <strong>10 octets</strong> du chunk + terminateur \r\n</div>
+      </div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-size"><span style="color:var(--accent-3)">10</span>\r\n</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation">Taille du chunk : <strong style="color:var(--accent-3)">0x10 = 16</strong> en d&eacute;cimal</div>
+      </div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-data"><span style="color:var(--accent-2)">klmnopqrstuvwxyz</span>\r\n</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation">Les <strong>16 octets</strong> du chunk + terminateur \r\n</div>
+      </div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-end"><span style="color:var(--accent-4)">0</span>\r\n</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation">Chunk de taille <strong style="color:var(--accent-4)">z&eacute;ro</strong> = <strong>signal de fin</strong></div>
+      </div>
+      <div class="wire-row">
+        <div class="wire-bytes wire-end">\r\n</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-annotation">Terminateur final (fin de la liste de chunks)</div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Pi&egrave;ge hexa !</strong> <code>10</code> en hexad&eacute;cimal = <strong>16</strong> en d&eacute;cimal, pas 10.
+        <code>a</code> = 10, <code>ff</code> = 255, <code>1000</code> = 4096.
+        Toujours parser avec <code>strtol(str, NULL, 16)</code> en base 16.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : CE QUE TSHARK MONTRE     -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="tshark" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">04</div>
+      <div>
+        <div class="ch-fn">Sur le r&eacute;seau</div>
+        <div class="ch-subtitle">Ce que tshark montre &mdash; chunked vs Content-Length</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom:1.5rem;">
+      <div class="panel-label">La diff&eacute;rence visible dans tshark</div>
+      <p>
+        Avec <code>Content-Length</code>, tshark sait pr&eacute;cis&eacute;ment o&ugrave; finit le body.
+        Avec <code>chunked</code>, tshark doit d&eacute;coder les chunks pour reconstituer le message.
+        <strong>Ce que tshark fait automatiquement</strong> &mdash; mais ton serveur doit le faire lui-m&ecirc;me.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Test avec curl chunked</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Terminal</span>
+      </div>
+      <pre><span class="cmt"># Forcer le mode chunked avec curl :</span>
+<span class="fn-name">curl</span> -X POST http://localhost:8080/upload \
+     -H <span class="str">"Transfer-Encoding: chunked"</span> \
+     -H <span class="str">"Content-Type: text/plain"</span> \
+     --data-binary <span class="str">"hello world"</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Content-Length &mdash; dans les headers</div>
+        <p>Le serveur voit :</p>
+        <ul>
+          <li><code>Content-Length: 102400</code></li>
+          <li>Puis le body brut, continu</li>
+          <li>Condition de fin : <code>body_received &gt;= 102400</code></li>
+        </ul>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Chunked &mdash; dans le body</div>
+        <p>Le serveur voit :</p>
+        <ul>
+          <li><code>Transfer-Encoding: chunked</code></li>
+          <li>Puis des chunks avec tailles en hexa</li>
+          <li>Condition de fin : chunk de taille <code>0</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Ce que le serveur re&ccedil;oit (vue raw)</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">recv() buffer</span>
+      </div>
+      <pre><span class="cmt">// Ce que recv() retourne quand curl envoie "hello world" en chunked :</span>
+
+<span class="str">"POST /upload HTTP/1.1\r\n"</span>
+<span class="str">"Host: localhost:8080\r\n"</span>
+<span class="str">"Transfer-Encoding: chunked\r\n"</span>      <span class="cmt">&larr; pas de Content-Length !</span>
+<span class="str">"Content-Type: text/plain\r\n"</span>
+<span class="str">"\r\n"</span>                                   <span class="cmt">&larr; fin des headers</span>
+<span class="highlight-line"><span class="str">"b\r\n"</span>                                  <span class="cmt">&larr; 0xb = 11 octets</span></span>
+<span class="highlight-line"><span class="str">"hello world\r\n"</span>                       <span class="cmt">&larr; le chunk (11 octets)</span></span>
+<span class="highlight-line"><span class="str">"0\r\n"</span>                                  <span class="cmt">&larr; chunk terminal</span></span>
+<span class="highlight-line"><span class="str">"\r\n"</span>                                   <span class="cmt">&larr; fin</span></span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le <code>\r\n\r\n</code> ne suffit plus.</strong>
+        Dans notre code <code>main3.cpp</code>, on bascule vers <code>EPOLLOUT</code> d&egrave;s qu'on trouve
+        <code>\r\n\r\n</code> (fin des headers). Mais avec chunked, le <strong>body suit les headers</strong>
+        et il faut encore accumuler les chunks jusqu'au chunk terminal <code>0\r\n\r\n</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : LE PARSER CHUNKED        -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="parser" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">05</div>
+      <div>
+        <div class="ch-fn">decode_chunked()</div>
+        <div class="ch-subtitle">Le parser &mdash; reconstituer le body</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">L'algorithme, pas &agrave; pas</div>
+      <p>Le parser chunked r&eacute;p&egrave;te toujours la m&ecirc;me s&eacute;quence :</p>
+      <ul>
+        <li><strong>1.</strong> Lire la ligne de taille (tout jusqu'au prochain <code>\r\n</code>)</li>
+        <li><strong>2.</strong> Parser cette taille en hexa &rarr; <code>int chunk_size</code></li>
+        <li><strong>3.</strong> Si <code>chunk_size == 0</code> &rarr; c'est fini</li>
+        <li><strong>4.</strong> Lire exactement <code>chunk_size</code> octets &rarr; les ajouter au body</li>
+        <li><strong>5.</strong> Sauter le <code>\r\n</code> apr&egrave;s le chunk</li>
+        <li><strong>6.</strong> Retour &agrave; l'&eacute;tape 1</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">decode_chunked() &mdash; parser complet</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(250,204,21,0.08)">C++98</span>
+      </div>
+      <pre><span class="cmt">// Prend le body brut (tout apr&egrave;s \r\n\r\n) et retourne le body d&eacute;cod&eacute;</span>
+std::string <span class="fn-name">decode_chunked</span>(<span class="kw">const</span> std::string&amp; <span class="var">raw_body</span>) {
+    std::string <span class="var">result</span>;
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="num">0</span>;
+
+    <span class="kw">while</span> (<span class="var">pos</span> &lt; <span class="var">raw_body</span>.<span class="fn-name">size</span>()) {
+        <span class="cmt">// 1. Trouver la ligne de taille (termin&eacute;e par \r\n)</span>
+        <span class="type">size_t</span> <span class="var">crlf</span> = <span class="var">raw_body</span>.<span class="fn-name">find</span>(<span class="str">"\r\n"</span>, <span class="var">pos</span>);
+        <span class="kw">if</span> (<span class="var">crlf</span> == std::string::<span class="var">npos</span>)
+            <span class="kw">break</span>;  <span class="cmt">// donn&eacute;es incompl&egrave;tes, attendre plus</span>
+
+        <span class="cmt">// 2. Parser la taille en hexad&eacute;cimal</span>
+        std::string <span class="var">size_str</span> = <span class="var">raw_body</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>, <span class="var">crlf</span> - <span class="var">pos</span>);
+<span class="highlight-line">        <span class="type">long</span> <span class="var">chunk_size</span> = <span class="fn-name">strtol</span>(<span class="var">size_str</span>.<span class="fn-name">c_str</span>(), <span class="macro">NULL</span>, <span class="num">16</span>);  <span class="cmt">// base 16 !</span></span>
+
+        <span class="cmt">// 3. Chunk de taille 0 = fin</span>
+        <span class="kw">if</span> (<span class="var">chunk_size</span> == <span class="num">0</span>)
+            <span class="kw">break</span>;
+
+        <span class="cmt">// 4. Avancer apr&egrave;s le \r\n de la taille</span>
+        <span class="var">pos</span> = <span class="var">crlf</span> + <span class="num">2</span>;
+
+        <span class="cmt">// V&eacute;rifier qu'on a assez de donn&eacute;es</span>
+        <span class="kw">if</span> (<span class="var">pos</span> + <span class="var">chunk_size</span> + <span class="num">2</span> &gt; <span class="var">raw_body</span>.<span class="fn-name">size</span>())
+            <span class="kw">break</span>;  <span class="cmt">// chunk incomplet, attendre plus</span>
+
+        <span class="cmt">// 5. Extraire les donn&eacute;es du chunk</span>
+<span class="highlight-new">        <span class="var">result</span> += <span class="var">raw_body</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>, <span class="var">chunk_size</span>);</span>
+
+        <span class="cmt">// 6. Sauter les donn&eacute;es + le \r\n apr&egrave;s le chunk</span>
+        <span class="var">pos</span> += <span class="var">chunk_size</span> + <span class="num">2</span>;
+    }
+
+    <span class="kw">return</span> <span class="var">result</span>;  <span class="cmt">// body propre, reconstitu&eacute;</span>
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5)">
+      <div class="panel-label">Exemple de d&eacute;codage pas &agrave; pas</div>
+      <p>
+        Entr&eacute;e : <code>a\r\nabcdefghij\r\n10\r\nklmnopqrstuvwxyz\r\n0\r\n\r\n</code>
+      </p>
+      <ul>
+        <li><strong>Tour 1 :</strong> <code>"a"</code> &rarr; strtol &rarr; 10 &rarr; lire 10 octets &rarr; <code>"abcdefghij"</code></li>
+        <li><strong>Tour 2 :</strong> <code>"10"</code> &rarr; strtol &rarr; 16 &rarr; lire 16 octets &rarr; <code>"klmnopqrstuvwxyz"</code></li>
+        <li><strong>Tour 3 :</strong> <code>"0"</code> &rarr; strtol &rarr; 0 &rarr; <strong>fin</strong></li>
+      </ul>
+      <p>
+        Sortie : <code>"abcdefghijklmnopqrstuvwxyz"</code> &mdash; le body original, propre, sans m&eacute;tadonn&eacute;es.
+      </p>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 6 : LE PIÈGE TCP              -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="tcp" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">06</div>
+      <div>
+        <div class="ch-fn">Le pi&egrave;ge TCP</div>
+        <div class="ch-subtitle">Les chunks fragment&eacute;s entre plusieurs recv()</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le probl&egrave;me qu'on conna&icirc;t d&eacute;j&agrave;</div>
+      <p>
+        On l'a vu avec le body normal : <strong>TCP coupe n'importe o&ugrave;</strong>.
+        Avec chunked, c'est encore pire &mdash; TCP peut couper <strong>au milieu d'un chunk</strong>,
+        au milieu de la <strong>taille hexad&eacute;cimale</strong>, ou entre la taille et les donn&eacute;es.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">TCP fragmente en plein milieu</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Danger</span>
+      </div>
+      <pre><span class="cmt">// Les 3 appels recv() retournent :</span>
+
+<span class="cmt">// recv() #1 :</span>
+<span class="str">"POST /upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\na\r\nabc"</span>
+<span class="cmt">//                                                              ^^^</span>
+<span class="cmt">//                               coup&eacute; EN PLEIN MILIEU du chunk ! (3 octets sur 10)</span>
+
+<span class="cmt">// recv() #2 :</span>
+<span class="str">"defghij\r\n10\r\nklmno"</span>
+<span class="cmt">//                  ^^^^^</span>
+<span class="cmt">//      fin du chunk 1 + d&eacute;but du chunk 2 (5 octets sur 16)</span>
+
+<span class="cmt">// recv() #3 :</span>
+<span class="str">"pqrstuvwxyz\r\n0\r\n\r\n"</span>
+<span class="cmt">//  fin du chunk 2 + chunk terminal</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>On ne peut PAS d&eacute;coder chunk par chunk au fil des recv().</strong>
+        Un chunk peut &ecirc;tre r&eacute;parti sur 2, 3, 10 appels <code>recv()</code>.
+        La taille hexa elle-m&ecirc;me peut &ecirc;tre coup&eacute;e (<code>"1"</code> puis <code>"0\r\n"</code>).
+        Le parser doit travailler sur le <strong>buffer accumul&eacute; complet</strong>.
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4)">
+      <div class="panel-label">La solution : accumuler, puis d&eacute;coder</div>
+      <p>
+        Exactement le m&ecirc;me principe que pour <code>Content-Length</code> :
+      </p>
+      <ul>
+        <li>Chaque <code>recv()</code> &rarr; on <strong>accumule</strong> dans <code>conn-&gt;request</code></li>
+        <li>Apr&egrave;s chaque accumulation, on <strong>v&eacute;rifie</strong> si le chunk terminal est arriv&eacute;</li>
+        <li>Si oui &rarr; on d&eacute;code tout d'un coup avec <code>decode_chunked()</code></li>
+        <li>Si non &rarr; on attend le prochain <code>EPOLLIN</code></li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">handle_read() &mdash; avec support chunked</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Modifi&eacute;</span>
+      </div>
+      <pre><span class="type">void</span> <span class="fn-name">handle_read</span>(<span class="type">Connection</span>* <span class="var">conn</span>, <span class="type">int</span> <span class="var">epfd</span>) {
+    <span class="type">char</span> <span class="var">buf</span>[<span class="num">4096</span>];
+    <span class="type">ssize_t</span> <span class="var">n</span> = <span class="fn-name">recv</span>(<span class="var">conn</span>-&gt;<span class="var">fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>) - <span class="num">1</span>, <span class="num">0</span>);
+
+    <span class="kw">if</span> (<span class="var">n</span> &lt;= <span class="num">0</span>) { <span class="fn-name">close_connection</span>(<span class="var">conn</span>, <span class="var">epfd</span>); <span class="kw">return</span>; }
+
+    <span class="var">buf</span>[<span class="var">n</span>] = <span class="str">'\0'</span>;
+    <span class="var">conn</span>-&gt;<span class="var">request</span> += <span class="var">buf</span>;
+
+    <span class="cmt">// Headers complets ?</span>
+    <span class="type">size_t</span> <span class="var">header_end</span> = <span class="var">conn</span>-&gt;<span class="var">request</span>.<span class="fn-name">find</span>(<span class="str">"\r\n\r\n"</span>);
+    <span class="kw">if</span> (<span class="var">header_end</span> == std::string::<span class="var">npos</span>)
+        <span class="kw">return</span>;  <span class="cmt">// headers pas encore complets</span>
+
+    <span class="cmt">// D&eacute;tecter le mode : Content-Length ou chunked ?</span>
+<span class="highlight-line">    <span class="type">bool</span> <span class="var">is_chunked</span> = <span class="var">conn</span>-&gt;<span class="var">request</span>.<span class="fn-name">find</span>(<span class="str">"Transfer-Encoding: chunked"</span>)</span>
+<span class="highlight-line">                      != std::string::<span class="var">npos</span>;</span>
+
+    <span class="type">size_t</span> <span class="var">body_start</span> = <span class="var">header_end</span> + <span class="num">4</span>;
+    std::string <span class="var">raw_body</span> = <span class="var">conn</span>-&gt;<span class="var">request</span>.<span class="fn-name">substr</span>(<span class="var">body_start</span>);
+
+    <span class="kw">if</span> (!<span class="var">is_chunked</span>) {
+        <span class="cmt">// Cas normal : v&eacute;rifier Content-Length</span>
+        <span class="type">int</span> <span class="var">cl</span> = <span class="fn-name">parse_content_length</span>(<span class="var">conn</span>-&gt;<span class="var">request</span>);
+        <span class="kw">if</span> ((<span class="type">int</span>)<span class="var">raw_body</span>.<span class="fn-name">size</span>() &lt; <span class="var">cl</span>)
+            <span class="kw">return</span>;  <span class="cmt">// body pas complet</span>
+    } <span class="kw">else</span> {
+        <span class="cmt">// Cas chunked : le chunk terminal est-il arriv&eacute; ?</span>
+<span class="highlight-new">        <span class="kw">if</span> (<span class="var">raw_body</span>.<span class="fn-name">find</span>(<span class="str">"0\r\n\r\n"</span>) == std::string::<span class="var">npos</span>)</span>
+<span class="highlight-new">            <span class="kw">return</span>;  <span class="cmt">// pas fini, attendre</span></span>
+
+        <span class="cmt">// D&eacute;coder les chunks &rarr; body brut</span>
+<span class="highlight-new">        <span class="var">conn</span>-&gt;<span class="var">decoded_body</span> = <span class="fn-name">decode_chunked</span>(<span class="var">raw_body</span>);</span>
+    }
+
+    <span class="cmt">// Requ&ecirc;te compl&egrave;te &rarr; basculer vers EPOLLOUT</span>
+    <span class="var">conn</span>-&gt;<span class="var">response</span> = <span class="fn-name">build_response</span>(<span class="var">conn</span>-&gt;<span class="var">request</span>);
+    <span class="var">conn</span>-&gt;<span class="var">sent</span> = <span class="num">0</span>;
+
+    <span class="kw">struct</span> <span class="type">epoll_event</span> <span class="var">ev</span>;
+    <span class="var">ev</span>.<span class="var">events</span>  = <span class="macro">EPOLLOUT</span>;
+    <span class="var">ev</span>.<span class="var">data</span>.<span class="var">ptr</span> = <span class="var">conn</span>;
+    <span class="fn-name">epoll_ctl</span>(<span class="var">epfd</span>, <span class="macro">EPOLL_CTL_MOD</span>, <span class="var">conn</span>-&gt;<span class="var">fd</span>, &amp;<span class="var">ev</span>);
+}</pre>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 7 : INTÉGRATION CGI           -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="cgi" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">07</div>
+      <div>
+        <div class="ch-fn">Chunked &amp; CGI</div>
+        <div class="ch-subtitle">Pourquoi le serveur DOIT d&eacute;coder avant le CGI</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; For chunked requests, your server needs to un-chunk them, the CGI will expect EOF as the end of the body. &raquo;</p>
+      <cite>&mdash; webserv.pdf, IV.3</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-6); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le CGI ne comprend pas HTTP</div>
+      <p>
+        Un CGI (script Python, PHP, etc.) est un <strong>programme simple</strong> qui lit son
+        <code>stdin</code> jusqu'&agrave; <code>EOF</code>. Il ne conna&icirc;t pas le protocole HTTP.
+        Il ne sait pas ce qu'est un chunk, un <code>\r\n</code> de terminaison, ou une taille en hexa.
+      </p>
+      <p>
+        Si tu lui envoies <code>b\r\nhello world\r\n0\r\n\r\n</code>, il va interpr&eacute;ter le
+        <code>b</code> et les <code>\r\n</code> comme des <strong>donn&eacute;es</strong> &mdash; ce qui est faux.
+      </p>
+    </div>
+
+    <div class="wire-box">
+      <div class="wire-title">Flux : Client &rarr; Serveur &rarr; CGI</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-size" style="flex:0.6;">Client envoie</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-data" style="flex:1.2; font-size:0.68rem;">
+          <span style="color:var(--accent-3)">b</span>\r\n<span style="color:var(--accent-2)">hello world</span>\r\n<span style="color:var(--accent-4)">0</span>\r\n\r\n
+        </div>
+        <div class="wire-annotation" style="flex:0.5; font-size:0.65rem;">chunked</div>
+      </div>
+
+      <div style="text-align:center; color:var(--text-muted); font-size:0.7rem; padding:0.5rem 0;">&darr; <span style="color:var(--accent-5)">decode_chunked()</span></div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-end" style="flex:0.6;">Serveur &eacute;crit au pipe</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-data" style="flex:1.2;">
+          <span style="color:var(--accent-2)">hello world</span>
+        </div>
+        <div class="wire-annotation" style="flex:0.5; font-size:0.65rem;">body brut</div>
+      </div>
+
+      <div style="text-align:center; color:var(--text-muted); font-size:0.7rem; padding:0.5rem 0;">&darr; <span style="color:var(--accent-1)">close(pipe)</span> &rarr; EOF</div>
+
+      <div class="wire-row">
+        <div class="wire-bytes wire-end" style="flex:0.6;">CGI lit stdin</div>
+        <div class="wire-arrow">&rarr;</div>
+        <div class="wire-bytes wire-data" style="flex:1.2;">
+          <span style="color:var(--accent-2)">hello world</span><span style="color:var(--accent-4)">EOF</span>
+        </div>
+        <div class="wire-annotation" style="flex:0.5; font-size:0.65rem;">OK</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Envoyer le body au CGI</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-6); background:rgba(244,114,182,0.08)">CGI</span>
+      </div>
+      <pre><span class="cmt">// Apr&egrave;s fork(), dans le processus parent :</span>
+
+<span class="cmt">// Le body &agrave; envoyer au CGI est le body D&Eacute;COD&Eacute;,</span>
+<span class="cmt">// PAS le body brut avec les m&eacute;tadonn&eacute;es chunked.</span>
+
+std::string <span class="var">body</span>;
+<span class="kw">if</span> (<span class="var">is_chunked</span>)
+<span class="highlight-new">    <span class="var">body</span> = <span class="var">conn</span>-&gt;<span class="var">decoded_body</span>;    <span class="cmt">// reconstitu&eacute; par decode_chunked()</span></span>
+<span class="kw">else</span>
+    <span class="var">body</span> = <span class="var">raw_body</span>;              <span class="cmt">// body brut (d&eacute;j&agrave; propre)</span>
+
+<span class="cmt">// &Eacute;crire dans le pipe stdin du CGI</span>
+<span class="fn-name">write</span>(<span class="var">pipe_stdin</span>[<span class="num">1</span>], <span class="var">body</span>.<span class="fn-name">c_str</span>(), <span class="var">body</span>.<span class="fn-name">size</span>());
+<span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">1</span>]);  <span class="cmt">// &larr; fermer = envoyer EOF au CGI</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le <code>close(pipe)</code> est crucial.</strong>
+        Le CGI lit son stdin avec une boucle <code>read()</code> jusqu'&agrave; EOF.
+        L'EOF n'arrive que quand <strong>tous les fd du pipe sont ferm&eacute;s</strong>.
+        Si tu oublies le <code>close()</code>, le CGI bloque ind&eacute;finiment.
+      </div>
+    </div>
+  </section>
+
+  <div class="ch-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 8 : MIME & MÉTHODES HTTP      -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="chapter" id="mime" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="ch-header">
+      <div class="ch-number">08</div>
+      <div>
+        <div class="ch-fn">MIME &amp; m&eacute;thodes HTTP</div>
+        <div class="ch-subtitle">Dans quel sens circule le Content-Type</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le Content-Type circule dans les deux sens</div>
+      <p>
+        Pour <strong>GET</strong>, c'est toi (le serveur) qui produis le <code>Content-Type</code> dans ta r&eacute;ponse.
+        Pour <strong>POST</strong>, c'est le client qui t'envoie un <code>Content-Type</code> dans sa requ&ecirc;te
+        &mdash; et tu dois le lire pour savoir comment parser le body.
+      </p>
+    </div>
+
+    <table class="method-table">
+      <thead>
+        <tr>
+          <th>M&eacute;thode</th>
+          <th>MIME dans la requ&ecirc;te (entrant)</th>
+          <th>MIME dans la r&eacute;ponse (sortant)</th>
+          <th>Qui d&eacute;cide</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GET</td>
+          <td class="no">non (pas de body)</td>
+          <td class="yes">oui &mdash; tu dis ce que tu sers</td>
+          <td class="who">toi, via l'extension du fichier</td>
+        </tr>
+        <tr>
+          <td>POST</td>
+          <td class="yes">oui &mdash; le client dit ce qu'il envoie</td>
+          <td class="yes">oui &mdash; tu dis ce que tu retournes</td>
+          <td class="who">client pour la req, toi pour la r&eacute;ponse</td>
+        </tr>
+        <tr>
+          <td>DELETE</td>
+          <td class="no">non (pas de body)</td>
+          <td class="no">rarement (souvent 204 sans body)</td>
+          <td class="no">&mdash;</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="two-col">
+      <div class="code-panel" style="--step-color: var(--accent-4)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">GET &mdash; serveur produit le MIME</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">GET</span>
+        </div>
+        <pre><span class="cmt">// Client demande :</span>
+<span class="macro">GET</span> <span class="str">/style.css</span> <span class="var">HTTP/1.1</span>
+
+<span class="cmt">// Serveur r&eacute;pond :</span>
+<span class="macro">HTTP/1.1</span> <span class="num">200</span> <span class="var">OK</span>
+<span class="highlight-new"><span class="kw">Content-Type:</span> <span class="str">text/css</span>     <span class="cmt">&larr; toi</span></span>
+
+<span class="var">body</span> { <span class="var">color</span>: <span class="var">red</span>; }</pre>
+      </div>
+
+      <div class="code-panel" style="--step-color: var(--accent-2)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">POST &mdash; client dit ce qu'il envoie</span>
+          </div>
+          <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">POST</span>
+        </div>
+        <pre><span class="cmt">// Client envoie :</span>
+<span class="macro">POST</span> <span class="str">/api</span> <span class="var">HTTP/1.1</span>
+<span class="highlight-new"><span class="kw">Content-Type:</span> <span class="str">application/json</span>  <span class="cmt">&larr; lui</span></span>
+
+{<span class="str">"action"</span>: <span class="str">"create"</span>}
+
+<span class="cmt">// Ton serveur lit ce header</span>
+<span class="cmt">// pour savoir comment parser le body</span></pre>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Les 3 Content-Type de POST que ton serveur doit reconna&icirc;tre</div>
+      <ul>
+        <li><code>application/x-www-form-urlencoded</code> &mdash; formulaires simples (<code>username=alice&amp;password=1234</code>)</li>
+        <li><code>multipart/form-data</code> &mdash; uploads de fichiers (parties s&eacute;par&eacute;es par un boundary)</li>
+        <li><code>application/json</code>, <code>text/plain</code>, etc. &mdash; pass&eacute; tel quel au CGI</li>
+      </ul>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Chunked + POST = les deux probl&egrave;mes combin&eacute;s.</strong>
+        Un POST peut arriver en <code>Transfer-Encoding: chunked</code> avec un
+        <code>Content-Type: multipart/form-data</code>. Tu dois d'abord d&eacute;coder les chunks
+        (<code>decode_chunked()</code>), puis parser le body selon son Content-Type.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; <em>Chunked en une page</em></div>
+    <div class="summary-subtitle">Tout ce qu'il faut retenir.</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128269;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">D&eacute;tecter</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Header <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-5);">Transfer-Encoding: chunked</code> pr&eacute;sent &rarr; pas de <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-5);">Content-Length</code></div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128230;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-3); margin-bottom:0.2rem;">Format</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-3);">taille_hexa\r\n</code> + <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-2);">donn&eacute;es\r\n</code> r&eacute;p&eacute;t&eacute;, termin&eacute; par <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-4);">0\r\n\r\n</code></div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9888;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Pi&egrave;ge TCP</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">TCP fragmente n'importe o&ugrave; &mdash; m&ecirc;me au milieu d'un chunk ou de sa taille. Toujours accumuler puis d&eacute;coder.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128260;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-6); margin-bottom:0.2rem;">CGI</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Toujours <code style="font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--accent-6);">decode_chunked()</code> AVANT d'&eacute;crire dans le pipe stdin du CGI. Le CGI attend du body brut + EOF.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Chunked Transfer-Encoding. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
+  });
+  var sections = document.querySelectorAll('.chapter');
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(function(s) { observer.observe(s); });
+  var navIds = ['normal','probleme','format','tshark','parser','tcp','cgi','mime'];
+  var sectionEls = navIds.map(function(id) { return document.getElementById(id); });
+  var navEls = navIds.map(function(id) { return document.getElementById('nav-' + id); });
+  var navObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        navEls.forEach(function(n) { if (n) n.classList.remove('active'); });
+        var idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(function(s) { if (s) navObserver.observe(s); });
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      var t = document.querySelector(a.getAttribute('href'));
+      if (t) {
+        var navH = document.querySelector('.progress-bar').offsetHeight;
+        var top = t.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+      }
+    });
+  });
+</script>
+</body>
+</html>

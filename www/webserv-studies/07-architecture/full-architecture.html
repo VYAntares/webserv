@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture complète — Le pattern Reactor de notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body id="top">
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<!-- STICKY NAV -->
+<nav class="top-nav">
+  <div class="top-nav-inner">
+
+    <a href="../webserv-mindmap.html" class="nav-back">
+      <span>&#8592;</span> Mindmap
+    </a>
+
+    <a href="#top" class="nav-item">⬡ Schéma</a>
+
+    <!-- ① Démarrage — dropdown -->
+    <div class="nav-group">
+      <a href="#ch-startup" class="nav-item">① Démarrage <span class="caret">▾</span></a>
+      <div class="nav-dropdown">
+        <a href="#ch-main" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-1);"></span>
+          <span class="nav-dd-fn">main()</span>
+          <span class="nav-dd-sub">point d'entrée</span>
+        </a>
+        <a href="#ch-config" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-3);"></span>
+          <span class="nav-dd-fn">ConfigLoader</span>
+          <span class="nav-dd-sub">lexer → parser → validator</span>
+        </a>
+      </div>
+    </div>
+
+    <a href="#ch-sockets" class="nav-item">② ServerHandler</a>
+
+    <!-- ③ Reactor — dropdown -->
+    <div class="nav-group">
+      <a href="#ch-loop" class="nav-item">③ Reactor <span class="caret">▾</span></a>
+      <div class="nav-dropdown">
+        <a href="#ch-epoll" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-3);"></span>
+          <span class="nav-dd-fn">EventLoop</span>
+          <span class="nav-dd-sub">initiation dispatcher</span>
+        </a>
+        <a href="#ch-accept" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-2);"></span>
+          <span class="nav-dd-fn">handle_accept()</span>
+          <span class="nav-dd-sub">nouvelle connexion</span>
+        </a>
+        <a href="#ch-epollin" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-1);"></span>
+          <span class="nav-dd-fn">handle_input()</span>
+          <span class="nav-dd-sub">lecture</span>
+        </a>
+        <a href="#ch-epollout" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-5);"></span>
+          <span class="nav-dd-fn">handle_output()</span>
+          <span class="nav-dd-sub">envoi + keep-alive</span>
+        </a>
+      </div>
+    </div>
+
+    <a href="#ch-parsing" class="nav-item">④ HttpParser</a>
+    <a href="#ch-routing" class="nav-item">⑤ Router</a>
+
+    <!-- ⑥ Handlers — dropdown -->
+    <div class="nav-group">
+      <a href="#ch-handlers" class="nav-item">⑥ Handlers <span class="caret">▾</span></a>
+      <div class="nav-dropdown">
+        <a href="#ch-static" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-4);"></span>
+          <span class="nav-dd-fn">StaticHandler</span>
+          <span class="nav-dd-sub">GET / POST / DELETE</span>
+        </a>
+        <a href="#ch-cgi" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-6);"></span>
+          <span class="nav-dd-fn">CGIHandler</span>
+          <span class="nav-dd-sub">asynchrone via IResponseSink</span>
+        </a>
+        <a href="#ch-error" class="nav-dd-item">
+          <span class="nav-dd-dot" style="background:var(--accent-1);"></span>
+          <span class="nav-dd-fn">ErrorHandler</span>
+          <span class="nav-dd-sub">400 → 504</span>
+        </a>
+      </div>
+    </div>
+
+    <a href="#ch-response" class="nav-item">⑦ Réponse</a>
+    <a href="#ch-close" class="nav-item">⑧ Fermeture</a>
+
+  </div>
+</nav>
+
+<!-- PAGE HERO -->
+<div class="page-hero">
+  <div class="page-hero-inner">
+    <div class="page-hero-tag">07 — Architecture complète — Pattern Reactor (Schmidt, 1995)</div>
+    <h1>Le parcours d'une <em>requête</em></h1>
+    <p class="page-hero-desc">
+      Du moment où un client se connecte jusqu'à la destruction du handler,
+      voici chaque étape que traverse une requête dans <strong>notre</strong> serveur —
+      avec le vrai code : EventLoop (singleton), IEventHandler, ServerHandler,
+      ClientHandler, HttpParser, Router, et les handlers de réponse.
+    </p>
+    <div class="page-hero-meta">
+      <div class="page-hero-meta-item">
+        <span class="page-hero-meta-dot" style="background:var(--accent-1);"></span>
+        8 étapes
+      </div>
+      <div class="page-hero-meta-item">
+        <span class="page-hero-meta-dot" style="background:var(--accent-4);"></span>
+        1 interface, 4 event handlers
+      </div>
+      <div class="page-hero-meta-item">
+        <span class="page-hero-meta-dot" style="background:var(--accent-2);"></span>
+        main() → delete handler
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<!-- FLOWCHART SCHEMA                                                   -->
+<!-- ================================================================== -->
+<div class="map-section" id="schema" style="scroll-margin-top: 80px;">
+  <div class="map-section-label">&#9660; Schéma du flux — clique sur un bloc pour voir le détail</div>
+
+  <div class="flowchart">
+
+    <!-- ① DÉMARRAGE -->
+    <div class="flow-section-label">① Démarrage</div>
+
+    <a href="#ch-startup" class="node" style="--node-color: var(--accent-1); --node-glow: rgba(255,107,74,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Point d'entrée</div>
+      <div class="node-title">main()</div>
+      <div class="node-desc">ConfigLoader parse la config, un ServerHandler par paire (adresse, port), puis EventLoop::instance()->handle_events().</div>
+      <div class="node-code">./webserv conf/default.conf</div>
+    </a>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+
+    <a href="#ch-startup" class="node" style="--node-color: var(--accent-3); --node-glow: rgba(192,132,252,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Configuration</div>
+      <div class="node-title">ConfigLoader → Lexer → Parser → Validator</div>
+      <div class="node-desc">Tokenize le .conf, construit les structs Server/Location, valide et propage les défauts server → locations.</div>
+      <div class="node-code">server { listen 8080; location /cgi-bin { cgi_pass .py /usr/bin/python3; } }</div>
+    </a>
+
+    <!-- ② SOCKETS -->
+    <div class="flow-section-label">② Sockets d'écoute</div>
+
+    <a href="#ch-sockets" class="node" style="--node-color: var(--accent-2); --node-glow: rgba(74,224,255,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Un par listen</div>
+      <div class="node-title">new ServerHandler(listen, server)</div>
+      <div class="node-desc">Crée le socket non-bloquant, bind, listen, et s'enregistre lui-même dans l'EventLoop en ACCEPT_EVENT.</div>
+      <div class="node-code">socket() → SO_REUSEADDR → O_NONBLOCK → FD_CLOEXEC → bind() → listen(SOMAXCONN) → register_handler(this, ACCEPT_EVENT)</div>
+    </a>
+
+    <!-- ③ REACTOR -->
+    <div class="flow-section-label">③ Le Reactor — EventLoop::handle_events()</div>
+
+    <a href="#ch-loop" class="node" style="--node-color: var(--accent-3); --node-glow: rgba(192,132,252,0.1); max-width: 700px; width: 100%;">
+      <div class="node-label">Initiation Dispatcher (singleton)</div>
+      <div class="node-title">epoll_wait(_epfd, events, 128, 500)</div>
+      <div class="node-desc">Un seul epoll pour tous les fds (sockets + pipes CGI). Dispatch polymorphe via IEventHandler* — l'EventLoop ne connaît aucun type concret.</div>
+      <div class="node-code">HandlerEntry* entry = events[i].data.ptr;
+entry->handler->handle_input(); // ou handle_accept / handle_output</div>
+    </a>
+
+    <div class="fork-wrapper">
+      <svg class="fork-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="400" y1="0" x2="400" y2="15" class="fork-line"/>
+        <circle cx="400" cy="15" r="3" class="fork-dot"/>
+        <line x1="400" y1="15" x2="133" y2="15" class="fork-line"/>
+        <line x1="400" y1="15" x2="667" y2="15" class="fork-line"/>
+        <line x1="133" y1="15" x2="133" y2="50" class="fork-line"/>
+        <line x1="400" y1="15" x2="400" y2="50" class="fork-line"/>
+        <line x1="667" y1="15" x2="667" y2="50" class="fork-line"/>
+        <polygon points="130,46 133,52 136,46" class="fork-dot"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+        <polygon points="664,46 667,52 670,46" class="fork-dot"/>
+      </svg>
+      <div class="fork-branches cols-3">
+        <a href="#ch-accept" class="node" style="--node-color: var(--accent-2); --node-glow: rgba(74,224,255,0.1);">
+          <div class="node-label">ACCEPT_EVENT</div>
+          <div class="node-title">ServerHandler::handle_accept()</div>
+          <div class="node-desc">accept() + O_NONBLOCK + FD_CLOEXEC, puis new ClientHandler qui s'enregistre en READ_EVENT.</div>
+          <div class="node-code">new ClientHandler(client_fd,
+  _server, client_addr)</div>
+        </a>
+        <a href="#ch-epollin" class="node" style="--node-color: var(--accent-1); --node-glow: rgba(255,107,74,0.1);">
+          <div class="node-label">EPOLLIN</div>
+          <div class="node-title">ClientHandler::handle_input()</div>
+          <div class="node-desc">UN recv() de 4096 octets max, nourri au HttpParser. COMPLETE → route, ERROR → ErrorHandler.</div>
+          <div class="node-code">recv() → _parser.runParsing(data)
+COMPLETE → _handleComplete()</div>
+        </a>
+        <a href="#ch-epollout" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1);">
+          <div class="node-label">EPOLLOUT</div>
+          <div class="node-title">ClientHandler::handle_output()</div>
+          <div class="node-desc">UN send() de _response depuis _sent. Fini → keep-alive (_reset) ou return -1 (close).</div>
+          <div class="node-code">send(_fd, data+_sent, left,
+  MSG_NOSIGNAL)</div>
+        </a>
+      </div>
+      <svg class="fork-merge-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="133" y1="0" x2="133" y2="35" class="fork-line"/>
+        <line x1="400" y1="0" x2="400" y2="35" class="fork-line"/>
+        <line x1="667" y1="0" x2="667" y2="35" class="fork-line"/>
+        <line x1="133" y1="35" x2="667" y2="35" class="fork-line"/>
+        <circle cx="400" cy="35" r="3" class="fork-dot"/>
+        <line x1="400" y1="35" x2="400" y2="50" class="fork-line"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+      </svg>
+    </div>
+
+    <!-- ④ PARSING -->
+    <div class="flow-section-label">④ Parsing HTTP — machine à états</div>
+
+    <a href="#ch-parsing" class="node" style="--node-color: var(--accent-4); --node-glow: rgba(74,222,128,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Texte brut → HttpRequest</div>
+      <div class="node-title">HttpParser::runParsing()</div>
+      <div class="node-desc">États : R_HEADERS → R_BODY ou R_CHUNKED → COMPLETE / ERROR. Limites : 32 Ko de headers (431), client_max_body_size par location (413).</div>
+      <div class="node-code">"GET /cgi-bin/hello.py?a=1 HTTP/1.1\r\nHost: localhost\r\n\r\n"
+→ method="GET"  uri="/cgi-bin/hello.py?a=1"  headers={Host:...}</div>
+    </a>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+
+    <!-- ⑤ ROUTING -->
+    <div class="flow-section-label">⑤ Routing</div>
+
+    <a href="#ch-routing" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1); max-width: 700px; width: 100%;">
+      <div class="node-label">Longest prefix match + garde-fous</div>
+      <div class="node-title">Router::route(req, server, peerAddr, sink)</div>
+      <div class="node-desc">findLocation → 501/405 → redirect → resolvePath (403 traversal) → upload_store → 404 → access → CGI ? multipart ? statique.</div>
+      <div class="node-code">"/cgi-bin/hello.py" → location /cgi-bin → cgi_pass .py → CGIHandler + return NULL</div>
+    </a>
+
+    <div class="fork-wrapper">
+      <svg class="fork-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="400" y1="0" x2="400" y2="15" class="fork-line"/>
+        <circle cx="400" cy="15" r="3" class="fork-dot"/>
+        <line x1="400" y1="15" x2="133" y2="15" class="fork-line"/>
+        <line x1="400" y1="15" x2="667" y2="15" class="fork-line"/>
+        <line x1="133" y1="15" x2="133" y2="50" class="fork-line"/>
+        <line x1="400" y1="15" x2="400" y2="50" class="fork-line"/>
+        <line x1="667" y1="15" x2="667" y2="50" class="fork-line"/>
+        <polygon points="130,46 133,52 136,46" class="fork-dot"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+        <polygon points="664,46 667,52 670,46" class="fork-dot"/>
+      </svg>
+      <div class="fork-branches cols-3">
+        <a href="#ch-static" class="node" style="--node-color: var(--accent-4); --node-glow: rgba(74,222,128,0.1);">
+          <div class="node-label">Fichier / dossier / upload</div>
+          <div class="node-title">StaticHandler / MultipartHandler</div>
+          <div class="node-desc">GET lit le fichier, POST écrit, DELETE unlink. Dossier : 301, autoindex ou 403. Multipart : upload_store.</div>
+          <div class="node-code">ifstream / ofstream / unlink()
+opendir() si autoindex</div>
+        </a>
+        <a href="#ch-cgi" class="node" style="--node-color: var(--accent-6); --node-glow: rgba(244,114,182,0.1);">
+          <div class="node-label">Script dynamique — asynchrone</div>
+          <div class="node-title">CGIHandler → return NULL</div>
+          <div class="node-desc">CGIProcess fork/execve, CGIWriteHandler + CGIReadHandler dans l'EventLoop. Réponse plus tard via onCgiDone().</div>
+          <div class="node-code">pipe()×2 + fork() + chdir()
+→ execve(interpreter)</div>
+        </a>
+        <a href="#ch-error" class="node" style="--node-color: var(--accent-1); --node-glow: rgba(255,107,74,0.1);">
+          <div class="node-label">Erreur</div>
+          <div class="node-title">ErrorHandler</div>
+          <div class="node-desc">400, 403, 404, 405, 413, 431, 500, 501, 502, 504 — error_page configurée ou page générée.</div>
+          <div class="node-code">new ErrorHandler(*loc, 404, "")
+→ buildResponse()</div>
+        </a>
+      </div>
+      <svg class="fork-merge-svg" viewBox="0 0 800 50" preserveAspectRatio="xMidYMid meet" style="height: 50px;">
+        <line x1="133" y1="0" x2="133" y2="35" class="fork-line"/>
+        <line x1="400" y1="0" x2="400" y2="35" class="fork-line"/>
+        <line x1="667" y1="0" x2="667" y2="35" class="fork-line"/>
+        <line x1="133" y1="35" x2="667" y2="35" class="fork-line"/>
+        <circle cx="400" cy="35" r="3" class="fork-dot"/>
+        <line x1="400" y1="35" x2="400" y2="50" class="fork-line"/>
+        <polygon points="397,46 400,52 403,46" class="fork-dot"/>
+      </svg>
+    </div>
+
+    <!-- ⑥ RESPONSE -->
+    <div class="flow-section-label">⑥ Construction de la réponse</div>
+
+    <a href="#ch-response" class="node" style="--node-color: var(--accent-5); --node-glow: rgba(250,204,21,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Sérialisation</div>
+      <div class="node-title">ARequestHandler::buildResponse() → _response</div>
+      <div class="node-desc">Status line + Location/Content-Type/Set-Cookie éventuels + Content-Length + Connection. Puis modify_handler(this, WRITE_EVENT).</div>
+      <div class="node-code">"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 42\r\nConnection: keep-alive\r\n\r\n..."</div>
+    </a>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+
+    <!-- ⑦ FERMETURE -->
+    <div class="flow-section-label">⑦ Fermeture</div>
+
+    <a href="#ch-close" class="node" style="--node-color: var(--text-muted); --node-glow: rgba(92,90,114,0.1);">
+      <span class="node-hint">voir le détail ↓</span>
+      <div class="node-label">Une seule convention</div>
+      <div class="node-title">return -1 → remove_handler + delete</div>
+      <div class="node-desc">L'EventLoop détruit le handler ; son destructeur ferme le fd. Keep-alive : _reset() et on repart en READ_EVENT à la place.</div>
+      <div class="node-code">if (ret == -1) { remove_handler(h); delete h; }  // ~ClientHandler → close(_fd)</div>
+    </a>
+
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<!-- CHAPITRES DÉTAILLÉS                                                -->
+<!-- ================================================================== -->
+<div class="chapters-hero">
+  <div class="chapters-hero-tag">Chapitres détaillés</div>
+  <h2>Chaque étape, <em>en profondeur</em></h2>
+  <p>Le vrai code du projet, les pièges rencontrés, et le pourquoi de chaque choix d'architecture.</p>
+</div>
+
+<div class="chapters">
+
+  <!-- ========== CHAPITRE 0 : STARTUP ========== -->
+  <section class="chapter" id="ch-startup">
+    <div id="ch-main" style="scroll-margin-top: 80px;"></div>
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-1);">0</span>
+      <div>
+        <h2 class="chapter-title"><em>Démarrage</em> du serveur</h2>
+        <p class="chapter-sub">
+          ConfigLoader vérifie et parse le fichier .conf, puis un ServerHandler
+          est créé pour chaque paire (adresse, port) de chaque bloc server.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Notre <code>main()</code> est minimal : tout objet s'auto-enregistre. Chaque
+      <code>listen</code> du fichier de conf représente un serveur qui écoute sur une paire
+      adresse:port — d'où la double boucle. Un port occupé est loggé mais n'empêche pas
+      les autres serveurs de démarrer (try/catch par listen). Les signaux (SIGINT, SIGPIPE...)
+      sont installés plus tard, au début de <code>handle_events()</code>.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">main.cpp — notre code, en entier</div>
+      <div class="code-body"><span class="kw">int</span> <span class="fn">main</span>(<span class="kw">int</span> argc, <span class="kw">char</span> **argv) {
+    <span class="kw">try</span> {
+        ConfigLoader <span class="fn">cl</span>(argc, argv);          <span class="cm">// lexer → parser → validator</span>
+        Config c = cl.<span class="fn">getConfig</span>();
+        <span class="kw">for</span> (size_t i = <span class="hl">0</span>; i &lt; c.cfg.<span class="fn">size</span>(); i++) {
+            <span class="kw">for</span> (size_t j = <span class="hl">0</span>; j &lt; c.cfg[i].listen.<span class="fn">size</span>(); j++) {
+                <span class="kw">try</span> {
+                    <span class="kw">new</span> <span class="fn">ServerHandler</span>(c.cfg[i].listen[j], c.cfg[i]);
+                } <span class="kw">catch</span> (std::exception &amp;e) {
+                    std::cerr &lt;&lt; e.<span class="fn">what</span>() &lt;&lt; std::endl;   <span class="cm">// un port raté ≠ tout s'arrête</span>
+                }
+            }
+        }
+        EventLoop::<span class="fn">instance</span>()-&gt;<span class="fn">handle_events</span>();   <span class="cm">// la boucle Reactor</span>
+        EventLoop::<span class="fn">destroy</span>();                       <span class="cm">// nettoyage complet au Ctrl-C</span>
+    } <span class="kw">catch</span> (std::exception &amp;e) {
+        std::cerr &lt;&lt; e.<span class="fn">what</span>() &lt;&lt; std::endl;
+        <span class="kw">return</span> <span class="hl">1</span>;                                   <span class="cm">// config invalide → refus de démarrer</span>
+    }
+    <span class="kw">return</span> <span class="hl">0</span>;
+}</div>
+    </div>
+
+    <div id="ch-config" style="scroll-margin-top: 80px;"></div>
+    <p class="prose">
+      <code>ConfigLoader</code> vérifie le lancement (argc, extension <code>.conf</code>,
+      fichier régulier via <code>stat()</code>, non vide), puis enchaîne les trois étages :
+      le <strong>Lexer</strong> tokenize (<code>{</code> <code>}</code> <code>;</code> word EOF),
+      le <strong>Parser</strong> construit les structs, le <strong>Validator</strong> vérifie la
+      cohérence et propage les directives du server vers ses locations.
+      Détails complets dans les fiches de la <a href="../webserv-mindmap.html#config">section 04</a>.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">includes/config/ConfigStruct.hpp — nos vraies structures</div>
+      <div class="code-body"><span class="cm">// BaseBlock possede les directives communes de server et location.</span>
+<span class="kw">struct</span> <span class="hl">BaseBlock</span> {
+    std::pair&lt;<span class="kw">int</span>, str&gt;  return_path;      <span class="cm">// code redirect + URL cible (-1 = pas de redirect)</span>
+    std::map&lt;<span class="kw">int</span>, str&gt;   error_page;       <span class="cm">// code erreur -> page HTML (404 -> /errors/404.html)</span>
+    std::string           root;             <span class="cm">// dossier racine des fichiers servis</span>
+    std::string           index;            <span class="cm">// fichier par defaut (index.html)</span>
+    size_t                max_body_client;  <span class="cm">// taille max du body en octets (defaut: 1MB)</span>
+    <span class="kw">int</span>                   autoindex;        <span class="cm">// -1 = non defini, 0 = off, 1 = on</span>
+};
+
+<span class="cm">// location herite de BaseBlock (directives communes avec server)</span>
+<span class="kw">struct</span> <span class="hl">Location</span> : <span class="kw">public</span> BaseBlock {
+    std::map&lt;str, str&gt;    cgi_pass;         <span class="cm">// extension -> interpreteur (.py -> /usr/bin/python3)</span>
+    std::vector&lt;str&gt;      allowed_methods;  <span class="cm">// methodes HTTP autorisees</span>
+    std::string           upload_store;     <span class="cm">// dossier des fichiers uploades</span>
+    std::string           path;             <span class="cm">// URL/route du bloc (/api, /upload, /)</span>
+};
+
+<span class="kw">struct</span> <span class="hl">Server</span> : <span class="kw">public</span> BaseBlock {
+    std::vector&lt;addrport&gt; listen;           <span class="cm">// paires (adresse, port) d'ecoute</span>
+    std::vector&lt;str&gt;      server_name;
+    std::vector&lt;Location&gt; locations;
+};</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">💡</span>
+      <p>
+        <strong>L'héritage BaseBlock est le cœur du système :</strong> <code>root</code>,
+        <code>index</code>, <code>error_page</code>, <code>autoindex</code>, <code>return</code> et
+        <code>client_max_body_size</code> s'écrivent au niveau server OU location.
+        <code>Validator::propogateServerToLocations()</code> copie les valeurs du server dans
+        chaque location qui ne les a pas définies — après ça, le Router ne consulte
+        plus jamais le Server pour ces directives : la Location matchée suffit.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 1 : SOCKETS ========== -->
+  <section class="chapter" id="ch-sockets">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-2);">1</span>
+      <div>
+        <h2 class="chapter-title"><em>ServerHandler</em> — les sockets d'écoute</h2>
+        <p class="chapter-sub">
+          Un ServerHandler par paire (adresse, port). Il crée son socket
+          et s'enregistre lui-même dans l'EventLoop en ACCEPT_EVENT.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Le flow classique <code>socket → bind → listen</code>, avec trois options qui comptent :
+      <code>SO_REUSEADDR</code> (redémarrage rapide sans "Address already in use"),
+      <code>O_NONBLOCK</code> (un accept() ne doit jamais figer la boucle) et
+      <code>FD_CLOEXEC</code> (les enfants CGI ne doivent pas hériter du socket d'écoute).
+      En cas d'échec en cours de route, le constructeur ferme le fd avant de re-throw (RAII).
+    </p>
+
+    <div class="flow-inline">
+      <div class="flow-inline-step"><span class="fi-name">socket(AF_INET, SOCK_STREAM, 0)</span><span class="fi-desc">crée le file descriptor TCP</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">setsockopt(SO_REUSEADDR)</span><span class="fi-desc">relancer sans attendre le TIME_WAIT</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">fcntl(O_NONBLOCK + FD_CLOEXEC)</span><span class="fi-desc">non-bloquant, et invisible pour les CGI</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">bind(addr du .conf)</span><span class="fi-desc">l'adresse vient de la config (htons pour le port)</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">listen(SOMAXCONN)</span><span class="fi-desc">backlog système maximal</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">register_handler(this, ACCEPT_EVENT)</span><span class="fi-desc">s'ajoute lui-même au Reactor</span></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">srcs/handlers/ServerHandler.cpp — constructeur + createSocket()</div>
+      <div class="code-body">ServerHandler::<span class="fn">ServerHandler</span>(addrport addrs, <span class="kw">const</span> Server&amp; server) : _server(server), _fd(-<span class="hl">1</span>) {
+    <span class="kw">try</span> {
+        _fd = <span class="fn">createSocket</span>();
+        <span class="fn">bindAddress</span>(_fd, addrs);
+        <span class="kw">if</span> (<span class="fn">listen</span>(_fd, SOMAXCONN) == -<span class="hl">1</span>)
+            <span class="kw">throw</span> std::runtime_error(<span class="str">"listen() failed:"</span> + std::string(<span class="fn">strerror</span>(errno)));
+    } <span class="kw">catch</span> (...) {
+        <span class="fn">close</span>(_fd);        <span class="cm">// RAII : pas de fd orphelin</span>
+        <span class="kw">throw</span>;
+    }
+    EventLoop::<span class="fn">instance</span>()-&gt;<span class="fn">register_handler</span>(<span class="kw">this</span>, ACCEPT_EVENT);
+}
+
+<span class="kw">int</span> ServerHandler::<span class="fn">createSocket</span>() {
+    <span class="kw">int</span> fd = <span class="fn">socket</span>(AF_INET, SOCK_STREAM, <span class="hl">0</span>);
+    <span class="kw">if</span> (fd == -<span class="hl">1</span>)
+        <span class="kw">throw</span> std::runtime_error(<span class="str">"socket() failed:"</span> + std::string(<span class="fn">strerror</span>(errno)));
+
+    <span class="kw">int</span> opt = <span class="hl">1</span>;
+    <span class="kw">if</span> (<span class="fn">setsockopt</span>(fd, SOL_SOCKET, SO_REUSEADDR, &amp;opt, <span class="kw">sizeof</span>(opt)) == -<span class="hl">1</span>) {
+        <span class="fn">close</span>(fd);
+        <span class="kw">throw</span> std::runtime_error(<span class="str">"setsockopt() failed: "</span> + std::string(<span class="fn">strerror</span>(errno)));
+    }
+    <span class="kw">if</span> (<span class="fn">fcntl</span>(fd, F_SETFL, <span class="fn">fcntl</span>(fd, F_GETFL) | O_NONBLOCK) == -<span class="hl">1</span>) {
+        <span class="fn">close</span>(fd);
+        <span class="kw">throw</span> std::runtime_error(<span class="str">"fcntl() failed: "</span> + std::string(<span class="fn">strerror</span>(errno)));
+    }
+    <span class="fn">fcntl</span>(fd, F_SETFD, FD_CLOEXEC);   <span class="cm">// l'enfant CGI ne doit pas hériter du socket d'écoute</span>
+    <span class="kw">return</span> fd;
+}</div>
+    </div>
+
+    <div class="fn-tags">
+      <span class="fn-tag">socket()</span>
+      <span class="fn-tag">setsockopt()</span>
+      <span class="fn-tag">fcntl()</span>
+      <span class="fn-tag">bind()</span>
+      <span class="fn-tag">listen()</span>
+      <span class="fn-tag">htons()</span>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">⚠️</span>
+      <p>
+        <strong>Multi-port = plusieurs ServerHandler, un seul epoll.</strong>
+        Notre <code>default.conf</code> écoute sur 8080 et 8079 (contenus différents).
+        Chaque ServerHandler vit dans la même <code>_table</code> de l'EventLoop —
+        c'est l'exigence « un seul poll() pour toutes les I/O, listen inclus ».
+        L'adresse vient de la config : <code>getaddrinfo()</code> l'a résolue au parsing
+        (Parser::resolveHost), le ServerHandler ne fait que la binder.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 2 : REACTOR ========== -->
+  <section class="chapter" id="ch-loop">
+    <div id="ch-epoll" style="scroll-margin-top: 80px;"></div>
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-3);">2</span>
+      <div>
+        <h2 class="chapter-title">Le <em>Reactor</em> — EventLoop</h2>
+        <p class="chapter-sub">
+          Pattern Reactor (Schmidt, 1995) : un Initiation Dispatcher central (EventLoop, singleton)
+          et des Concrete Event Handlers derrière une interface unique (IEventHandler).
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      L'EventLoop ne connaît <strong>aucun type concret</strong>. Il ne voit que des
+      <code>IEventHandler*</code> : c'est le polymorphisme qui appelle le bon code
+      (<code>ServerHandler::handle_accept</code>, <code>ClientHandler::handle_input</code>,
+      <code>CGIReadHandler::handle_input</code>...) sans un seul switch sur le type.
+      Ajouter un nouveau handler = implémenter l'interface + s'enregistrer. EventLoop ne change jamais.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">includes/core/IEventHandler.hpp — le contrat + les EventType</div>
+      <div class="code-body"><span class="cm">// Valeurs en octal, reprises du papier Schmidt — un seul bit chacune,</span>
+<span class="cm">// testables au & et combinables au | :</span>
+<span class="kw">enum</span> <span class="hl">EventType</span> {
+    ACCEPT_EVENT  = <span class="hl">01</span>,
+    READ_EVENT    = <span class="hl">02</span>,
+    WRITE_EVENT   = <span class="hl">04</span>,
+    TIMEOUT_EVENT = <span class="hl">010</span>,
+    SIGNAL_EVENT  = <span class="hl">020</span>,
+    CLOSE_EVENT   = <span class="hl">040</span>
+};
+
+<span class="kw">class</span> <span class="hl">IEventHandler</span> {
+    <span class="kw">public</span>:
+        <span class="kw">virtual int</span>    <span class="fn">getFd</span>()           <span class="kw">const</span> = <span class="hl">0</span>;   <span class="cm">// pure : tout handler expose son fd</span>
+        <span class="kw">virtual int</span>    <span class="fn">handle_accept</span>()   { <span class="kw">return</span> <span class="hl">0</span>; }
+        <span class="kw">virtual int</span>    <span class="fn">handle_input</span>()    { <span class="kw">return</span> <span class="hl">0</span>; }
+        <span class="kw">virtual int</span>    <span class="fn">handle_output</span>()   { <span class="kw">return</span> <span class="hl">0</span>; }
+        <span class="kw">virtual int</span>    <span class="fn">handle_close</span>()    { <span class="kw">return</span> <span class="hl">0</span>; }
+        <span class="kw">virtual int</span>    <span class="fn">handle_timeout</span>()  { <span class="kw">return</span> <span class="hl">0</span>; }
+        <span class="kw">virtual</span> time_t <span class="fn">getLastActivity</span>() <span class="kw">const</span> { <span class="kw">return</span> <span class="hl">0</span>; }   <span class="cm">// 0 = jamais timeout</span>
+        <span class="kw">virtual</span>        ~<span class="fn">IEventHandler</span>()  {}
+};</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">srcs/core/EventLoop.cpp — handle_events(), le cœur du Reactor</div>
+      <div class="code-body"><span class="kw">void</span> EventLoop::<span class="fn">handle_events</span>() {
+    <span class="fn">signal</span>(SIGINT, handle_sigint);
+    <span class="fn">signal</span>(SIGTERM, handle_sigint);
+    <span class="fn">signal</span>(SIGQUIT, handle_sigint);
+    <span class="fn">signal</span>(SIGPIPE, SIG_IGN);
+
+    <span class="kw">struct</span> epoll_event events[MAX_EVENTS];   <span class="cm">// MAX_EVENTS = 128</span>
+
+    <span class="kw">while</span> (!g_stop) {
+        <span class="kw">int</span> n = <span class="fn">epoll_wait</span>(_epfd, events, MAX_EVENTS, <span class="hl">500</span>);   <span class="cm">// 500ms : g_stop + timeouts</span>
+
+        <span class="kw">for</span> (<span class="kw">int</span> i = <span class="hl">0</span>; i &lt; n; i++) {
+            HandlerEntry* entry = <span class="kw">static_cast</span>&lt;HandlerEntry*&gt;(events[i].data.ptr);
+            IEventHandler* h    = entry-&gt;handler;
+            <span class="kw">int</span> ret = <span class="hl">0</span>;
+
+            <span class="kw">try</span> {
+                <span class="kw">if</span> (entry-&gt;type == ACCEPT_EVENT)
+                    ret = h-&gt;<span class="fn">handle_accept</span>();
+                <span class="kw">else</span> {
+                    <span class="kw">if</span> (events[i].events &amp; (EPOLLIN | EPOLLHUP | EPOLLERR))
+                        ret = h-&gt;<span class="fn">handle_input</span>();
+                    <span class="kw">if</span> (ret != -<span class="hl">1</span> &amp;&amp; events[i].events &amp; EPOLLOUT)
+                        ret = h-&gt;<span class="fn">handle_output</span>();
+                    <span class="cm">// EPOLLERR/EPOLLHUP "nus" : fermer, sinon busy loop</span>
+                    <span class="kw">if</span> (ret != -<span class="hl">1</span> &amp;&amp; (events[i].events &amp; (EPOLLHUP | EPOLLERR))
+                        &amp;&amp; !(events[i].events &amp; (EPOLLIN | EPOLLOUT)))
+                        ret = -<span class="hl">1</span>;
+                }
+            } <span class="kw">catch</span> (std::exception&amp; e) {
+                std::cerr &lt;&lt; <span class="str">"[handler error] fd="</span> &lt;&lt; h-&gt;<span class="fn">getFd</span>() &lt;&lt; <span class="str">": "</span> &lt;&lt; e.<span class="fn">what</span>() &lt;&lt; <span class="str">"\n"</span>;
+                ret = -<span class="hl">1</span>;                <span class="cm">// on sacrifie le handler, jamais la boucle</span>
+            } <span class="kw">catch</span> (...) { ret = -<span class="hl">1</span>; }
+
+            <span class="kw">if</span> (ret == -<span class="hl">1</span>) {
+                <span class="fn">remove_handler</span>(h);       <span class="cm">// epoll_ctl(DEL) + retrait de la table</span>
+                <span class="kw">delete</span> h;                <span class="cm">// le destructeur ferme le fd</span>
+            }
+        }
+        <span class="fn">checkTimeOut</span>();   <span class="cm">// hors du if(n>0) : tombe aussi quand le serveur est inactif</span>
+    }
+}</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">💡</span>
+      <p>
+        <strong>Pourquoi <code>ev.data.ptr</code> pointe sur un HandlerEntry et pas sur le handler :</strong>
+        epoll nous rend un <code>void*</code> — il faut savoir <em>quoi</em> appeler.
+        <code>HandlerEntry { IEventHandler* handler; EventType type; }</code> garde le type
+        d'enregistrement à côté du handler. La <code>_table</code>
+        (<code>std::map&lt;IEventHandler*, HandlerEntry*&gt;</code>) permet à
+        <code>modify_handler</code>/<code>remove_handler</code> de retrouver l'entrée en O(log n).
+      </p>
+    </div>
+
+    <div id="ch-accept" style="scroll-margin-top: 80px;"></div>
+    <p class="prose">
+      <strong>ACCEPT_EVENT :</strong> un client frappe. <code>handle_accept()</code> retourne
+      <strong>toujours 0</strong> — un échec d'accept est transitoire, retourner -1 détruirait
+      le socket d'écoute et le port ne répondrait plus jamais. Piège Linux : le fd client
+      n'hérite <strong>pas</strong> de O_NONBLOCK du socket d'écoute, il faut le poser explicitement.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/handlers/ServerHandler.cpp — handle_accept()</div>
+      <div class="code-body"><span class="kw">int</span> ServerHandler::<span class="fn">handle_accept</span>() {
+    <span class="kw">struct</span> sockaddr_in client_addr;
+    socklen_t len = <span class="kw">sizeof</span>(client_addr);
+    <span class="kw">int</span> client_fd = <span class="fn">accept</span>(_fd, (<span class="kw">struct</span> sockaddr*)&amp;client_addr, &amp;len);
+    <span class="kw">if</span> (client_fd == -<span class="hl">1</span>)
+        <span class="kw">return</span> <span class="hl">0</span>;                       <span class="cm">// transitoire — surtout pas -1</span>
+
+    <span class="cm">// O_NONBLOCK n'est PAS hérité du socket d'écoute (Linux)</span>
+    <span class="kw">if</span> (<span class="fn">fcntl</span>(client_fd, F_SETFL, <span class="fn">fcntl</span>(client_fd, F_GETFL) | O_NONBLOCK) == -<span class="hl">1</span>) {
+        <span class="fn">close</span>(client_fd);
+        <span class="kw">return</span> <span class="hl">0</span>;
+    }
+    <span class="fn">fcntl</span>(client_fd, F_SETFD, FD_CLOEXEC);
+
+    <span class="kw">try</span> {
+        <span class="kw">new</span> <span class="fn">ClientHandler</span>(client_fd, _server, client_addr);   <span class="cm">// s'enregistre en READ_EVENT</span>
+    } <span class="kw">catch</span> (std::exception&amp; e) {
+        std::cerr &lt;&lt; <span class="str">"accept: "</span> &lt;&lt; e.<span class="fn">what</span>() &lt;&lt; std::endl;
+        <span class="fn">close</span>(client_fd);
+    }
+    <span class="kw">return</span> <span class="hl">0</span>;
+}</div>
+    </div>
+
+    <p class="prose">
+      <div id="ch-epollin" style="display:inline; scroll-margin-top: 80px;"></div><strong>EPOLLIN sur un client :</strong> UN seul <code>recv()</code> de 4096 octets max
+      (jamais de boucle, jamais d'errno — epoll re-notifiera en level-triggered).
+      Les octets sont donnés au <code>HttpParser</code>, qui accumule et avance sa machine à états.
+      On ne regarde que le résultat : <code>COMPLETE</code> → router, <code>ERROR</code> → ErrorHandler.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/handlers/ClientHandler.cpp — handle_input()</div>
+      <div class="code-body"><span class="kw">int</span> ClientHandler::<span class="fn">handle_input</span>() {
+    _lastActivity = <span class="fn">time</span>(NULL);
+
+    <span class="kw">char</span> buf[<span class="hl">4096</span>];
+    ssize_t n = <span class="fn">recv</span>(_fd, buf, <span class="kw">sizeof</span>(buf), <span class="hl">0</span>);
+    <span class="kw">if</span> (n &lt;= <span class="hl">0</span>)
+        <span class="kw">return</span> -<span class="hl">1</span>;                       <span class="cm">// déconnexion ou erreur → destruction</span>
+    std::string <span class="fn">data</span>(buf, n);
+
+    _parser.<span class="fn">runParsing</span>(data);
+    <span class="kw">if</span> (_parser.<span class="fn">getState</span>() == HttpParser::COMPLETE)
+        <span class="fn">_handleComplete</span>();               <span class="cm">// → Router → réponse → WRITE_EVENT</span>
+    <span class="kw">else if</span> (_parser.<span class="fn">getState</span>() == HttpParser::ERROR)
+        <span class="fn">_handleError</span>();                  <span class="cm">// → ErrorHandler → WRITE_EVENT</span>
+
+    <span class="kw">return</span> <span class="hl">0</span>;                            <span class="cm">// requête incomplète : epoll rappellera</span>
+}</div>
+    </div>
+
+    <p class="prose">
+      <div id="ch-epollout" style="display:inline; scroll-margin-top: 80px;"></div><strong>EPOLLOUT sur un client :</strong> UN seul <code>send()</code> depuis l'offset
+      <code>_sent</code> — la réponse part en plusieurs notifications si elle est grosse.
+      Une fois tout parti : soit keep-alive (<code>_reset()</code> + retour en READ_EVENT,
+      avec re-parse immédiat du reliquat pour le pipelining), soit <code>return -1</code>
+      et l'EventLoop nous détruit.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/handlers/ClientHandler.cpp — handle_output()</div>
+      <div class="code-body"><span class="kw">int</span> ClientHandler::<span class="fn">handle_output</span>() {
+    _lastActivity = <span class="fn">time</span>(NULL);
+
+    <span class="kw">const char</span>*  data = _response.<span class="fn">c_str</span>() + _sent;
+    size_t       left = _response.<span class="fn">size</span>()  - _sent;
+
+    ssize_t n = <span class="fn">send</span>(_fd, data, left, MSG_NOSIGNAL);   <span class="cm">// pas de SIGPIPE</span>
+    <span class="kw">if</span> (n &lt;= <span class="hl">0</span>)
+        <span class="kw">return</span> -<span class="hl">1</span>;
+
+    _sent += <span class="kw">static_cast</span>&lt;size_t&gt;(n);
+    <span class="kw">if</span> (_sent &gt;= _response.<span class="fn">size</span>()) {
+        <span class="kw">if</span> (_keepAlive) {
+            <span class="fn">_reset</span>();                                    <span class="cm">// delete _rh, clear, parser.reset()</span>
+            EventLoop::<span class="fn">instance</span>()-&gt;<span class="fn">modify_handler</span>(<span class="kw">this</span>, READ_EVENT);
+            <span class="cm">// Pipelining : une requête entière peut déjà être dans le buffer</span>
+            <span class="cm">// du parseur — aucun octet ne re-déclenchera handle_input, donc</span>
+            <span class="cm">// on re-parse le reliquat maintenant.</span>
+            std::string empty;
+            _parser.<span class="fn">runParsing</span>(empty);
+            <span class="kw">if</span> (_parser.<span class="fn">getState</span>() == HttpParser::COMPLETE)
+                <span class="fn">_handleComplete</span>();
+            <span class="kw">else if</span> (_parser.<span class="fn">getState</span>() == HttpParser::ERROR)
+                <span class="fn">_handleError</span>();
+            <span class="kw">return</span> <span class="hl">0</span>;
+        }
+        <span class="kw">return</span> -<span class="hl">1</span>;   <span class="cm">// Connection: close → EventLoop détruira ce handler</span>
+    }
+    <span class="kw">return</span> <span class="hl">0</span>;        <span class="cm">// pas tout parti : epoll re-notifiera EPOLLOUT</span>
+}</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">🔄</span>
+      <p>
+        <strong>Le cycle complet côté Reactor :</strong>
+        handle_accept → READ_EVENT → handle_input (× N recv) → parse COMPLETE →
+        route → buildResponse → modify_handler(WRITE_EVENT) → handle_output (× N send) →
+        keep-alive (retour READ_EVENT) ou return -1 (destruction).
+        Et à chaque tour de boucle, <code>checkTimeOut()</code> chasse tout handler
+        muet depuis plus de 30 secondes — clients comme CGI.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 3 : PARSING ========== -->
+  <section class="chapter" id="ch-parsing">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-4);">3</span>
+      <div>
+        <h2 class="chapter-title"><em>HttpParser</em> — la machine à états</h2>
+        <p class="chapter-sub">
+          Stateful, incrémental, borné. Il survit entre les recv() et transforme
+          le flux TCP fragmenté en HttpRequest structurée.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Le pipeline du projet tient en une ligne de commentaire de <code>HttpParser.hpp</code> :
+      <strong>HttpParser → HttpRequest → Router → ARequestHandler</strong>. Le parser est
+      <em>stateful</em> (il accumule entre les événements), la HttpRequest est de la donnée pure,
+      le Router choisit, le handler construit. Les états : <code>R_HEADERS</code> →
+      <code>R_BODY</code> ou <code>R_CHUNKED</code> → <code>COMPLETE</code> / <code>ERROR</code>.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/http/HttpParser.cpp — runParsing(), la boucle d'états</div>
+      <div class="code-body"><span class="kw">void</span> HttpParser::<span class="fn">runParsing</span>(std::string&amp; buffer) {
+    _req.error = (_errorCode != <span class="hl">0</span>) ? _errorCode : <span class="hl">200</span>;
+    _buffer += buffer;                       <span class="cm">// accumulation inter-recv</span>
+
+    <span class="cm">// Boucle plutôt que simple switch : un seul recv() peut livrer les</span>
+    <span class="cm">// headers ET tout le body d'un coup (petite requête). Sans boucle,</span>
+    <span class="cm">// le body déjà présent resterait non consommé → requête figée.</span>
+    State before;
+    <span class="kw">do</span> {
+        before = _state;
+        <span class="kw">switch</span> (_state) {
+            <span class="kw">case</span> R_HEADERS: <span class="fn">treatHeader</span>();  <span class="kw">break</span>;   <span class="cm">// cherche \r\n\r\n, max 32 Ko (431)</span>
+            <span class="kw">case</span> R_BODY:    <span class="fn">treatBody</span>();    <span class="kw">break</span>;   <span class="cm">// Content-Length octets (413 drainé)</span>
+            <span class="kw">case</span> R_CHUNKED: <span class="fn">readChunked</span>();  <span class="kw">break</span>;   <span class="cm">// dé-chunke pour le CGI</span>
+            <span class="kw">default</span>:        <span class="kw">break</span>;                   <span class="cm">// COMPLETE, ERROR : rien à faire</span>
+        }
+    } <span class="kw">while</span> (_state != before &amp;&amp; _state != COMPLETE &amp;&amp; _state != ERROR);
+}</div>
+    </div>
+
+    <p class="prose">
+      <code>headerParser()</code> découpe la première ligne (méthode, URI, version — validées par
+      <code>checkFirstLine()</code>, qui décode aussi les <code>%XX</code>), range les headers dans une map,
+      puis fait deux choses décisives : résoudre la <strong>limite de body de la bonne location</strong>
+      (avant de lire le body !), et détecter <code>Transfer-Encoding: chunked</code> ou le boundary
+      multipart. Le détail de chaque état est dans les fiches de la
+      <a href="../webserv-mindmap.html#http">section 03</a>.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">Ce que le Router reçoit — includes/http/HttpRequest.hpp</div>
+      <div class="code-body"><span class="kw">struct</span> <span class="hl">HttpRequest</span> {
+    <span class="kw">int</span>                                 error;        <span class="cm">// 200, ou 400/413/431... flagué par le parser</span>
+    std::string                         uri;          <span class="cm">// décodée, query comprise</span>
+    std::string                         body;         <span class="cm">// déjà dé-chunké si besoin</span>
+    std::string                         method;
+    std::string                         version;      <span class="cm">// HTTP/1.1 ou HTTP/1.0</span>
+    std::map&lt;std::string, std::string&gt;  headers;
+
+    Multipart                           mp;           <span class="cm">// formulaires + fichiers uploadés</span>
+    <span class="kw">bool</span>                                isMultipart;
+    std::string                         boundary;
+};</div>
+    </div>
+
+    <div class="warning-box">
+      <span class="icon">⚠️</span>
+      <p>
+        <strong>Le piège des requêtes fragmentées est réglé par l'architecture :</strong>
+        le HttpParser est un <em>membre</em> du ClientHandler — il survit entre les recv().
+        Chaque handle_input() ne fait qu'ajouter des octets et relancer la machine à états.
+        Rien n'est parsé deux fois, rien n'est perdu, et une requête coupée au milieu
+        d'un header attend simplement le prochain EPOLLIN (ou le timeout 30s).
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 4 : ROUTING ========== -->
+  <section class="chapter" id="ch-routing">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-5);">4</span>
+      <div>
+        <h2 class="chapter-title"><em>Router</em> — l'aiguillage central</h2>
+        <p class="chapter-sub">
+          Une fonction statique, une cascade de garde-fous, et trois issues :
+          un handler synchrone, NULL (CGI asynchrone), ou un ErrorHandler.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      <code>Router::route()</code> est appelé par <code>_handleComplete()</code> avec la requête,
+      le Server, l'adresse du client (pour REMOTE_ADDR) et le <code>this</code> du client en tant
+      qu'<code>IResponseSink*</code>. La location est choisie par <strong>longest prefix match</strong>
+      (<code>findLocation()</code>, partagée avec le parser), sur le chemin <strong>sans query string</strong>.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/http/Router.cpp — route(), la cascade complète</div>
+      <div class="code-body">ARequestHandler* Router::<span class="fn">route</span>(<span class="kw">const</span> HttpRequest&amp; req, <span class="kw">const</span> Server&amp; server,
+                               <span class="kw">const</span> std::string&amp; peerAddr, IResponseSink* sink) {
+    <span class="kw">if</span> (req.error != <span class="hl">200</span>)
+        <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(server, req.error, <span class="str">""</span>);   <span class="cm">// le parser a déjà jugé</span>
+
+    <span class="cm">// matcher la location sur le chemin SANS la query string : avec elle,</span>
+    <span class="cm">// "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"</span>
+    std::string uriPath = req.uri.<span class="fn">substr</span>(<span class="hl">0</span>, req.uri.<span class="fn">find</span>(<span class="str">'?'</span>));
+
+    <span class="kw">const</span> Location *loc = <span class="fn">bestRouteFound</span>(req.uri, server);
+    <span class="kw">if</span> (!loc)                              <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(server, <span class="hl">404</span>, <span class="str">""</span>);
+    <span class="kw">if</span> (!<span class="fn">methodImplemented</span>(req.method))    <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(server, <span class="hl">501</span>, <span class="str">""</span>);
+    <span class="kw">if</span> (!<span class="fn">methodAllowed</span>(req.method, loc))   <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(*loc, <span class="hl">405</span>, <span class="str">""</span>);
+
+    <span class="cm">// la redirection s'applique avant tout accès au filesystem</span>
+    <span class="kw">if</span> (loc-&gt;return_path.first != -<span class="hl">1</span>)
+        <span class="kw">return new</span> <span class="fn">StaticHandler</span>(req, *loc, <span class="str">""</span>);
+
+    std::string path = <span class="fn">resolvePath</span>(loc, uriPath);
+    <span class="kw">if</span> (path.<span class="fn">empty</span>())                      <span class="cm">// normalizePath : sortie de root (/../..)</span>
+        <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(*loc, <span class="hl">403</span>, <span class="str">""</span>);
+
+    <span class="cm">// upload : si un dossier de stockage est configuré, c'est lui qui reçoit</span>
+    <span class="kw">if</span> (req.method == <span class="str">"POST"</span> &amp;&amp; !loc-&gt;upload_store.<span class="fn">empty</span>()) {
+        <span class="kw">if</span> (req.isMultipart == <span class="kw">true</span>)
+            path = loc-&gt;upload_store;
+        <span class="kw">else</span> { <span class="cm">/* upload_store + basename de l'URI */</span> }
+    }
+
+    <span class="kw">if</span> (!<span class="fn">fileExist</span>(path, req.method))      <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(*loc, <span class="hl">404</span>, <span class="str">""</span>);
+    <span class="kw">if</span> (<span class="fn">forbiddenAccess</span>(path, req.method)) <span class="kw">return new</span> <span class="fn">ErrorHandler</span>(*loc, <span class="hl">403</span>, <span class="str">""</span>);
+
+    std::string interpreter = <span class="fn">isCgi</span>(uriPath, loc);
+    <span class="kw">if</span> (!interpreter.<span class="fn">empty</span>() &amp;&amp; (req.method == <span class="str">"GET"</span> || req.method == <span class="str">"POST"</span>)) {
+        CGIHandler <span class="fn">cgi</span>(req, path, interpreter, peerAddr, loc, sink);
+        <span class="kw">return</span> NULL;                       <span class="cm">// asynchrone : réponse via onCgiDone()</span>
+    }
+
+    <span class="kw">if</span> (req.method == <span class="str">"POST"</span> &amp;&amp; req.isMultipart == <span class="kw">true</span>)
+        <span class="kw">return new</span> <span class="fn">MultipartHandler</span>(*loc, req, path);
+
+    <span class="kw">return new</span> <span class="fn">StaticHandler</span>(req, *loc, path);
+}</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">💡</span>
+      <p>
+        <strong>Trois sorties, trois modes :</strong>
+        un <code>ARequestHandler*</code> → réponse synchrone, construite tout de suite ;
+        <code>NULL</code> → CGI asynchrone, le client passe en masque epoll vide et attend
+        <code>onCgiDone()</code> ; un <code>ErrorHandler*</code> → même circuit que le statique,
+        avec les <code>error_page</code> de la config. Le détail du longest-prefix est dans
+        <a href="../04-Fichier-de-configuration/routing-longest-prefix.html">la fiche routing</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 5 : HANDLERS ========== -->
+  <section class="chapter" id="ch-handlers">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-6);">5</span>
+      <div>
+        <h2 class="chapter-title">Les <em>handlers</em> de réponse</h2>
+        <p class="chapter-sub">
+          Tous héritent d'ARequestHandler : un seul buildResponse() pour tout le monde.
+          Static, Multipart, Error — et le circuit CGI à part.
+        </p>
+      </div>
+    </div>
+
+    <!-- STATIC -->
+    <div id="ch-static" style="scroll-margin-top: 80px;"></div>
+    <p class="prose">
+      <strong>StaticHandler — GET, POST, DELETE, autoindex, redirect.</strong>
+      Son constructeur est un aiguillage : un <code>return</code> configuré part en redirection ;
+      un dossier demandé sans slash final déclenche un <strong>301</strong> (comme nginx),
+      avec autoindex il liste le dossier (<code>throwList()</code> via opendir/readdir),
+      sinon 403. Ensuite GET lit, POST écrit, DELETE unlink.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/http/StaticHandler.cpp — le constructeur-aiguillage</div>
+      <div class="code-body">StaticHandler::<span class="fn">StaticHandler</span>(<span class="kw">const</span> HttpRequest&amp; req, <span class="kw">const</span> Location&amp; loc,
+                             <span class="kw">const</span> std::string&amp; path): _req(&amp;req), _loc(&amp;loc), _path(path) {
+    _ncode = <span class="hl">200</span>;
+
+    <span class="kw">if</span> (loc.return_path.first != -<span class="hl">1</span>) {
+        <span class="fn">handleReturn</span>(loc.return_path);       <span class="cm">// redirection configurée (301/302 + Location)</span>
+        <span class="kw">return</span>;
+    }
+    <span class="kw">if</span> (<span class="fn">isDir</span>(path) &amp;&amp; req.method != <span class="str">"POST"</span>) {
+        std::string uriPath = req.uri.<span class="fn">substr</span>(<span class="hl">0</span>, req.uri.<span class="fn">find</span>(<span class="str">'?'</span>));
+        <span class="kw">if</span> (uriPath[uriPath.<span class="fn">length</span>() - <span class="hl">1</span>] != <span class="str">'/'</span>) {
+            <span class="kw">const</span> std::pair&lt;<span class="kw">int</span>, std::string&gt; <span class="fn">toreturn</span>(<span class="hl">301</span>, uriPath + <span class="str">'/'</span>);
+            <span class="fn">handleReturn</span>(toreturn);          <span class="cm">// /files → 301 /files/ (comme nginx)</span>
+        } <span class="kw">else if</span> (loc.autoindex == <span class="hl">1</span>)
+            <span class="fn">throwList</span>();                     <span class="cm">// listing HTML du dossier</span>
+        <span class="kw">else</span>
+            _ncode = <span class="hl">403</span>;
+    }
+    <span class="kw">else if</span> (req.method == <span class="str">"GET"</span>)    <span class="fn">handleGet</span>();     <span class="cm">// ifstream + getType (MIME)</span>
+    <span class="kw">else if</span> (req.method == <span class="str">"POST"</span>)   <span class="fn">handlePost</span>();    <span class="cm">// ofstream, 201 si création</span>
+    <span class="kw">else if</span> (req.method == <span class="str">"DELETE"</span>) <span class="fn">handleDelete</span>();  <span class="cm">// unlink → 204, ou 404</span>
+
+    <span class="fn">setErrorPage</span>(loc);
+}</div>
+    </div>
+
+    <div class="fn-tags">
+      <span class="fn-tag">stat()</span>
+      <span class="fn-tag">ifstream</span>
+      <span class="fn-tag">ofstream</span>
+      <span class="fn-tag">unlink()</span>
+      <span class="fn-tag">opendir()</span>
+      <span class="fn-tag">readdir()</span>
+    </div>
+
+    <!-- CGI -->
+    <div id="ch-cgi" style="scroll-margin-top: 80px;"></div>
+    <p class="prose" style="margin-top: 2.5rem;">
+      <strong>Le circuit CGI — quatre classes, zéro blocage.</strong>
+      Contrairement au statique, le CGI ne construit rien tout de suite :
+      <code>CGIHandler</code> (orchestrateur) crée le <code>CGIProcess</code>
+      (pipe ×2, fork, chdir, execve) et enregistre <strong>deux nouveaux handlers</strong>
+      dans l'EventLoop : <code>CGIWriteHandler</code> pousse le body dans le stdin du script,
+      <code>CGIReadHandler</code> collecte sa sortie jusqu'à l'EOF, la parse
+      (<code>Status:</code>, <code>Content-Type:</code>, <code>Set-Cookie:</code>) et livre
+      la réponse au client via <code>IResponseSink::onCgiDone()</code>.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/handlers/CGIHandler.cpp — l'orchestrateur</div>
+      <div class="code-body">CGIHandler::<span class="fn">CGIHandler</span>(<span class="kw">const</span> HttpRequest&amp; req, std::string&amp; path, std::string&amp; interpreter,
+                       <span class="kw">const</span> std::string&amp; peerAddr, <span class="kw">const</span> Location* loc, IResponseSink* sink) {
+    _process = <span class="kw">new</span> <span class="fn">CGIProcess</span>(req, path, interpreter, peerAddr);   <span class="cm">// fork + exec + pipes</span>
+
+    CGIWriteHandler* wr = <span class="kw">new</span> <span class="fn">CGIWriteHandler</span>(_process-&gt;<span class="fn">getWriteFd</span>(), req.body);
+    EventLoop::<span class="fn">instance</span>()-&gt;<span class="fn">register_handler</span>(wr, WRITE_EVENT);
+
+    CGIReadHandler* rd = <span class="kw">new</span> <span class="fn">CGIReadHandler</span>(_process-&gt;<span class="fn">getReadFd</span>(), _process-&gt;<span class="fn">getPid</span>(), loc, sink);
+    EventLoop::<span class="fn">instance</span>()-&gt;<span class="fn">register_handler</span>(rd, READ_EVENT);
+
+    <span class="kw">if</span> (sink)
+        sink-&gt;<span class="fn">onCgiStart</span>(rd);   <span class="cm">// pour pouvoir se détacher si l'un meurt avant l'autre</span>
+}</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">🔀</span>
+      <p>
+        <strong>Toute la mécanique est détaillée dans les 4 fiches de la section 05 :</strong>
+        <a href="../05-CGI/cgi-mecanisme.html">le mécanisme fork/execve/pipe</a>,
+        <a href="../05-CGI/cgi-env.html">les variables d'environnement</a>,
+        <a href="../05-CGI/cgi-pieges.html">EOF, chunked et exit codes</a>,
+        <a href="../05-CGI/cgi-event-loop.html">l'intégration dans l'event loop</a>.
+        L'essentiel côté architecture : les pipes CGI sont des IEventHandler comme les autres,
+        dans le même epoll, avec le même timeout 30s.
+      </p>
+    </div>
+
+    <!-- ERROR -->
+    <div id="ch-error" style="scroll-margin-top: 80px;"></div>
+    <p class="prose" style="margin-top: 2.5rem;">
+      <strong>ErrorHandler — la sortie de secours universelle.</strong>
+      Construit avec un <code>BaseBlock</code> (Server ou Location : les deux héritent),
+      un code et un body optionnel. Il mémorise l'<code>error_page</code> configurée ;
+      c'est <code>buildResponse()</code> qui, au moment de sérialiser, chargera la page
+      custom — ou générera <code>&lt;h1&gt;404 Not Found&lt;/h1&gt;</code> si elle manque.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/http/ErrorHandler.cpp — en entier</div>
+      <div class="code-body">ErrorHandler::<span class="fn">ErrorHandler</span>(<span class="kw">const</span> BaseBlock&amp; b, <span class="kw">int</span> code, std::string body) {
+    _ncode = code;
+    <span class="kw">if</span> (!body.<span class="fn">empty</span>())
+        _body = body;
+    <span class="kw">if</span> (b.return_path.first != -<span class="hl">1</span>) {
+        <span class="fn">handleReturn</span>(b.return_path);   <span class="cm">// même une erreur respecte un return configuré</span>
+        <span class="kw">return</span>;
+    }
+    <span class="fn">setErrorPage</span>(b);                   <span class="cm">// mémorise error_page[code] si configurée</span>
+}</div>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 6 : RESPONSE ========== -->
+  <section class="chapter" id="ch-response">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--accent-5);">6</span>
+      <div>
+        <h2 class="chapter-title">Construction de la <em>réponse</em></h2>
+        <p class="chapter-sub">
+          Un seul buildResponse() pour tous les handlers — hérité d'ARequestHandler.
+          Puis modify_handler(WRITE_EVENT) et epoll prend le relais.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      Chaque handler a rempli <code>_ncode</code>, <code>_type</code>, <code>_body</code>
+      (et éventuellement <code>_location</code> pour un redirect, <code>_cookie</code> pour le
+      bonus sessions). <code>buildResponse()</code> sérialise le tout : status line,
+      headers conditionnels, <code>Content-Length</code> exact, <code>Connection</code>
+      selon le keep-alive décidé par le client. C'est aussi lui qui applique le
+      fallback des pages d'erreur.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">srcs/http/ARequestHandler.cpp — buildResponse()</div>
+      <div class="code-body">std::string ARequestHandler::<span class="fn">buildResponse</span>() {
+    <span class="cm">// erreur sans body fourni → page custom (error_page) ou page générée</span>
+    <span class="kw">if</span> (!_noBody &amp;&amp; <span class="fn">isError</span>(_ncode) &amp;&amp; _location.<span class="fn">empty</span>() &amp;&amp; _body.<span class="fn">empty</span>()) {
+        <span class="kw">if</span> (_errorpage.<span class="fn">length</span>() &gt; <span class="hl">0</span>)
+            <span class="fn">getErrorPage</span>();
+        <span class="kw">else</span>
+            _body = <span class="str">"&lt;html&gt;&lt;body&gt;&lt;h1&gt;"</span> + <span class="fn">itos</span>(_ncode) + <span class="str">" "</span> + <span class="fn">getReason</span>(_ncode) + <span class="str">"&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;"</span>;
+    }
+    std::ostringstream oss;
+    oss &lt;&lt; <span class="str">"HTTP/1.1 "</span> &lt;&lt; _ncode &lt;&lt; <span class="str">" "</span> &lt;&lt; <span class="fn">getReason</span>(_ncode) &lt;&lt; <span class="str">"\r\n"</span>;
+
+    <span class="kw">if</span> (!_location.<span class="fn">empty</span>())
+        oss &lt;&lt; <span class="str">"Location: "</span> &lt;&lt; _location &lt;&lt; <span class="str">"\r\n"</span>;      <span class="cm">// redirections 301/302</span>
+    <span class="kw">if</span> (!_type.<span class="fn">empty</span>())
+        oss &lt;&lt; <span class="str">"Content-Type: "</span> &lt;&lt; _type &lt;&lt; <span class="str">"\r\n"</span>;      <span class="cm">// MIME via getType()</span>
+    <span class="kw">if</span> (!_cookie.<span class="fn">empty</span>())
+        oss &lt;&lt; <span class="str">"Set-Cookie: "</span> &lt;&lt; _cookie &lt;&lt; <span class="str">"\r\n"</span>;      <span class="cm">// bonus sessions (CGI)</span>
+
+    oss &lt;&lt; <span class="str">"Content-Length: "</span> &lt;&lt; _body.<span class="fn">size</span>() &lt;&lt; <span class="str">"\r\n"</span>
+        &lt;&lt; <span class="str">"Connection: "</span> &lt;&lt; (_keepAlive ? <span class="str">"keep-alive"</span> : <span class="str">"close"</span>) &lt;&lt; <span class="str">"\r\n"</span>
+        &lt;&lt; <span class="str">"\r\n"</span>
+        &lt;&lt; _body;
+
+    <span class="kw">return</span> oss.<span class="fn">str</span>();
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">srcs/handlers/ClientHandler.cpp — _handleComplete(), la décision keep-alive</div>
+      <div class="code-body"><span class="kw">void</span> ClientHandler::<span class="fn">_handleComplete</span>() {
+    HttpRequest req = _parser.<span class="fn">getReq</span>();
+
+    <span class="cm">// HTTP/1.1 est keep-alive par défaut, HTTP/1.0 est close par défaut.</span>
+    std::map&lt;std::string, std::string&gt;::const_iterator it = req.headers.<span class="fn">find</span>(<span class="str">"Connection"</span>);
+    <span class="kw">if</span> (it != req.headers.<span class="fn">end</span>())
+        _keepAlive = (it-&gt;second == <span class="str">"keep-alive"</span>);
+    <span class="kw">else</span>
+        _keepAlive = (req.version == <span class="str">"HTTP/1.1"</span>);
+
+    _rh = Router::<span class="fn">route</span>(req, _server, _peerAddr, <span class="kw">this</span>);
+    <span class="kw">if</span> (!_rh) {                       <span class="cm">// CGI → asynchrone, silence radio epoll</span>
+        _keepAlive = <span class="kw">false</span>;
+        EventLoop::<span class="fn">instance</span>()-&gt;<span class="fn">modify_handler</span>(<span class="kw">this</span>, <span class="kw">static_cast</span>&lt;EventType&gt;(<span class="hl">0</span>));
+        <span class="kw">return</span>;
+    }
+    <span class="kw">if</span> (req.method == <span class="str">"HEAD"</span>) {       <span class="cm">// HEAD = GET sans body</span>
+        _rh-&gt;<span class="fn">stripBody</span>();
+        _keepAlive = <span class="kw">false</span>;
+    }
+    _rh-&gt;<span class="fn">setKeepAlive</span>(_keepAlive);
+    _response = _rh-&gt;<span class="fn">buildResponse</span>();
+
+    EventLoop::<span class="fn">instance</span>()-&gt;<span class="fn">modify_handler</span>(<span class="kw">this</span>, WRITE_EVENT);   <span class="cm">// "réveille-moi pour écrire"</span>
+}</div>
+    </div>
+
+    <div class="info-box">
+      <span class="icon">📋</span>
+      <p>
+        <strong>Après le build :</strong> <code>modify_handler(this, WRITE_EVENT)</code> fait un
+        <code>epoll_ctl(EPOLL_CTL_MOD)</code> — le fd est déjà enregistré (ADD à l'accept),
+        on change seulement le masque. La réponse est cachée dans <code>_response</code>
+        et <code>_sent</code> avance à chaque EPOLLOUT : pas de rebuild à chaque send.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== CHAPITRE 7 : CLOSE ========== -->
+  <section class="chapter" id="ch-close">
+    <div class="chapter-header">
+      <span class="chapter-num" style="color: var(--text-muted);">7</span>
+      <div>
+        <h2 class="chapter-title"><em>Fermeture</em> — une seule convention</h2>
+        <p class="chapter-sub">
+          Personne ne se close lui-même en plein traitement : on retourne -1,
+          et l'EventLoop applique toujours le même rituel de destruction.
+        </p>
+      </div>
+    </div>
+
+    <p class="prose">
+      La convention <code>return -1</code> centralise toute la destruction au même endroit
+      de <code>handle_events()</code> : <code>remove_handler()</code> (epoll_ctl DEL + retrait
+      de la table), puis <code>delete</code> — et c'est le <strong>destructeur</strong> de chaque
+      handler qui ferme son fd et fait ses adieux spécifiques. Même circuit pour un client
+      en <code>Connection: close</code>, une déconnexion brutale, un timeout ou une exception.
+    </p>
+
+    <div class="flow-inline">
+      <div class="flow-inline-step"><span class="fi-name">handler retourne -1</span><span class="fi-desc">fin normale, erreur, ou exception attrapée</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">remove_handler(h)</span><span class="fi-desc">epoll_ctl(DEL) + delete du HandlerEntry — plus d'événements fantômes</span></div>
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head">↓</div></div>
+      <div class="flow-inline-step"><span class="fi-name">delete h</span><span class="fi-desc">le destructeur ferme le fd et nettoie (detachSink, kill CGI, 504...)</span></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">srcs/handlers/ClientHandler.cpp — le destructeur</div>
+      <div class="code-body"><span class="cm">// Si un CGI est encore en cours, on prévient son CGIReadHandler que nous</span>
+<span class="cm">// n'existons plus : sans ça, il appellerait onCgiDone() sur un objet détruit.</span>
+ClientHandler::~<span class="fn">ClientHandler</span>() {
+    <span class="kw">if</span> (_cgiRead)
+        _cgiRead-&gt;<span class="fn">detachSink</span>();
+    <span class="kw">delete</span> _rh;
+    <span class="fn">close</span>(_fd);
+    std::cout &lt;&lt; <span class="str">"[client "</span> &lt;&lt; _peerAddr &lt;&lt; <span class="str">" fd="</span> &lt;&lt; _fd &lt;&lt; <span class="str">"] disconnected\n"</span>;
+}</div>
+    </div>
+
+    <p class="prose">
+      Au <strong>Ctrl-C</strong> : <code>g_stop</code> fait sortir la boucle,
+      <code>EventLoop::destroy()</code> appelle le destructeur qui <code>delete</code> tous les
+      handlers restants (fermant chaque fd, tuant chaque CGI en vol) puis ferme
+      <code>_epfd</code>. Valgrind confirme : zéro fuite, zéro fd ouvert, même en plein trafic.
+    </p>
+
+    <div class="warning-box">
+      <span class="icon">⚠️</span>
+      <p>
+        <strong>Pourquoi personne ne fait close(fd) en plein traitement :</strong>
+        le fd resterait dans epoll (événements fantômes sur un fd recyclé par accept !)
+        et l'objet continuerait d'exister. La règle « un fd = un propriétaire = son destructeur »
+        élimine les double-close et les use-after-close par construction.
+        Détails dans la fiche <a href="../06-robustesse/timeouts-deconnexions.html">timeouts &amp; déconnexions</a>.
+      </p>
+    </div>
+
+    <div class="quote-block">
+      <p>
+        ConfigLoader → ServerHandler → EventLoop → ClientHandler → HttpParser →
+        Router → StaticHandler / CGI / ErrorHandler → buildResponse → send → delete.
+        Maîtriser ce flux, c'est maîtriser notre webserv.
+      </p>
+      <cite>Le cycle de vie complet d'une requête — pattern Reactor</cite>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>Architecture Webserv — Le pattern Reactor, du main() au delete</p>
+  <p style="margin-top: 0.5rem; opacity: 0.5;">Document d'étude — eahmeti.</p>
+</footer>
+
+<script>
+  // Page fade-in
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    var savedScroll = sessionStorage.getItem('mindmap-scroll');
+    if (savedScroll !== null) {
+      window.scrollTo(0, parseInt(savedScroll, 10));
+      sessionStorage.removeItem('mindmap-scroll');
+    }
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  // Smooth scroll with nav offset for all internal links
+  function scrollToId(id) {
+    if (id === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    var el = document.getElementById(id);
+    if (!el) return;
+    var navH = document.querySelector('.top-nav').offsetHeight;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  // Animate chapters on scroll
+  var chapters = document.querySelectorAll('.chapter');
+  var chapterObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.08 });
+  chapters.forEach(function(c) { chapterObserver.observe(c); });
+
+  // Active nav highlight on scroll
+  var sectionIds = ['ch-startup','ch-sockets','ch-loop','ch-parsing','ch-routing','ch-handlers','ch-response','ch-close'];
+  var activeObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+        var match = document.querySelector('.nav-item[href="#' + entry.target.id + '"]');
+        if (match) match.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-25% 0px -65% 0px' });
+  sectionIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) activeObserver.observe(el);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robustesse — Stress tests & outils de validation de notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#pourquoi" class="step-pill active" id="nav-pourquoi"><span class="step-dot"></span>Pourquoi</a>
+    <div class="step-connector"></div>
+    <a href="#outils" class="step-pill" id="nav-outils"><span class="step-dot"></span>Outils</a>
+    <div class="step-connector"></div>
+    <a href="#tester42" class="step-pill" id="nav-tester42"><span class="step-dot"></span>Tester 42</a>
+    <div class="step-connector"></div>
+    <a href="#nginx" class="step-pill" id="nav-nginx"><span class="step-dot"></span>NGINX</a>
+    <div class="step-connector"></div>
+    <a href="#compilation" class="step-pill" id="nav-compilation"><span class="step-dot"></span>C++98</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Robustesse &mdash; La preuve par le feu</div>
+  <h1><em>Stress tests</em> &amp; outils<br>&mdash; prouver que &ccedil;a tient</h1>
+  <p class="header-desc">
+    &laquo; Resilience is key. &raquo; Un serveur robuste sur le papier ne vaut rien : il faut le bombarder.
+    Voici l'arsenal utilis&eacute; sur ce projet &mdash; siege, telnet, curl, le tester officiel de 42,
+    notre suite de tests HTML maison &mdash; et ce que chaque garantie du code
+    (timeouts, limites, sacrifice de handler) donne concr&egrave;tement sous charge.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : POURQUOI                   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="pourquoi" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">L'exigence</div>
+        <div class="step-subtitle">Disponible &agrave; 100%, m&ecirc;me sous le feu</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; Stress test your server to ensure it remains available at all times. Resilience is key. &raquo;</p>
+      <cite>&mdash; webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-top: 1.5rem;">
+      <div class="panel-label">Ce que le stress test doit prouver, et quel m&eacute;canisme du code r&eacute;pond</div>
+      <table class="compare-table">
+        <tr><td>Des milliers de connexions simultan&eacute;es</td><td>epoll O(1) + un seul thread : la <code>_table</code> de l'EventLoop grossit, la boucle ne ralentit pas.</td></tr>
+        <tr><td>D&eacute;connexions brutales en pleine requ&ecirc;te</td><td><code>recv()/send() &le; 0 &rarr; return -1</code>, EPOLLHUP g&eacute;r&eacute;, destructeurs qui ferment. Pas de fd fant&ocirc;me.</td></tr>
+        <tr><td>Requ&ecirc;tes malform&eacute;es en rafale</td><td>Le parser flague 400/413/431, jamais d'exception non attrap&eacute;e &mdash; et le try/catch de la boucle couvre le reste.</td></tr>
+        <tr><td>Clients lents / silencieux (slowloris)</td><td><code>checkTimeOut()</code> : 30 secondes et dehors.</td></tr>
+        <tr><td>M&eacute;moire stable sur la dur&eacute;e</td><td>Buffers born&eacute;s (32 Ko headers, body par location), <code>_reset()</code> apr&egrave;s chaque requ&ecirc;te keep-alive, z&eacute;ro leak valgrind.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LES OUTILS                 -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="outils" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">siege, curl, telnet, python</div>
+        <div class="step-subtitle">L'arsenal, du plus brutal au plus chirurgical</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Stress &mdash; siege / ab sur notre config (port 8080)</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Terminal</span>
+      </div>
+      <pre><span class="cmt"># 255 clients concurrents, 1 minute, en keep-alive</span>
+siege -b -c <span class="num">255</span> -t <span class="num">1</span>M http://localhost:<span class="num">8080</span>/
+
+<span class="cmt"># Apache Bench : 10 000 requêtes, 100 en parallèle</span>
+ab -n <span class="num">10000</span> -c <span class="num">100</span> http://localhost:<span class="num">8080</span>/index.html
+
+<span class="cmt"># siege sur le CGI (fork massif → surveiller les zombies avec ps)</span>
+siege -b -c <span class="num">50</span> -t <span class="num">30</span>S http://localhost:<span class="num">8080</span>/cgi-bin/hello.py
+
+<span class="cmt"># pendant le siege : vérifier fds et zombies</span>
+ls /proc/$(pgrep webserv)/fd | wc -l
+ps aux | grep defunct</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Chirurgical &mdash; telnet / curl, requ&ecirc;te par requ&ecirc;te</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Terminal</span>
+      </div>
+      <pre><span class="cmt"># requête brute au clavier : tester le parsing fragmenté</span>
+telnet localhost <span class="num">8080</span>
+GET /index.html HTTP/1.1
+Host: localhost
+                          <span class="cmt">← ligne vide = fin des headers</span>
+
+<span class="cmt"># chunked : notre readChunked() doit dé-chunker avant le CGI</span>
+curl -H <span class="str">"Transfer-Encoding: chunked"</span> -d <span class="str">"hello"</span> http://localhost:<span class="num">8080</span>/cgi-bin/post_echo.py
+
+<span class="cmt"># 413 : /post_body est limité à 100 octets dans default.conf</span>
+curl -X POST --data <span class="str">"$(python3 -c 'print("x"*200)')"</span> -i http://localhost:<span class="num">8080</span>/post_body
+
+<span class="cmt"># 504 : slow.py dort plus longtemps que CLIENT_TIMEOUT (30s)</span>
+curl -i http://localhost:<span class="num">8080</span>/cgi-bin/slow.py
+
+<span class="cmt"># keep-alive + pipelining : deux requêtes dans le même paquet</span>
+printf <span class="str">'GET / HTTP/1.1\r\nHost: a\r\n\r\nGET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n'</span> | nc localhost <span class="num">8080</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le test pipelining n'est pas gratuit.</strong> Il valide un vrai d&eacute;tail de notre
+        <code>ClientHandler::handle_output()</code> : apr&egrave;s une r&eacute;ponse keep-alive, le reliquat
+        du buffer est <strong>re-pars&eacute; imm&eacute;diatement</strong> (<code>_parser.runParsing(empty)</code>)
+        &mdash; car si la 2e requ&ecirc;te est d&eacute;j&agrave; enti&egrave;re dans le buffer, aucun octet ne viendra
+        re-d&eacute;clencher <code>handle_input()</code>. Sans &ccedil;a, la 2e requ&ecirc;te attendrait le timeout.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : LE TESTER 42               -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="tester42" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">./tester + suite maison</div>
+        <div class="step-subtitle">Les deux batteries de tests du projet</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Le tester binaire officiel</div>
+        <p>
+          <code>./tester http://localhost:8080</code> exige une config pr&eacute;cise &mdash; c'est exactement
+          ce que couvre notre <code>conf/default.conf</code> :
+        </p>
+        <ul>
+          <li><code>location /</code> : GET uniquement</li>
+          <li><code>location /post_body</code> : POST, body max 100 octets</li>
+          <li><code>location /directory</code> : racine YoupiBanane (symlink <code>www/directory</code>),
+          index <code>youpi.bad_extension</code>, POST sur <code>*.bla</code> &rarr; <code>cgi_test</code></li>
+        </ul>
+        <p>
+          C'est lui qui a impos&eacute; <code>PATH_INFO</code>/<code>REQUEST_URI</code> dans notre
+          <code>buildEnvp()</code>, et le <code>client_max_body_size 1g</code> sur /directory.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">La suite de tests HTML maison</div>
+        <p>
+          <code>http://localhost:8080/default/</code> &mdash; une page par domaine :
+          <code>get.html</code>, <code>post.html</code>, <code>delete.html</code>,
+          <code>upload.html</code> (multipart), <code>cgi.html</code> (tous les scripts de
+          <code>www/cgi-bin/</code>), <code>errors.html</code> (chaque code d'erreur),
+          <code>stress.html</code> (rafales de fetch() depuis le navigateur) et
+          <code>bonus.html</code> (cookies &amp; sessions). Le tout test&eacute; depuis un vrai
+          navigateur, comme l'exige le sujet.
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Valgrind &mdash; la preuve z&eacute;ro leak / z&eacute;ro fd perdu</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Terminal</span>
+      </div>
+      <pre>valgrind --leak-check=full --track-fds=yes ./webserv conf/default.conf
+<span class="cmt"># ... trafic, CGI, uploads, Ctrl-C ...</span>
+<span class="cmt"># attendu :</span>
+<span class="cmt">#   All heap blocks were freed -- no leaks are possible</span>
+<span class="cmt">#   FILE DESCRIPTORS: 3 open (0, 1, 2 = std) at exit</span></pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : NGINX RÉFÉRENCE            -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="nginx" style="--step-color: var(--accent-6)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">NGINX comme oracle</div>
+        <div class="step-subtitle">Comparer nos r&eacute;ponses &agrave; la r&eacute;f&eacute;rence</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; NGINX may be used to compare headers and answer behaviours (pay attention to differences between HTTP versions). &raquo;</p>
+      <cite>&mdash; webserv.pdf, IV.1 Requirements</cite>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Comparaison c&ocirc;te &agrave; c&ocirc;te</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-6); background:rgba(255,140,190,0.08)">Terminal</span>
+      </div>
+      <pre><span class="cmt"># même requête, deux serveurs, comparer les headers</span>
+curl -i http://localhost:<span class="num">8080</span>/index.html      <span class="cmt"># webserv</span>
+curl -i http://localhost:<span class="num">80</span>/index.html        <span class="cmt"># nginx</span>
+
+<span class="cmt"># les comportements qu'on a alignés sur nginx :</span>
+<span class="cmt">#  - GET /files (dossier sans slash final) → 301 vers /files/</span>
+<span class="cmt">#  - HTTP/1.1 sans header Connection → keep-alive par défaut</span>
+<span class="cmt">#  - HTTP/1.0 sans header Connection → close par défaut</span>
+<span class="cmt">#  - Content-Length exact + Connection: close sur les erreurs</span>
+<span class="cmt">#  - listen identique en double dans la config → refus au démarrage</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>La diff&eacute;rence de versions HTTP compte.</strong> Notre
+        <code>_handleComplete()</code> impl&eacute;mente exactement la r&egrave;gle nginx :
+        <code>Connection</code> explicite s'il existe, sinon keep-alive pour HTTP/1.1 et
+        close pour HTTP/1.0. C'est ce que le sujet appelle &laquo; pay attention to differences
+        between HTTP versions &raquo;.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : C++98 & MAKEFILE           -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="compilation" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">-std=c++98 -Werror</div>
+        <div class="step-subtitle">Les contraintes de compilation, et notre Makefile</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">Makefile &mdash; le n&ocirc;tre, en entier</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="var">NAME</span> = webserv
+<span class="var">CXX</span> = c++
+<span class="highlight-line"><span class="var">CXXFLAGS</span> = -Wall -Wextra -Werror -std=c++<span class="num">98</span></span>
+<span class="var">INCLUDES</span> = -I includes
+
+<span class="var">SRCS</span> = $(shell find . -name <span class="str">"*.cpp"</span> ! -path <span class="str">"./test/*"</span>)
+<span class="var">OBJS</span> = $(patsubst ./%.cpp, obj/%.o, $(<span class="var">SRCS</span>))
+
+all: $(<span class="var">NAME</span>)
+
+$(<span class="var">NAME</span>): $(<span class="var">OBJS</span>)
+	$(<span class="var">CXX</span>) $(<span class="var">CXXFLAGS</span>) -o $(<span class="var">NAME</span>) $(<span class="var">OBJS</span>)
+
+<span class="cmt"># compilation objet par objet → pas de relink inutile :</span>
+<span class="cmt"># make ne rebuild que les .o dont le .cpp a changé</span>
+obj/%.o: ./%.cpp
+	@mkdir -p $(dir $@)
+	$(<span class="var">CXX</span>) $(<span class="var">CXXFLAGS</span>) $(<span class="var">INCLUDES</span>) -c $&lt; -o $@
+
+clean:
+	rm -rf obj
+
+fclean: clean
+	rm -f $(<span class="var">NAME</span>)
+
+re: fclean all
+
+.PHONY: all clean fclean re</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Ce que C++98 nous a co&ucirc;t&eacute;</div>
+        <ul>
+          <li>Pas de <code>std::to_string</code> &rarr; nos <code>itos()</code> / <code>toString()</code> via stringstream</li>
+          <li>Pas de <code>auto</code>, pas de range-for &rarr; it&eacute;rateurs explicites partout (voir checkTimeOut)</li>
+          <li>Pas de <code>nullptr</code> &rarr; <code>NULL</code></li>
+          <li>Pas de lambdas ni <code>std::function</code> &rarr; le polymorphisme classique (IEventHandler) fait le travail</li>
+          <li>Pas de smart pointers &rarr; ownership document&eacute; : l'EventLoop d&eacute;truit les handlers, chaque destructeur ferme son fd</li>
+        </ul>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">Fonctions externes : la liste blanche</div>
+        <p>
+          Tout passe par les fonctions autoris&eacute;es du sujet : execve, pipe, fork, socketpair,
+          htons/htonl/ntohs/ntohl, select/poll/<strong>epoll</strong> (create1/ctl/wait), kqueue,
+          socket, accept, listen, send, recv, chdir, bind, connect, getaddrinfo, freeaddrinfo,
+          setsockopt, getsockname, getprotobyname, fcntl, close, read, write, waitpid, kill,
+          signal, access, stat, open, opendir, readdir, closedir.
+          <br><br>
+          Not&eacute; : <code>inet_ntoa</code> n'y figure pas &mdash; d'o&ugrave; notre
+          <code>_buildPeerStr()</code> qui reconstruit l'IP octet par octet.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; la robustesse se <em>prouve</em></div>
+    <div class="summary-subtitle">Un m&eacute;canisme de code pour chaque sc&eacute;nario de stress</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128293;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Brutal puis chirurgical</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">siege/ab pour le volume et la dur&eacute;e ; telnet/nc/curl pour les cas pr&eacute;cis (fragmentation, chunked, pipelining, 413, 504). Surveiller /proc/PID/fd et les zombies pendant la charge.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#129514;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Deux batteries officielles</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">./tester http://localhost:8080 (config d&eacute;di&eacute;e dans default.conf) + la suite HTML maison /default/ dans un vrai navigateur. Valgrind --track-fds pour la preuve finale.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128220;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-6); margin-bottom:0.2rem;">NGINX = la r&eacute;f&eacute;rence</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Headers compar&eacute;s au curl pr&egrave;s : 301 sur dossier sans slash, keep-alive selon la version HTTP, Content-Length exact. En cas de doute sur un edge-case : demander &agrave; nginx.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="gestion-erreurs.html" class="back-link">&larr; Revoir la gestion des erreurs</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Robustesse : stress tests. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['pourquoi','outils','tester42','nginx','compilation'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

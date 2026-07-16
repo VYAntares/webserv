@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Routing — Préfixe le plus long (Webserv)</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#uri" class="step-pill active" id="nav-uri"><span class="step-dot"></span>URI</a>
+    <div class="step-connector"></div>
+    <a href="#match" class="step-pill" id="nav-match"><span class="step-dot"></span>Match</a>
+    <div class="step-connector"></div>
+    <a href="#algo" class="step-pill" id="nav-algo"><span class="step-dot"></span>Algo</a>
+    <div class="step-connector"></div>
+    <a href="#runtime" class="step-pill" id="nav-runtime"><span class="step-dot"></span>Runtime</a>
+    <div class="step-connector"></div>
+    <a href="#tests" class="step-pill" id="nav-tests"><span class="step-dot"></span>Tests</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Configuration — Routing</div>
+  <h1>Sélection de route : <em>préfixe le plus long</em></h1>
+  <p class="header-desc">
+    L'URI vient du client. Le serveur la compare à toutes ses <code>location</code> et retient
+    celle dont le préfixe est le plus précis. Pas de regex — juste du matching de préfixe avec
+    une règle de frontière de segment.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════ -->
+  <!-- 01 — D'OÙ VIENT L'URI        -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="uri" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">d'où vient l'URI ?</div>
+        <div class="step-subtitle">Extraite de la première ligne de la requête HTTP</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-2);">
+        <div class="panel-label">Ce que le client envoie</div>
+        <p>
+          Quand un client se connecte, la première ligne de la requête HTTP suit le format :
+          <code>MÉTHODE URI VERSION</code>.
+        </p>
+        <p>
+          C'est ton parser HTTP qui lit cette ligne et extrait l'URI.
+          Elle n'est pas inventée par le serveur — elle vient du client.
+          Tu la stockes dans ta structure de requête : <code>req.uri</code>.
+        </p>
+        <p>
+          L'URI peut contenir un chemin (<code>/get/files/fd</code>),
+          une query string (<code>/search?q=foo</code>), ou les deux.
+          Pour le routing, seul le <strong>chemin</strong> est comparé aux locations.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2);">
+        <div class="panel-label">Ce que le serveur en fait</div>
+        <p>
+          Une fois l'URI extraite, le serveur suit toujours le même pipeline :
+        </p>
+        <p>
+          <strong>1.</strong> Sélectionner le bloc <code>server</code> par port d'arrivée.<br>
+          <strong>2.</strong> Comparer l'URI aux préfixes des <code>location</code> du serveur.<br>
+          <strong>3.</strong> Retenir la location avec le préfixe le plus long.<br>
+          <strong>4.</strong> Appliquer ses directives (méthodes, root, CGI, upload…).
+        </p>
+        <p>
+          Si aucune location ne matche : <code>404 Not Found</code> — même <code>/</code> n'existant pas.
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">requête brute reçue sur socket</span>
+        </div>
+        <span class="code-tag">http request line</span>
+      </div>
+      <pre><span class="highlight-line"><span class="str">GET /get/files/fd HTTP/1.1</span>      <span class="cmt">← URI = /get/files/fd</span></span>
+<span class="str">Host: localhost:8080</span>
+<span class="str">User-Agent: curl/8.7.1</span>
+<span class="str">Connection: keep-alive</span>
+<span class="str"></span>
+<span class="cmt">[body optionnel]</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div><strong>L'URI n'est pas inventée par le serveur.</strong> Elle est fournie par le client dans la requête. Ton parser HTTP la lit, la décode (URL-encoding si besoin), et la stocke avant toute décision de routing.</div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 02 — PRÉFIXE LE PLUS LONG     -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="match" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">préfixe le plus long</div>
+        <div class="step-subtitle">Comment choisir entre plusieurs locations qui matchent</div>
+      </div>
+    </div>
+
+    <div class="analogy-panel">
+      <div class="analogy-icon">🚉</div>
+      <div class="analogy-text">
+        <div class="analogy-label">Analogie — le panneau d'affichage de gare</div>
+        <p>
+          Imagine un panneau d'itinéraire en gare. Plusieurs lignes affichent des destinations :
+          <code>Paris</code>, <code>Paris-Nord</code>, <code>Paris-Nord-Hall-B</code>.
+          <br><br>
+          Si tu demandes à aller à "Paris-Nord-Hall-B", tu peux prendre le couloir général "Paris",
+          le couloir "Paris-Nord"… ou le couloir exact "Paris-Nord-Hall-B".
+          On te dirige toujours vers <strong>le chemin le plus précis</strong> qui correspond à ta destination.
+          <br><br>
+          C'est exactement ça le matching par préfixe le plus long :
+          la location la plus spécifique qui <em>commence</em> comme ton URI est celle retenue.
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">config d'exemple</span>
+        </div>
+        <span class="code-tag">3 locations, 3 niveaux de précision</span>
+      </div>
+      <pre><span class="dir">location</span> / {
+    <span class="dir">allowed_methods</span> GET;
+}
+
+<span class="dir">location</span> /get/files {
+    <span class="dir">allowed_methods</span> GET POST;
+}
+
+<span class="dir">location</span> /get/files/fd {
+    <span class="dir">allowed_methods</span> GET;
+}</pre>
+    </div>
+
+    <table class="route-table">
+      <tr><th>URI reçue</th><th>Locations qui matchent</th><th>Gagnante (la plus longue)</th></tr>
+      <tr>
+        <td><code>/get/files/fd</code></td>
+        <td><span class="ok">/</span> · <span class="ok">/get/files</span> · <span class="ok">/get/files/fd</span></td>
+        <td class="best">/get/files/fd</td>
+      </tr>
+      <tr>
+        <td><code>/get/files/report.txt</code></td>
+        <td><span class="ok">/</span> · <span class="ok">/get/files</span></td>
+        <td class="best">/get/files</td>
+      </tr>
+      <tr>
+        <td><code>/get/other</code></td>
+        <td><span class="ok">/</span></td>
+        <td class="best">/</td>
+      </tr>
+      <tr>
+        <td><code>/get/filesX</code></td>
+        <td><span class="ok">/</span> <span style="color:var(--text-muted); font-size:0.75rem;">(frontière invalide pour /get/files)</span></td>
+        <td class="best">/ <span style="color:var(--text-muted); font-size:0.75rem;">(pas /get/files !)</span></td>
+      </tr>
+    </table>
+
+    <div class="warning">
+      <span>💡</span>
+      <div>
+        <strong>Notre approche : réduction progressive, pas de boundary check.</strong>
+        Au lieu de vérifier les frontières de segment, on réduit l'URI segment par segment
+        (<code>rfind('/') + erase</code>) jusqu'à trouver un match EXACT avec un <code>location.path</code>.
+        <code>/get/filesX</code> ne matchera jamais <code>/get/files</code> car l'égalité est stricte.
+        C'est plus simple et tout aussi robuste.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">📏</span><span>On compare l'URI à <strong>tous</strong> les préfixes, on retient le plus long. Pas de court-circuit à la première correspondance.</span></div>
+      <div class="key-point"><span class="key-point-icon">🚫</span><span>Pas de regex dans webserv. Le sujet dit explicitement que les regex ne sont pas requises. Préfixe uniquement.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔄</span><span>Si aucune location ne matche (même <code>/</code> absente) : <code>404 Not Found</code> immédiat.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 03 — ALGORITHME               -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="algo" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">findLocation()</div>
+        <div class="step-subtitle">Implémentation C++98 correcte avec règle de frontière</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/utils/utils.cpp — findLocation()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(175,169,236,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// srcs/utils/utils.cpp — réduction progressive de l'URI</span>
+<span class="cmt">// jusqu'à trouver un match EXACT avec une location.path</span>
+<span class="kw">const</span> <span class="type">Location</span>* <span class="fn-name">findLocation</span>(<span class="kw">const</span> <span class="type">std::string</span>& <span class="var">uri</span>, <span class="kw">const</span> <span class="type">Server</span>& <span class="var">server</span>)
+<span class="punct">{</span>
+    <span class="type">std::string</span> <span class="var">shorturi</span> <span class="punct">=</span> <span class="var">uri</span><span class="punct">;</span>
+    <span class="kw">const</span> <span class="type">Location</span> <span class="punct">*</span><span class="var">loc</span> <span class="punct">=</span> <span class="macro">NULL</span><span class="punct">;</span>
+    <span class="kw">int</span> <span class="var">len</span> <span class="punct">=</span> <span class="punct">-</span><span class="num">1</span><span class="punct">;</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">uri</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">()</span> <span class="punct">||</span> <span class="var">uri</span><span class="punct">[</span><span class="num">0</span><span class="punct">]</span> <span class="punct">!=</span> <span class="str">'/'</span><span class="punct">)</span>
+        <span class="kw">return</span> <span class="macro">NULL</span><span class="punct">;</span>
+
+    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">server</span><span class="punct">.</span><span class="var">locations</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">server</span><span class="punct">.</span><span class="var">locations</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">path</span> <span class="punct">==</span> <span class="var">shorturi</span> <span class="punct">&amp;&amp;</span>
+<span class="highlight-line">                <span class="var">len</span> <span class="punct">&lt;</span> <span class="punct">(</span><span class="kw">int</span><span class="punct">)(</span><span class="var">server</span><span class="punct">.</span><span class="var">locations</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">path</span><span class="punct">.</span><span class="fn-name">length</span><span class="punct">()))</span> <span class="punct">{</span></span>
+<span class="highlight-line">                <span class="var">loc</span> <span class="punct">=</span> <span class="punct">&amp;</span><span class="var">server</span><span class="punct">.</span><span class="var">locations</span><span class="punct">[</span><span class="var">i</span><span class="punct">];</span></span>
+<span class="highlight-line">                <span class="var">len</span> <span class="punct">=</span> <span class="punct">(</span><span class="kw">int</span><span class="punct">)(</span><span class="var">server</span><span class="punct">.</span><span class="var">locations</span><span class="punct">[</span><span class="var">i</span><span class="punct">].</span><span class="var">path</span><span class="punct">.</span><span class="fn-name">length</span><span class="punct">());</span></span>
+<span class="highlight-line">            <span class="punct">}</span></span>
+        <span class="punct">}</span>
+<span class="highlight-line">        <span class="kw">if</span> <span class="punct">(</span><span class="var">len</span> <span class="punct">!=</span> <span class="punct">-</span><span class="num">1</span><span class="punct">)</span> <span class="kw">break</span><span class="punct">;</span>           <span class="cmt">// trouvé !</span></span>
+<span class="highlight-line">        <span class="kw">if</span> <span class="punct">(</span><span class="var">shorturi</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span> <span class="kw">break</span><span class="punct">;</span>           <span class="cmt">// rien trouvé → NULL</span></span>
+<span class="highlight-line">        <span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="var">shorturi</span><span class="punct">.</span><span class="fn-name">rfind</span><span class="punct">(</span><span class="str">'/'</span><span class="punct">);</span>       <span class="cmt">// coupe au dernier '/'</span></span>
+<span class="highlight-line">        <span class="var">shorturi</span><span class="punct">.</span><span class="fn-name">erase</span><span class="punct">(</span><span class="var">i</span><span class="punct">);</span></span>
+<span class="highlight-line">        <span class="kw">if</span> <span class="punct">(</span><span class="var">shorturi</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span> <span class="var">shorturi</span> <span class="punct">=</span> <span class="str">"/"</span><span class="punct">;</span>  <span class="cmt">// retombe sur /</span></span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="var">loc</span><span class="punct">;</span>  <span class="cmt">// NULL si aucune location ne matche → 404</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3);">
+        <div class="panel-label">Les 3 étapes de l'algo (réduction progressive)</div>
+        <p>
+          <strong>① Boucle externe :</strong> l'URI est raccourcie progressivement — on cherche
+          un match EXACT de <code>shorturi</code> parmi les <code>location.path</code>.
+        </p>
+        <p>
+          <strong>② Découpage :</strong> à chaque échec, <code>rfind('/')</code> + <code>erase()</code>
+          retire le dernier segment. L'URI <code>/a/b/c</code> devient <code>/a/b</code>, puis <code>/a</code>, puis <code>/</code>.
+        </p>
+        <p>
+          <strong>③ Le plus long gagne :</strong> on garde la location dont le <code>path</code>
+          est le plus long (variable <code>len</code>). On ne s'arrête pas au premier match.
+        </p>
+        <p style="margin-top:0.8rem; padding:0.6rem; background:rgba(74,224,255,0.06); border-left:3px solid var(--accent-2); font-size:0.82rem;">
+          <strong>Urgent :</strong> l'URI passée à <code>findLocation()</code> ne contient JAMAIS la query string.
+          Le Router (<code>Router::route()</code>) et <code>HttpParser::headerParser()</code> retirent <code>?xxx</code>
+          via <code>uri.substr(0, uri.find('?'))</code> — bug corrigé : avant, <code>/upload?x=1</code> ne matchait pas <code>/upload</code>.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1);">
+        <div class="panel-label">Ce que retourne NULL</div>
+        <p>
+          Si la fonction retourne <code>NULL</code>, <strong>aucune location ne matche l'URI</strong>.
+          Le comportement attendu : <code>404 Not Found</code>.
+        </p>
+        <p>
+          Même si tu as une location <code>/</code>, elle ne matche que les URI qui commencent par <code>/</code>
+          — ce qui est presque toujours vrai. Mais si la config n'a pas de <code>/</code>, les URI non couvertes
+          produisent un <code>NULL</code>.
+        </p>
+        <p>
+          Toujours vérifier le retour de <code>findLocation()</code> avant d'utiliser le pointeur.
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🔍</span><span>L'algo est O(n) par réduction : on essaie l'URI complète, puis segment par segment via <code>rfind('/') + erase()</code>. Au pire, on arrive à <code>/</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚠️</span><span>L'URI sans query string est <strong>essentiel</strong>. <code>findLocation()</code> est appelée par le Router ET par <code>HttpParser::headerParser()</code> — dans les deux cas avec <code>uri.substr(0, uri.find('?'))</code>.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔒</span><span>Vérifier <code>NULL</code> avant de déréférencer. Un <code>NULL</code> retourné = 404, jamais un crash. Le Router vérifie avant de continuer.</span></div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 04 — FLOW COMPLET             -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="runtime" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">flow complet</div>
+        <div class="step-subtitle">De l'URI reçue au fichier servi — ordre exact</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4);">
+        <div class="panel-label">Pipeline de traitement (Router::route)</div>
+        <p><strong>1.</strong> Si <code>req.error != 200</code> → <code>ErrorHandler</code> immédiat.</p>
+        <p><strong>2.</strong> Extraire le chemin de l'URI (sans query string).</p>
+        <p><strong>3.</strong> <code>findLocation()</code> → location gagnante ou NULL (404).</p>
+        <p><strong>4.</strong> <code>methodImplemented()</code> (GET/POST/DELETE/HEAD) sinon <strong>501</strong>.</p>
+        <p><strong>5.</strong> <code>methodAllowed()</code> → <strong>405</strong> si méthode interdite.</p>
+        <p><strong>6.</strong> Si <code>return_path</code> présent → <strong>redirect</strong> immédiat (avant tout accès disque).</p>
+        <p><strong>7.</strong> <code>resolvePath()</code> → chemin disque (root + URI, normalizePath).</p>
+        <p><strong>8.</strong> Si extension CGI → <code>CGIHandler</code> (<code>return NULL</code>, asynchrone). Sinon → <code>StaticHandler</code>.</p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-4);">
+        <div class="panel-label">Résolution du chemin disque (étape 6)</div>
+        <p>
+          Après avoir trouvé la location, le chemin physique du fichier est :
+        </p>
+        <p>
+          <code>chemin = root + (URI − préfixe_location)</code>
+        </p>
+        <p>
+          Exemple : location <code>/get/files</code> avec <code>root /var/www</code>,
+          URI <code>/get/files/report.txt</code> :
+        </p>
+        <p>
+          → retire le préfixe <code>/get/files</code><br>
+          → reste <code>/report.txt</code><br>
+          → fichier : <code>/var/www/report.txt</code>
+        </p>
+        <p>
+          C'est le <strong>Cas 2</strong> du sujet (strip prefix), confirmé par l'exemple officiel :
+          <code>/kapouet/pouic/toto/pouet</code> → <code>/tmp/www/pouic/toto/pouet</code>.
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">routing-trace.txt</span>
+        </div>
+        <span class="code-tag">trace complète de 3 requêtes</span>
+      </div>
+      <pre>GET /files/monfichier.txt HTTP/1.1
+  → port 8080  → server sélectionné
+  → <span class="fn-name">findLocation</span>(<span class="str">"/files/monfichier.txt"</span>) → match EXACT avec <span class="kw">/files</span>
+  → <span class="dir">autoindex</span> on ✓  → <span class="kw">throwList()</span> (listing du répertoire)
+
+GET /cgi-bin/hello.py HTTP/1.1
+  → <span class="fn-name">findLocation</span>(<span class="str">"/cgi-bin/hello.py"</span>) → <span class="kw">/cgi-bin</span>
+  → <span class="dir">cgi_pass</span> .py /usr/bin/python3 ✓
+  → extension .py trouvée dans cgi_pass → <span class="kw">CGIHandler</span> → <span class="kw">NULL</span> (asynchrone)
+
+POST /upload/photo.jpg HTTP/1.1
+  → <span class="fn-name">findLocation</span>(<span class="str">"/upload/photo.jpg"</span>) → <span class="kw">/upload</span>
+  → <span class="dir">allowed_methods</span> GET POST DELETE ✓
+  → <span class="dir">upload_store</span> ./www/upload → fichier sauvegardé
+
+DELETE /upload/vieux.txt HTTP/1.1
+  → <span class="fn-name">findLocation</span>(<span class="str">"/upload/vieux.txt"</span>) → <span class="kw">/upload</span>
+  → <span class="dir">allowed_methods</span> GET POST DELETE → DELETE ✓
+  → <span class="fn-name">unlink()</span> → <span class="kw">204 No Content</span>
+
+GET /private/secrets.html HTTP/1.1
+  → <span class="fn-name">findLocation</span>(<span class="str">"/private/secrets.html"</span>) → <span class="kw">/private</span>
+  → <span class="dir">allowed_methods</span> GET ✓
+  → <span class="fn-name">forbiddenAccess()</span> → <span class="kw">R_OK</span> manquant → <span class="kw">403 Forbidden</span></pre>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">1️⃣</span><span>L'ordre est fixe et séquentiel. Une étape échoue → réponse immédiate, on ne continue pas.</span></div>
+      <div class="key-point"><span class="key-point-icon">➖</span><span>Formule de résolution : <code>root + (URI − préfixe)</code>. Retirer le préfixe de la location AVANT de coller à root.</span></div>
+      <div class="key-point"><span class="key-point-icon">⚡</span><span><code>return</code> court-circuite tout — étape 5 avant la résolution disque. Si présent, aucun accès fichier n'a lieu.</span></div>
+    </div>
+
+    <div class="quote-box" style="--step-color: var(--accent-4);">
+      <p>Le routing n'est pas une option décorative. C'est la décision qui pilote tout le reste — root, méthodes, CGI, upload.</p>
+      <cite>— Toute erreur dans findLocation() propage des bugs dans chaque étape suivante.</cite>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════ -->
+  <!-- 05 — TESTS                    -->
+  <!-- ══════════════════════════════ -->
+  <section class="step-section" id="tests" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">tests</div>
+        <div class="step-subtitle">Cas à vérifier pour valider l'implémentation</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5);">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">test-routing.sh</span>
+        </div>
+        <span class="code-tag">curl</span>
+      </div>
+      <pre><span class="cmt"># ① Préfixe exact — doit choisir /get/files/fd</span>
+curl -i http://localhost:8080/get/files/fd
+
+<span class="cmt"># ② Sous-chemin — doit choisir /get/files (pas /get/files/fd)</span>
+curl -i http://localhost:8080/get/files/report.txt
+
+<span class="cmt"># ③ Fallback — aucune location précise, doit choisir /</span>
+curl -i http://localhost:8080/unknown
+
+<span class="cmt"># ④ Frontière — /get/filesX NE doit PAS matcher /get/files</span>
+curl -i http://localhost:8080/get/filesX
+
+<span class="cmt"># ⑤ Méthode interdite — doit retourner 405 + Allow:</span>
+curl -i -X DELETE http://localhost:8080/get/files/report.txt
+
+<span class="cmt"># ⑥ Aucune location — server sans /  → doit retourner 404</span>
+curl -i http://localhost:8080/not-covered</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-5);">
+        <div class="panel-label">Ce que tu dois observer</div>
+        <p>
+          Pour chaque requête, le serveur doit loguer (ou afficher) la location sélectionnée.
+          Si la sélection n'est pas celle attendue, le bug est dans ton <code>findLocation()</code> —
+          souvent la règle de frontière de segment.
+        </p>
+        <p>
+          Le test ④ (<code>/get/filesX</code>) est le plus important : c'est le piège classique
+          que beaucoup ratent. Si ce test échoue, tu as une fausse correspondance.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5);">
+        <div class="panel-label">Checklist de validation</div>
+        <p>
+          ✅ Match exact → bonne location<br>
+          ✅ Sous-chemin → location parente<br>
+          ✅ Fallback → location <code>/</code><br>
+          ✅ Frontière invalide → <strong>pas</strong> de match<br>
+          ✅ Méthode interdite → <code>405</code> + <code>Allow:</code><br>
+          ✅ NULL retourné → <code>404</code>, jamais un crash
+        </p>
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point"><span class="key-point-icon">🧪</span><span>Le test ④ (<code>/get/filesX</code> ne matche pas <code>/get/files</code>) doit être dans tes tests unitaires. C'est le bug de frontière le plus fréquent.</span></div>
+      <div class="key-point"><span class="key-point-icon">🔎</span><span>Si tu as du mal à déboguer, log la location sélectionnée à chaque requête (<code>std::cerr &lt;&lt; "location: " &lt;&lt; loc->path</code>). Tu verras immédiatement si le routing est bon.</span></div>
+      <div class="key-point"><span class="key-point-icon">🗣️</span><span>À la soutenance : être capable d'expliquer ces 6 cas à l'oral prouve que tu maîtrises entièrement le routing.</span></div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — 04 Fichier de configuration — Routing (préfixe le plus long)</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+    a.addEventListener('click', function(e) { e.preventDefault(); navigateTo(a.href); });
+  });
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      var href = this.getAttribute('href');
+      if (!href || href.length < 2) return;
+      e.preventDefault();
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sections = document.querySelectorAll('.step-section');
+  var navPills = document.querySelectorAll('.step-pill');
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        var id = entry.target.id;
+        navPills.forEach(function(pill) {
+          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { observer.observe(s); });
+</script>
+</body>
+</html>

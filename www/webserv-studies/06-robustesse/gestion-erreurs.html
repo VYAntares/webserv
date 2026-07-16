@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robustesse — Le serveur ne crash jamais : notre stratégie d'erreurs</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#regle" class="step-pill active" id="nav-regle"><span class="step-dot"></span>La r&egrave;gle</a>
+    <div class="step-connector"></div>
+    <a href="#sacrifice" class="step-pill" id="nav-sacrifice"><span class="step-dot"></span>Sacrifice</a>
+    <div class="step-connector"></div>
+    <a href="#signaux" class="step-pill" id="nav-signaux"><span class="step-dot"></span>Signaux</a>
+    <div class="step-connector"></div>
+    <a href="#raii" class="step-pill" id="nav-raii"><span class="step-dot"></span>RAII</a>
+    <div class="step-connector"></div>
+    <a href="#errorpages" class="step-pill" id="nav-errorpages"><span class="step-dot"></span>Pages d'erreur</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Robustesse &mdash; Stabilit&eacute;, dans notre code</div>
+  <h1>Le serveur ne <em>crash</em> jamais<br>&mdash; sacrifier le handler, pas la boucle</h1>
+  <p class="header-desc">
+    Le sujet est brutal : un serveur qui se termine de mani&egrave;re inattendue = <strong>0</strong>.
+    Notre strat&eacute;gie tient en une phrase : <strong>toute erreur est locale</strong>.
+    Un handler qui explose est sacrifi&eacute; par le try/catch de l'EventLoop, un syscall qui &eacute;choue
+    nettoie derri&egrave;re lui, un signal l&egrave;ve un simple drapeau &mdash; et la boucle continue de tourner.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : LA RÈGLE                   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="regle" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">La r&egrave;gle absolue</div>
+        <div class="step-subtitle">Ce que le sujet exige, et comment on le d&eacute;coupe</div>
+      </div>
+    </div>
+
+    <div class="quote-box">
+      <p>&laquo; Your program must not crash under any circumstances (even if it runs out of memory) or terminate unexpectedly. &raquo;</p>
+      <cite>&mdash; webserv.pdf, General rules</cite>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-top: 1.5rem;">
+      <div class="panel-label">Notre d&eacute;coupage du probl&egrave;me</div>
+      <table class="compare-table">
+        <tr><td>Erreur de <strong>config</strong> (au d&eacute;marrage)</td><td>throw &rarr; attrap&eacute; dans <code>main()</code> &rarr; message clair + exit propre. Refuser de d&eacute;marrer n'est pas crasher.</td></tr>
+        <tr><td>Erreur d'un <strong>handler</strong> (en vol)</td><td>try/catch dans <code>EventLoop::handle_events()</code> &rarr; on d&eacute;truit ce handler, les autres continuent.</td></tr>
+        <tr><td>Erreur d'un <strong>syscall</strong> (socket, pipe, fork&hellip;)</td><td>chaque chemin d'&eacute;chec ferme ses fd / tue son enfant avant de throw ou de retourner.</td></tr>
+        <tr><td>Erreur du <strong>client</strong> (requ&ecirc;te malform&eacute;e)</td><td>jamais une exception : un status code (400, 413, 431&hellip;) via <code>ErrorHandler</code>.</td></tr>
+        <tr><td><strong>Signal</strong> (Ctrl-C, SIGPIPE&hellip;)</td><td>drapeau atomique ou ignorance pure &mdash; jamais de logique dans le handler de signal.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LE SACRIFICE DU HANDLER    -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="sacrifice" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">try/catch dans la boucle</div>
+        <div class="step-subtitle">Une exception ne doit jamais sortir de handle_events()</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/core/EventLoop.cpp &mdash; handle_events(), le dispatch prot&eacute;g&eacute;</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// Une exception levée par un handler ne doit jamais sortir de la</span>
+<span class="cmt">// boucle : le sujet impose que le serveur ne s'arrête sous aucune</span>
+<span class="cmt">// circonstance. On sacrifie seulement le handler fautif.</span>
+<span class="kw">try</span> {
+    <span class="kw">if</span> (<span class="var">entry</span>-&gt;<span class="var">type</span> == <span class="macro">ACCEPT_EVENT</span>)
+        <span class="var">ret</span> = <span class="var">h</span>-&gt;<span class="fn-name">handle_accept</span>();
+    <span class="kw">else</span> {
+        <span class="kw">if</span> (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLIN</span> | <span class="macro">EPOLLHUP</span> | <span class="macro">EPOLLERR</span>))
+            <span class="var">ret</span> = <span class="var">h</span>-&gt;<span class="fn-name">handle_input</span>();
+        <span class="kw">if</span> (<span class="var">ret</span> != -<span class="num">1</span> &amp;&amp; <span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; <span class="macro">EPOLLOUT</span>)
+            <span class="var">ret</span> = <span class="var">h</span>-&gt;<span class="fn-name">handle_output</span>();
+        <span class="cmt">// EPOLLERR/EPOLLHUP sans EPOLLIN ni EPOLLOUT : aucun des</span>
+        <span class="cmt">// deux handlers ci-dessus n'a pu constater l'erreur — on</span>
+        <span class="cmt">// ferme, sinon epoll re-signale en boucle (busy loop).</span>
+        <span class="kw">if</span> (<span class="var">ret</span> != -<span class="num">1</span> &amp;&amp; (<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLHUP</span> | <span class="macro">EPOLLERR</span>))
+            &amp;&amp; !(<span class="var">events</span>[<span class="var">i</span>].<span class="var">events</span> &amp; (<span class="macro">EPOLLIN</span> | <span class="macro">EPOLLOUT</span>)))
+            <span class="var">ret</span> = -<span class="num">1</span>;
+    }
+<span class="highlight-line">} <span class="kw">catch</span> (<span class="type">std::exception</span>&amp; <span class="var">e</span>) {</span>
+<span class="highlight-line">    <span class="type">std::cerr</span> &lt;&lt; <span class="str">"[handler error] fd="</span> &lt;&lt; <span class="var">h</span>-&gt;<span class="fn-name">getFd</span>() &lt;&lt; <span class="str">": "</span> &lt;&lt; <span class="var">e</span>.<span class="fn-name">what</span>() &lt;&lt; <span class="str">"\n"</span>;</span>
+<span class="highlight-line">    <span class="var">ret</span> = -<span class="num">1</span>;</span>
+<span class="highlight-line">} <span class="kw">catch</span> (...) {</span>
+<span class="highlight-line">    <span class="type">std::cerr</span> &lt;&lt; <span class="str">"[handler error] fd="</span> &lt;&lt; <span class="var">h</span>-&gt;<span class="fn-name">getFd</span>() &lt;&lt; <span class="str">": unknown exception\n"</span>;</span>
+<span class="highlight-line">    <span class="var">ret</span> = -<span class="num">1</span>;</span>
+}
+
+<span class="kw">if</span> (<span class="var">ret</span> == -<span class="num">1</span>) {
+<span class="highlight-new">    <span class="fn-name">remove_handler</span>(<span class="var">h</span>);   <span class="cmt">// retiré d'epoll + de la table</span></span>
+<span class="highlight-new">    <span class="kw">delete</span> <span class="var">h</span>;            <span class="cmt">// destructeur → close(fd), détachements, 504 éventuel</span></span>
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Pourquoi &ccedil;a couvre m&ecirc;me le bad_alloc</div>
+        <p>
+          &laquo; Even if it runs out of memory &raquo; : un <code>new</code> ou un
+          <code>std::string::append</code> qui &eacute;choue l&egrave;ve <code>std::bad_alloc</code> &mdash;
+          qui h&eacute;rite de <code>std::exception</code>. Il est donc attrap&eacute; ici comme n'importe
+          quelle erreur : le client en cours est sacrifi&eacute;, sa m&eacute;moire lib&eacute;r&eacute;e
+          (ce qui d&eacute;tend justement la pression m&eacute;moire), et le serveur continue.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">La convention return -1</div>
+        <p>
+          Tous nos handlers parlent le m&ecirc;me langage : <code>0</code> = &laquo; je continue &raquo;,
+          <code>-1</code> = &laquo; retire-moi et d&eacute;truis-moi &raquo;. La destruction passe toujours par
+          le m&ecirc;me chemin (<code>remove_handler</code> + <code>delete</code>), et chaque destructeur
+          fait son m&eacute;nage : <code>close(fd)</code>, <code>detachSink()</code>, <code>kill</code>+<code>waitpid</code>
+          pour les CGI. Un seul endroit d&eacute;truit, z&eacute;ro double-free.
+        </p>
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Le cas sournois : EPOLLERR/EPOLLHUP &laquo; nus &raquo;.</strong>
+        Si epoll signale une erreur sans EPOLLIN ni EPOLLOUT, aucun de nos handle_* ne serait appel&eacute;
+        pour la constater &mdash; et epoll re-signalerait l'&eacute;v&eacute;nement &agrave; chaque tour :
+        busy loop, 100% CPU. D'o&ugrave; le troisi&egrave;me <code>if</code> qui force <code>ret = -1</code>
+        dans ce cas pr&eacute;cis.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : SIGNAUX                    -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="signaux" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">signal()</div>
+        <div class="step-subtitle">SIGINT = drapeau, SIGPIPE = ignor&eacute;, arr&ecirc;t = propre</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/core/EventLoop.cpp &mdash; les signaux</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// Drapeau d'arrêt levé par le signal handler.</span>
+<span class="cmt">// volatile : force la relecture depuis la mémoire à chaque tour (pas de cache registre).</span>
+<span class="cmt">// sig_atomic_t : lecture/écriture atomique, sans risque de valeur à moitié écrite par un signal.</span>
+<span class="highlight-line"><span class="kw">static</span> <span class="kw">volatile</span> <span class="type">sig_atomic_t</span> <span class="var">g_stop</span> = <span class="num">0</span>;</span>
+
+<span class="cmt">// Handler SIGINT/SIGTERM : lève g_stop pour que handle_events() sorte proprement.</span>
+<span class="cmt">// Seules les fonctions async-signal-safe sont autorisées ici — donc pas de malloc/cout.</span>
+<span class="kw">static</span> <span class="type">void</span> <span class="fn-name">handle_sigint</span>(<span class="type">int</span>) { <span class="var">g_stop</span> = <span class="num">1</span>; }
+
+<span class="type">void</span> <span class="type">EventLoop</span>::<span class="fn-name">handle_events</span>() {
+    <span class="fn-name">signal</span>(<span class="macro">SIGINT</span>, <span class="var">handle_sigint</span>);
+    <span class="fn-name">signal</span>(<span class="macro">SIGTERM</span>, <span class="var">handle_sigint</span>);
+    <span class="fn-name">signal</span>(<span class="macro">SIGQUIT</span>, <span class="var">handle_sigint</span>);
+<span class="highlight-new">    <span class="fn-name">signal</span>(<span class="macro">SIGPIPE</span>, <span class="macro">SIG_IGN</span>);   <span class="cmt">// un client qui coupe en plein send ne doit pas nous tuer</span></span>
+
+    <span class="kw">while</span> (!<span class="var">g_stop</span>) {
+<span class="highlight-line">        <span class="type">int</span> <span class="var">n</span> = <span class="fn-name">epoll_wait</span>(<span class="var">_epfd</span>, <span class="var">events</span>, <span class="macro">MAX_EVENTS</span>, <span class="num">500</span>);   <span class="cmt">// 500ms → g_stop re-vérifié régulièrement</span></span>
+        <span class="cmt">// ...</span>
+    }
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Pourquoi un simple drapeau ?</div>
+        <p>
+          Un handler de signal peut interrompre le programme <strong>n'importe o&ugrave;</strong>.
+          Y faire un <code>delete</code>, un <code>cout</code> ou toucher une map serait de la roulette russe
+          (seules les fonctions async-signal-safe sont l&eacute;gales). On se contente donc d'&eacute;crire
+          un <code>sig_atomic_t</code>. Le vrai nettoyage a lieu <strong>dans le flot normal</strong> :
+          la boucle sort, <code>EventLoop::destroy()</code> appelle le destructeur qui
+          <code>delete</code> tous les handlers restants (donc ferme tous les fd, tue les CGI en cours)
+          et ferme <code>_epfd</code>.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">SIGPIPE, la double ceinture</div>
+        <p>
+          &Eacute;crire dans un socket ferm&eacute; c&ocirc;t&eacute; client l&egrave;ve SIGPIPE &mdash; qui par d&eacute;faut
+          <strong>termine le processus</strong>. Notre protection est double :
+          <code>signal(SIGPIPE, SIG_IGN)</code> au d&eacute;marrage, et
+          <code>send(_fd, data, left, MSG_NOSIGNAL)</code> dans
+          <code>ClientHandler::handle_output()</code>. Le send &eacute;choue alors avec
+          <code>n &lt;= 0</code> &rarr; <code>return -1</code> &rarr; d&eacute;connexion propre du client.
+        </p>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le timeout 500&nbsp;ms n'est pas d&eacute;coratif.</strong> Sans lui, un serveur au repos
+        dormirait dans <code>epoll_wait(-1)</code> pour toujours : Ctrl-C interromprait bien l'appel
+        (EINTR), mais surtout <code>checkTimeOut()</code> ne tournerait jamais sans trafic.
+        Avec 500&nbsp;ms : <code>n == 0</code> (timeout) &rarr; on saute le for (events[] n'est pas rempli),
+        on re-v&eacute;rifie <code>g_stop</code>, on chasse les clients inactifs, et on se rendort.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : RAII & ÉCHECS DE SYSCALLS  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="raii" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">Chaque &eacute;chec nettoie</div>
+        <div class="step-subtitle">Constructeurs qui throw, rollback, et accept insubmersible</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ServerHandler.cpp &mdash; constructeur avec rollback</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">ServerHandler</span>::<span class="fn-name">ServerHandler</span>(<span class="type">addrport</span> <span class="var">addrs</span>, <span class="kw">const</span> <span class="type">Server</span>&amp; <span class="var">server</span>) : <span class="var">_server</span>(<span class="var">server</span>), <span class="var">_fd</span>(-<span class="num">1</span>) {
+    <span class="kw">try</span> {
+        <span class="var">_fd</span> = <span class="fn-name">createSocket</span>();
+        <span class="fn-name">bindAddress</span>(<span class="var">_fd</span>, <span class="var">addrs</span>);
+        <span class="kw">if</span> (<span class="fn-name">listen</span>(<span class="var">_fd</span>, <span class="macro">SOMAXCONN</span>) == -<span class="num">1</span>)
+            <span class="kw">throw</span> <span class="type">std::runtime_error</span>(<span class="str">"listen() failed:"</span> + <span class="type">std::string</span>(<span class="fn-name">strerror</span>(<span class="var">errno</span>)));
+<span class="highlight-line">    } <span class="kw">catch</span> (...) {</span>
+<span class="highlight-line">        <span class="fn-name">close</span>(<span class="var">_fd</span>);   <span class="cmt">// RAII : jamais de fd orphelin, même si bind/listen échoue</span></span>
+<span class="highlight-line">        <span class="kw">throw</span>;        <span class="cmt">// re-throw : main() loggue et passe au listen suivant</span></span>
+    }
+    <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">register_handler</span>(<span class="kw">this</span>, <span class="macro">ACCEPT_EVENT</span>);
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ServerHandler.cpp &mdash; handle_accept(), jamais -1</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// Retourne toujours 0 : un échec d'accept() (connexion annulée, plus de fd</span>
+<span class="cmt">// disponibles...) est transitoire et ne doit surtout pas détruire le socket</span>
+<span class="cmt">// d'écoute — retourner -1 ici ferait supprimer ce ServerHandler par EventLoop</span>
+<span class="cmt">// et le port ne répondrait plus jamais.</span>
+<span class="type">int</span> <span class="type">ServerHandler</span>::<span class="fn-name">handle_accept</span>() {
+    <span class="type">int</span> <span class="var">client_fd</span> = <span class="fn-name">accept</span>(<span class="var">_fd</span>, (<span class="kw">struct</span> <span class="type">sockaddr</span>*)&amp;<span class="var">client_addr</span>, &amp;<span class="var">len</span>);
+    <span class="kw">if</span> (<span class="var">client_fd</span> == -<span class="num">1</span>)
+<span class="highlight-line">        <span class="kw">return</span> <span class="num">0</span>;   <span class="cmt">// erreur transitoire : on réessaiera au prochain événement</span></span>
+
+    <span class="kw">if</span> (<span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>) == -<span class="num">1</span>) {
+        <span class="fn-name">close</span>(<span class="var">client_fd</span>);
+        <span class="kw">return</span> <span class="num">0</span>;
+    }
+    <span class="fn-name">fcntl</span>(<span class="var">client_fd</span>, <span class="macro">F_SETFD</span>, <span class="macro">FD_CLOEXEC</span>);
+
+    <span class="kw">try</span> {
+        <span class="kw">new</span> <span class="type">ClientHandler</span>(<span class="var">client_fd</span>, <span class="var">_server</span>, <span class="var">client_addr</span>);
+<span class="highlight-new">    } <span class="kw">catch</span> (<span class="type">std::exception</span>&amp; <span class="var">e</span>) {</span>
+<span class="highlight-new">        <span class="type">std::cerr</span> &lt;&lt; <span class="str">"accept: "</span> &lt;&lt; <span class="var">e</span>.<span class="fn-name">what</span>() &lt;&lt; <span class="type">std::endl</span>;</span>
+<span class="highlight-new">        <span class="fn-name">close</span>(<span class="var">client_fd</span>);   <span class="cmt">// le ClientHandler n'existe pas → à nous de fermer</span></span>
+    }
+    <span class="kw">return</span> <span class="num">0</span>;
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-top: 1.5rem;">
+      <div class="panel-label">Le m&ecirc;me r&eacute;flexe partout dans le code</div>
+      <ul>
+        <li><code>EventLoop::register_handler()</code> &mdash; si <code>epoll_ctl(ADD)</code> &eacute;choue : l'entr&eacute;e est retir&eacute;e de la table et delete <strong>avant</strong> le throw (pas d'entr&eacute;e fant&ocirc;me).</li>
+        <li><code>CGIProcess</code> &mdash; pipe 2 rat&eacute; : fermer le pipe 1. fork rat&eacute; : fermer les 4 fd. fcntl rat&eacute; : fermer les fd + <code>kill(SIGKILL)</code> + <code>waitpid</code>.</li>
+        <li><code>modify_handler</code> / <code>remove_handler</code> &mdash; un &eacute;chec d'epoll_ctl est <strong>loggu&eacute;, pas throw</strong> : on est appel&eacute; depuis un handler en plein traitement, une erreur sur un fd ne doit pas faire tomber la boucle.</li>
+        <li><code>main()</code> &mdash; chaque <code>new ServerHandler</code> est dans son propre try/catch : un port occup&eacute; n'emp&ecirc;che pas les autres de d&eacute;marrer.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : PAGES D'ERREUR             -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="errorpages" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">ErrorHandler</div>
+        <div class="step-subtitle">Une erreur = une r&eacute;ponse HTTP, jamais un silence</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le circuit d'une erreur</div>
+      <p>
+        Quand le Router d&eacute;tecte un probl&egrave;me (404, 403, 405, 501&hellip;) ou que le parser a flagg&eacute;
+        la requ&ecirc;te (400, 413, 431), il retourne un <code>ErrorHandler(bloc, code, body)</code>.
+        Celui-ci h&eacute;rite de <code>ARequestHandler</code> comme les autres : m&ecirc;me
+        <code>buildResponse()</code>, m&ecirc;me circuit d'envoi. La diff&eacute;rence : son body vient
+        soit de la <code>error_page</code> configur&eacute;e, soit d'une page g&eacute;n&eacute;r&eacute;e.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/ARequestHandler.cpp &mdash; getErrorPage(), le double filet</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">void</span> <span class="type">ARequestHandler</span>::<span class="fn-name">getErrorPage</span>() {
+    <span class="var">_type</span> = <span class="fn-name">getType</span>(<span class="var">_errorpage</span>);
+
+    <span class="type">std::ifstream</span> <span class="fn-name">file</span>(<span class="var">_errorpage</span>.<span class="fn-name">c_str</span>());
+    <span class="cmt">// page d'erreur configurée mais introuvable → retomber sur la page</span>
+    <span class="cmt">// par défaut plutôt que de renvoyer un body vide</span>
+    <span class="kw">if</span> (!<span class="var">file</span>.<span class="fn-name">is_open</span>()) {
+        <span class="var">_type</span> = <span class="fn-name">getType</span>(<span class="str">".html"</span>);
+<span class="highlight-line">        <span class="var">_body</span> = <span class="str">"&lt;html&gt;&lt;body&gt;&lt;h1&gt;"</span> + <span class="fn-name">itos</span>(<span class="var">_ncode</span>) + <span class="str">" "</span> + <span class="fn-name">getReason</span>(<span class="var">_ncode</span>) + <span class="str">"&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;"</span>;</span>
+        <span class="kw">return</span>;
+    }
+
+    <span class="type">std::stringstream</span> <span class="var">ss</span>;
+    <span class="var">ss</span> &lt;&lt; <span class="var">file</span>.<span class="fn-name">rdbuf</span>();
+    <span class="var">_body</span> = <span class="var">ss</span>.<span class="fn-name">str</span>();
+    <span class="var">file</span>.<span class="fn-name">close</span>();
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Trois niveaux de fallback</div>
+        <ul>
+          <li><strong>1.</strong> <code>error_page 404 /.../404.html;</code> configur&eacute;e et lisible &rarr; on la sert.</li>
+          <li><strong>2.</strong> Configur&eacute;e mais introuvable &rarr; page g&eacute;n&eacute;r&eacute;e <code>&lt;h1&gt;404 Not Found&lt;/h1&gt;</code>.</li>
+          <li><strong>3.</strong> Pas configur&eacute;e du tout &rarr; m&ecirc;me page g&eacute;n&eacute;r&eacute;e, directement dans <code>buildResponse()</code>.</li>
+        </ul>
+        <p>Le client re&ccedil;oit <strong>toujours</strong> un body et un status coh&eacute;rents.</p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">Nos codes en service</div>
+        <p>
+          <code>getReason()</code> (utils.cpp) couvre : 200, 201, 204, 301, 302,
+          400, 403, 404, 405, 413, 431, 500, 501, 502, 504.
+          Notre <code>default.conf</code> mappe chacun des codes d'erreur vers une page
+          personnalis&eacute;e dans <code>www/default/errors/</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; l'erreur est <em>locale</em></div>
+    <div class="summary-subtitle">Le serveur entier ne paie jamais pour la faute d'un seul fd</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128737;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">try/catch autour du dispatch</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Toute exception (y compris bad_alloc) sacrifie le handler fautif : remove_handler + delete. La boucle epoll ne s'arr&ecirc;te jamais.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128721;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-3); margin-bottom:0.2rem;">Signaux minimalistes</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">SIGINT/SIGTERM/SIGQUIT &rarr; g_stop (volatile sig_atomic_t). SIGPIPE &rarr; SIG_IGN + MSG_NOSIGNAL. Le nettoyage complet a lieu dans le destructeur d'EventLoop, pas dans le handler de signal.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#129529;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Chaque &eacute;chec nettoie derri&egrave;re lui</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Constructeurs avec rollback (close avant throw), register_handler qui annule son insertion, handle_accept qui ne retourne jamais -1, CGIProcess qui tue son enfant si fcntl rate.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128196;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">Toujours une r&eacute;ponse</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">error_page configur&eacute;e &rarr; page perso ; introuvable &rarr; page g&eacute;n&eacute;r&eacute;e ; rien de configur&eacute; &rarr; page g&eacute;n&eacute;r&eacute;e. Une erreur est un status code, jamais une connexion abandonn&eacute;e sans r&eacute;ponse.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="timeouts-deconnexions.html" class="back-link">Fiche suivante : timeouts &amp; d&eacute;connexions &rarr;</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Robustesse : gestion des erreurs. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['regle','sacrifice','signaux','raii','errorpages'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

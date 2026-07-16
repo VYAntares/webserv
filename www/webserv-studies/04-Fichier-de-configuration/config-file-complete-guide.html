@@ -1,0 +1,1154 @@
+1|1|<!DOCTYPE html>
+2|2|<html lang="fr">
+3|3|<head>
+4|4|<meta charset="UTF-8">
+5|5|<meta name="viewport" content="width=device-width, initial-scale=1.0">
+6|6|<title>Le fichier de configuration Webserv — Guide complet</title>
+7|7|<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+8|8|<link rel="stylesheet" href="../assets/webserv-shared.css">
+9|9|</head>
+10|10|<body class="page-config-guide">
+11|11|<div class="bg-glow bg-glow-1"></div>
+12|12|<div class="bg-glow bg-glow-2"></div>
+13|13|<div class="bg-glow bg-glow-3"></div>
+14|14|
+15|15|<div class="progress-bar">
+16|16|  <div class="progress-inner">
+17|17|    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+18|18|    <div class="progress-back-divider"></div>
+19|19|    <a href="#vue" class="step-pill active" id="nav-vue"><span class="step-dot"></span>Vue</a>
+20|20|    <div class="step-connector"></div>
+21|21|    <a href="#server" class="step-pill" id="nav-server"><span class="step-dot"></span>Server</a>
+22|22|    <div class="step-connector"></div>
+23|23|    <a href="#core" class="step-pill" id="nav-core"><span class="step-dot"></span>Directives</a>
+24|24|    <div class="step-connector"></div>
+25|25|    <a href="#location" class="step-pill" id="nav-location"><span class="step-dot"></span>Location</a>
+26|26|    <div class="step-connector"></div>
+27|27|    <a href="#routeio" class="step-pill" id="nav-routeio"><span class="step-dot"></span>Root/Index</a>
+28|28|    <div class="step-connector"></div>
+29|29|    <a href="#advanced" class="step-pill" id="nav-advanced"><span class="step-dot"></span>CGI/Upload</a>
+30|30|    <div class="step-connector"></div>
+31|31|    <a href="#parser" class="step-pill" id="nav-parser"><span class="step-dot"></span>Parser</a>
+32|32|    <div class="step-connector"></div>
+33|33|    <a href="#runtime" class="step-pill" id="nav-runtime"><span class="step-dot"></span>Runtime</a>
+34|34|    <div class="step-connector"></div>
+35|35|    <a href="#walkthrough" class="step-pill" id="nav-walkthrough"><span class="step-dot"></span>Ton fichier</a>
+36|36|    <div class="step-connector"></div>
+37|37|    <a href="#terms" class="step-pill" id="nav-terms"><span class="step-dot"></span>Glossaire</a>
+38|38|  </div>
+39|39|</div>
+40|40|
+41|41|<div class="header">
+42|42|  <div class="header-tag">04 — Fichier de configuration</div>
+43|43|  <h1>Pourquoi un fichier de <em>configuration</em> ?</h1>
+44|44|  <p class="header-desc">
+45|45|    Cette page est volontairement longue et complète : on va du rôle du fichier de config jusqu'à
+46|46|    l'implémentation webserv directive par directive, avec des exemples concrets de config, des snippets
+47|47|    d'algorithme, et des checklists de validation. Objectif : zéro zone floue avant de coder.
+48|48|  </p>
+49|49|</div>
+50|50|
+51|51|<div class="main">
+52|52|
+53|53|  <section class="step-section" id="vue" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+54|54|    <div class="step-header">
+55|55|      <div class="step-number-badge">01</div>
+56|56|      <div>
+57|57|        <div class="step-fn">vision globale</div>
+58|58|        <div class="step-subtitle">Ce que fait un fichier de config dans webserv</div>
+59|59|      </div>
+60|60|    </div>
+61|61|
+62|62|    <div class="two-col">
+63|63|      <div class="panel">
+64|64|        <div class="panel-label">Le problème réel</div>
+65|65|        <p>
+66|66|          Sans config, ton serveur est figé : un seul port, un seul dossier, une seule politique HTTP.
+67|67|          Avec un fichier de configuration, tu externalises ces décisions : ports d'écoute, routes,
+68|68|          méthodes autorisées, erreurs, CGI, upload, etc.
+69|69|        </p>
+70|70|        <p>
+71|71|          Et surtout : <strong>un seul binaire peut gérer plusieurs serveurs logiques</strong>.
+72|72|          Chaque bloc <code>server</code> décrit un comportement distinct (port, routes, limites),
+73|73|          mais tout tourne dans le même programme webserv.
+74|74|        </p>
+75|75|      </div>
+76|76|
+77|77|      <div class="panel">
+78|78|        <div class="panel-label">Pipeline conceptuel</div>
+79|79|        <ul>
+80|80|          <li>Lire le fichier brut.</li>
+81|81|          <li>Tokeniser (<code>WORD</code>, <code>{</code>, <code>}</code>, <code>;</code>, commentaires).</li>
+82|82|          <li>Parser en structures <code>Server</code> / <code>Location</code>.</li>
+83|83|          <li>Valider toute la config au startup.</li>
+84|84|          <li>Appliquer la config à chaque requête entrante.</li>
+85|85|        </ul>
+86|86|      </div>
+87|87|    </div>
+88|88|
+89|89|    <div class="analogy-panel">
+90|90|      <div class="analogy-icon">📖</div>
+91|91|      <div class="analogy-text">
+92|92|        <div class="analogy-label">Analogie — le manuel d'exploitation</div>
+93|93|        <p>
+94|94|          Le fichier de config, c'est le <strong>manuel d'exploitation laissé dans la salle serveur</strong>.
+95|95|          Le serveur le lit une seule fois au démarrage, charge toutes les règles en mémoire,
+96|96|          puis les applique à chaque requête sans jamais re-lire le fichier.
+97|97|          <br><br>
+98|98|          Tu ne changes pas le comportement en modifiant le binaire — tu mets à jour le manuel.
+99|99|          Et si le manuel est mal écrit (config invalide), le serveur refuse de démarrer
+100|100|          plutôt que de fonctionner avec des règles incohérentes.
+101|101|        </p>
+102|102|      </div>
+103|103|    </div>
+104|104|
+105|105|    <div class="quote-box">
+106|106|      <p>« You can take inspiration from the 'server' section of the NGINX configuration file. »</p>
+107|107|      <cite>— webserv.pdf, IV.3</cite>
+108|108|    </div>
+109|109|
+110|110|    <div class="code-panel" style="--step-color: var(--accent-2);">
+111|111|      <div class="code-header">
+112|112|        <div class="code-header-left">
+113|113|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+114|114|          <span class="code-filename">webserv.conf</span>
+115|115|        </div>
+116|116|        <span class="code-tag">Exemple de référence (multi-serveurs)</span>
+117|117|      </div>
+118|118|        <pre><span class="cmt"># Site principal sur le port 8080</span>
+119|119|    <span class="dir">server</span> {
+120|120|      <span class="dir">listen</span> <span class="num">8080</span>;
+121|121|      <span class="dir">server_name</span> localhost;
+122|122|      <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+123|123|
+124|124|      <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+125|125|      <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
+126|126|
+127|127|      <span class="dir">location</span> / {
+128|128|        <span class="dir">root</span>            /var/www/html;
+129|129|        <span class="dir">index</span>           index.html;
+130|130|        <span class="dir">allowed_methods</span> GET;
+131|131|        <span class="dir">autoindex</span>       off;
+132|132|      }
+133|133|
+134|134|      <span class="dir">location</span> /api {
+135|135|        <span class="dir">root</span>            /var/www/api;
+136|136|        <span class="dir">allowed_methods</span> GET POST DELETE;
+137|137|        <span class="dir">autoindex</span>       off;
+138|138|      }
+139|139|
+140|140|      <span class="dir">location</span> /upload {
+141|141|        <span class="dir">root</span>            /var/www;
+142|142|        <span class="dir">allowed_methods</span> POST;
+143|143|        <span class="dir">upload_store</span>    /tmp/uploads;
+144|144|      }
+145|145|
+146|146|      <span class="dir">location</span> /files {
+147|147|        <span class="dir">root</span>            /var/www/shared;
+148|148|        <span class="dir">allowed_methods</span> GET;
+149|149|        <span class="dir">autoindex</span>       on;
+150|150|      }
+151|151|
+152|152|      <span class="dir">location</span> /old-page {
+153|153|        <span class="dir">return</span> <span class="num">301</span> /new-page;
+154|154|      }
+155|155|
+156|156|      <span class="dir">location</span> /cgi-bin {
+157|157|        <span class="dir">root</span>            /var/www/cgi-bin;
+158|158|        <span class="dir">allowed_methods</span> GET POST;
+159|159|        <span class="dir">cgi_pass</span>        .py /usr/bin/python3;
+160|160|        <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
+161|161|      }
+162|162|    }
+163|163|
+164|164|    <span class="cmt"># Deuxième serveur sur port 8081</span>
+165|165|    <span class="dir">server</span> {
+166|166|      <span class="dir">listen</span> <span class="num">8081</span>;
+167|167|      <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+168|168|
+169|169|      <span class="dir">location</span> / {
+170|170|        <span class="dir">root</span>            /var/www/site2;
+171|171|        <span class="dir">index</span>           index.html;
+172|172|        <span class="dir">allowed_methods</span> GET;
+173|173|        <span class="dir">autoindex</span>       off;
+174|174|      }
+175|175|    }</pre>
+176|176|    </div>
+177|177|
+178|178|      <div class="info-box">
+179|179|        <span>📌</span>
+180|180|        <div><strong>Point clé (souvent flou) :</strong> les deux blocs <code>server</code> sont chargés en mémoire au startup.
+181|181|        Ensuite, une requête entrante est d'abord routée par son port local (<code>8080</code> ou <code>8081</code>),
+182|182|        puis seulement par les <code>location</code> du serveur sélectionné.</div>
+183|183|      </div>
+184|184|
+185|185|    <div class="key-points">
+186|186|      <div class="key-point"><span class="key-point-icon">🔄</span><span>Le pipeline config est séquentiel : lire → tokeniser → parser → valider → appliquer. Chaque étape doit se terminer sans erreur avant la suivante.</span></div>
+187|187|      <div class="key-point"><span class="key-point-icon">💾</span><span>Toute la config est en mémoire dès le démarrage. Pas de relecture à chaque requête. Les structures <code>Server</code> / <code>Location</code> sont immutables après validation.</span></div>
+188|188|      <div class="key-point"><span class="key-point-icon">🌐</span><span>Un seul binaire = plusieurs serveurs logiques. Chaque bloc <code>server</code> est un "site" distinct, distingué par son port (et optionnellement son <code>server_name</code>).</span></div>
+189|189|    </div>
+190|190|  </section>
+191|191|
+192|192|  <div class="step-divider"></div>
+193|193|
+194|194|  <section class="step-section" id="server" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+195|195|    <div class="step-header">
+196|196|      <div class="step-number-badge">02</div>
+197|197|      <div>
+198|198|        <div class="step-fn">server + listen + server_name</div>
+199|199|        <div class="step-subtitle">Le conteneur principal d'un site</div>
+200|200|      </div>
+201|201|    </div>
+202|202|
+203|203|    <div class="panel">
+204|204|      <div class="panel-label">Le bloc server</div>
+205|205|      <p>
+206|206|        Un bloc <code>server { ... }</code> décrit une "personnalité" complète du serveur : ports d'écoute,
+207|207|        règles de routes, limites de body, pages d'erreur, CGI, etc.
+208|208|        Si tu écris plusieurs blocs <code>server</code>, webserv n'ouvre pas plusieurs programmes :
+209|209|        il ouvre plusieurs configurations et choisit la bonne à chaque connexion.
+210|210|      </p>
+211|211|    </div>
+212|212|
+213|213|    <div class="code-panel" style="--step-color: var(--accent-3);">
+214|214|      <div class="code-header">
+215|215|        <div class="code-header-left">
+216|216|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+217|217|          <span class="code-filename">listen-examples.conf</span>
+218|218|        </div>
+219|219|        <span class="code-tag">listen</span>
+220|220|      </div>
+221|221|      <pre><span class="dir">server</span> {
+222|222|  <span class="dir">listen</span> <span class="num">8080</span>;                <span class="cmt"># serveur logique A</span>
+223|223|}
+224|224|
+225|225|<span class="dir">server</span> {
+226|226|  <span class="dir">listen</span> <span class="num">8081</span>;                <span class="cmt"># serveur logique B</span>
+227|227|}
+228|228|
+229|229|<span class="cmt"># Même binaire webserv, deux comportements différents selon le port</span>
+230|230|<span class="cmt"># req sur :8080 -> server A ; req sur :8081 -> server B</span></pre>
+231|231|    </div>
+232|232|
+233|233|    <div class="two-col">
+234|234|      <div class="panel">
+235|235|        <div class="panel-label">listen en pratique</div>
+236|236|        <ul>
+237|237|          <li>Port valide : 1..65535.</li>
+238|238|          <li>Port &lt; 1024 : droits élevés souvent requis en Linux.</li>
+239|239|          <li>Chaque <code>listen</code> implique un socket serveur distinct.</li>
+240|240|          <li>Plusieurs blocs <code>server</code> peuvent coexister dans un seul fichier et un seul process.</li>
+241|241|          <li>Avec epoll, chaque socket d'écoute est enregistré en <code>EPOLLIN</code>.</li>
+242|242|        </ul>
+243|243|      </div>
+244|244|      <div class="panel">
+245|245|        <div class="panel-label">server_name (optionnel webserv)</div>
+246|246|        <p>
+247|247|          <code>server_name</code> permet de faire des virtual hosts par header <code>Host</code>. Le sujet webserv ne l'exige
+248|248|          pas strictement. Tu peux l'ignorer au début, puis l'ajouter si tu veux un routing plus proche de NGINX.
+249|249|        </p>
+250|250|        <div class="sub-block">
+251|251|          <div class="mini-title">Algorithme si implémenté</div>
+252|252|          <p>1) filtrer par port d'arrivée, 2) comparer <code>Host</code> avec les <code>server_name</code>, 3) fallback sur serveur par défaut du port.</p>
+253|253|        </div>
+254|254|      </div>
+255|255|    </div>
+256|256|
+257|257|    <div class="code-panel" style="--step-color: var(--accent-3);">
+258|258|      <div class="code-header">
+259|259|        <div class="code-header-left">
+260|260|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+261|261|          <span class="code-filename">same-port-virtual-hosts.conf</span>
+262|262|        </div>
+263|263|        <span class="code-tag">Même port, sites différents</span>
+264|264|      </div>
+265|265|      <pre><span class="cmt"># 2 serveurs logiques sur le même port 8080</span>
+266|266|<span class="dir">server</span> {
+267|267|  <span class="dir">listen</span> <span class="num">8080</span>;
+268|268|  <span class="dir">server_name</span> site-a.com www.site-a.com;
+269|269|  <span class="dir">location</span> / { <span class="dir">root</span> /var/www/site-a; }
+270|270|}
+271|271|
+272|272|<span class="dir">server</span> {
+273|273|  <span class="dir">listen</span> <span class="num">8080</span>;
+274|274|  <span class="dir">server_name</span> site-b.com;
+275|275|  <span class="dir">location</span> / { <span class="dir">root</span> /var/www/site-b; }
+276|276|}
+277|277|
+278|278|<span class="cmt"># Sélection à runtime (idée) :</span>
+279|279|<span class="cmt"># req sur :8080 + Host: site-a.com -> server A</span>
+280|280|<span class="cmt"># req sur :8080 + Host: site-b.com -> server B</span>
+281|281|<span class="cmt"># Host inconnu -> server par défaut du port (souvent le 1er déclaré)</span></pre>
+282|282|    </div>
+283|283|
+284|284|    <div class="info-box">
+285|285|      <span>💡</span>
+286|286|      <div><strong>Réponse à ta question :</strong> oui, tu peux avoir 4-5 blocs <code>server</code>, dont 2-3 sur le même port.
+287|287|      Ça sert justement à héberger plusieurs sites sur une même machine (virtual hosting), en les distinguant
+288|288|      via le header <code>Host</code> + <code>server_name</code>.</div>
+289|289|    </div>
+290|290|
+291|291|    <div class="analogy-panel">
+292|292|      <div class="analogy-icon">🏢</div>
+293|293|      <div class="analogy-text">
+294|294|        <div class="analogy-label">Analogie — les guichets d'une poste</div>
+295|295|        <p>
+296|296|          Chaque bloc <code>server</code> est un <strong>guichet distinct</strong>.
+297|297|          Port 8080 = guichet A, port 8081 = guichet B.
+298|298|          <br><br>
+299|299|          Quand une requête arrive, le serveur regarde d'abord <strong>par quelle porte elle est entrée</strong> (le port),
+300|300|          puis dirige vers le bon guichet. Le guichet a ses propres règles (ses <code>location</code>).
+301|301|          <br><br>
+302|302|          Si deux guichets partagent la même porte (même port), on lit le header <code>Host</code>
+303|303|          pour choisir lequel — c'est le principe du <code>server_name</code>.
+304|304|        </p>
+305|305|      </div>
+306|306|    </div>
+307|307|
+308|308|    <div class="warning">
+309|309|      <span>⚠️</span>
+310|310|      <div><strong>Important :</strong> si tu n'implémentes pas <code>server_name</code>, plusieurs serveurs sur le même port deviennent ambigus.
+311|311|      Dans ce cas, définis clairement une règle (ex: "premier server du port") et documente-la.</div>
+312|312|    </div>
+313|313|
+314|314|    <div class="key-points">
+315|315|      <div class="key-point"><span class="key-point-icon">🔌</span><span>Chaque <code>listen</code> unique = un socket serveur distinct. Webserv doit ouvrir autant de sockets d'écoute qu'il y a de ports distincts dans la config.</span></div>
+316|316|      <div class="key-point"><span class="key-point-icon">🔢</span><span>Port valide : 1–65535. Ports &lt; 1024 nécessitent des droits élevés sur Linux. À vérifier à la validation, pas à runtime.</span></div>
+317|317|      <div class="key-point"><span class="key-point-icon">🏷️</span><span><code>server_name</code> est optionnel selon le sujet. Si absent : sélection par port uniquement. Si présent : matching sur le header <code>Host</code> après filtrage par port.</span></div>
+318|318|    </div>
+319|319|  </section>
+320|320|
+321|321|  <div class="step-divider"></div>
+322|322|
+323|323|  <section class="step-section" id="core" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+324|324|    <div class="step-header">
+325|325|      <div class="step-number-badge">03</div>
+326|326|      <div>
+327|327|        <div class="step-fn">client_max_body_size + error_page</div>
+328|328|        <div class="step-subtitle">Politiques globales de sécurité et d'UX</div>
+329|329|      </div>
+330|330|    </div>
+331|331|
+332|332|    <div class="code-panel" style="--step-color: var(--accent-4);">
+333|333|      <div class="code-header">
+334|334|        <div class="code-header-left">
+335|335|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+336|336|          <span class="code-filename">core-directives.conf</span>
+337|337|        </div>
+338|338|        <span class="code-tag">Directives clés</span>
+339|339|      </div>
+340|340|      <pre><span class="dir">server</span> {
+341|341|  <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+342|342|
+343|343|  <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+344|344|  <span class="dir">error_page</span> <span class="num">500</span> <span class="num">502</span> <span class="num">503</span> <span class="num">504</span> /errors/50x.html;
+345|345|}</pre>
+346|346|    </div>
+347|347|
+348|348|    <div class="two-col">
+349|349|      <div class="panel">
+350|350|        <div class="panel-label">client_max_body_size</div>
+351|351|        <p>
+352|352|          Limite la taille maximale du body client. C'est crucial pour éviter les abus mémoire/disque.
+353|353|          En réception HTTP, tu compares tôt le <code>Content-Length</code> à cette limite.
+354|354|          Si dépassement, réponse <code>413</code> sans continuer à lire inutilement.
+355|355|        </p>
+356|356|        <div class="sub-block">
+357|357|          <div class="mini-title">Unités</div>
+358|358|          <p><code>k</code>, <code>m</code>, <code>g</code> (insensible à la casse). Sans suffixe : octets bruts.</p>
+359|359|        </div>
+360|360|      </div>
+361|361|
+362|362|      <div class="panel">
+363|363|        <div class="panel-label">error_page</div>
+364|364|        <p>
+365|365|          Associe un code HTTP à un fichier de réponse custom. Quand le serveur produit l'erreur,
+366|366|          il essaie d'abord de servir cette page personnalisée. Sinon fallback sur un body minimal.
+367|367|        </p>
+368|368|        <div class="warning">
+369|369|          <span>⚠️</span>
+370|370|          <div><strong>Piège fréquent :</strong> la page d'erreur doit exister dans un chemin résolvable avec tes règles de root/location.</div>
+371|371|        </div>
+372|372|      </div>
+373|373|    </div>
+374|374|
+375|375|    <div class="key-points">
+376|376|      <div class="key-point"><span class="key-point-icon">⛔</span><span><code>client_max_body_size</code> : compare le <code>Content-Length</code> reçu <strong>tôt</strong> dans le parsing de la requête. Réponse <code>413</code> immédiate, ne pas continuer à lire le body.</span></div>
+377|377|      <div class="key-point"><span class="key-point-icon">🗂️</span><span><code>error_page</code> : le chemin de la page custom doit être résolvable via tes propres règles <code>root/location</code>. Une erreur qui pointe vers une page inexistante génère une double erreur.</span></div>
+378|378|      <div class="key-point"><span class="key-point-icon">🔁</span><span>Fallback obligatoire : si la page <code>error_page</code> n'est pas trouvée, le serveur doit quand même répondre avec un body minimal (HTML inline). Ne jamais renvoyer de réponse vide.</span></div>
+379|379|    </div>
+380|380|
+381|381|    <div class="code-panel" style="--step-color: var(--accent-4);">
+382|382|      <div class="code-header">
+383|383|        <div class="code-header-left">
+384|384|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+385|385|          <span class="code-filename">size-parse.cpp</span>
+386|386|        </div>
+387|387|        <span class="code-tag">Exemple C++</span>
+388|388|      </div>
+389|389|      <pre><span class="typ">size_t</span> parseSize(<span class="kw">const</span> std::string&amp; s) {
+390|390|  <span class="kw">if</span> (s.empty()) <span class="kw">throw</span> std::runtime_error(<span class="str">"empty size"</span>);
+391|391|
+392|392|  <span class="typ">char</span> suffix = std::tolower(s.back());
+393|393|  <span class="typ">std::string</span> number = s;
+394|394|  <span class="typ">size_t</span> factor = <span class="num">1</span>;
+395|395|
+396|396|  <span class="kw">if</span> (suffix == <span class="str">'k'</span> || suffix == <span class="str">'m'</span> || suffix == <span class="str">'g'</span>) {
+397|397|    number = s.substr(<span class="num">0</span>, s.size() - <span class="num">1</span>);
+398|398|    <span class="kw">if</span> (suffix == <span class="str">'k'</span>) factor = <span class="num">1024</span>;
+399|399|    <span class="kw">if</span> (suffix == <span class="str">'m'</span>) factor = <span class="num">1024</span> * <span class="num">1024</span>;
+400|400|    <span class="kw">if</span> (suffix == <span class="str">'g'</span>) factor = <span class="num">1024</span> * <span class="num">1024</span> * <span class="num">1024</span>;
+401|401|  }
+402|402|
+403|403|  <span class="typ">size_t</span> value = static_cast&lt;size_t&gt;(std::strtoull(number.c_str(), NULL, <span class="num">10</span>));
+404|404|  <span class="kw">return</span> value * factor;
+405|405|}</pre>
+406|406|    </div>
+407|407|  </section>
+408|408|
+409|409|  <div class="step-divider"></div>
+410|410|
+411|411|  <section class="step-section" id="location" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+412|412|    <div class="step-header">
+413|413|      <div class="step-number-badge">04</div>
+414|414|      <div>
+415|415|        <div class="step-fn">location + allowed_methods + return</div>
+416|416|        <div class="step-subtitle">Le cœur du routing HTTP</div>
+417|417|      </div>
+418|418|    </div>
+419|419|
+420|420|    <div class="panel">
+421|421|      <div class="panel-label">Règle de matching</div>
+422|422|      <p>
+423|423|        En webserv (sans regex), tu fais un matching par préfixe. Parmi les <code>location</code> compatibles,
+424|424|        la plus longue gagne. Cette règle suffit pour couvrir l'énoncé et reproduire le comportement attendu.
+425|425|      </p>
+426|426|    </div>
+427|427|
+428|428|    <div class="code-panel" style="--step-color: var(--accent-5);">
+429|429|      <div class="code-header">
+430|430|        <div class="code-header-left">
+431|431|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+432|432|          <span class="code-filename">location-routing.conf</span>
+433|433|        </div>
+434|434|        <span class="code-tag">Exemple de routes</span>
+435|435|      </div>
+436|436|      <pre><span class="dir">location</span> / {
+437|437|  <span class="dir">allowed_methods</span> GET;
+438|438|  <span class="dir">root</span> /var/www/html;
+439|439|}
+440|440|
+441|441|<span class="dir">location</span> /api {
+442|442|  <span class="dir">allowed_methods</span> GET POST DELETE;
+443|443|  <span class="dir">root</span> /var/www/api;
+444|444|}
+445|445|
+446|446|<span class="dir">location</span> /old-page {
+447|447|  <span class="dir">return</span> <span class="num">301</span> /new-page;
+448|448|}</pre>
+449|449|    </div>
+450|450|
+451|451|    <div class="two-col">
+452|452|      <div class="panel">
+453|453|        <div class="panel-label">allowed_methods</div>
+454|454|        <p>
+455|455|          Directive custom webserv : contrôle des verbes autorisés par route.
+456|456|          Si méthode non autorisée, réponse <code>405 Method Not Allowed</code> + header
+457|457|          <code>Allow:</code> listant les méthodes valides.
+458|458|        </p>
+459|459|      </div>
+460|460|      <div class="panel">
+461|461|        <div class="panel-label">return</div>
+462|462|        <p>
+463|463|          Court-circuite toute la suite. Quand <code>return</code> est défini, on ne cherche pas de fichier,
+464|464|          on répond immédiatement avec le code (et <code>Location</code> si redirection).
+465|465|        </p>
+466|466|      </div>
+467|467|    </div>
+468|468|
+469|469|    <div class="key-points">
+470|470|      <div class="key-point"><span class="key-point-icon">🚦</span><span><code>allowed_methods</code> : si la méthode n'est pas dans la liste → <code>405 Method Not Allowed</code> + header <code>Allow: GET, POST, DELETE</code>. Ce header est obligatoire avec le 405.</span></div>
+471|471|      <div class="key-point"><span class="key-point-icon">↩️</span><span><code>return</code> court-circuite tout le reste. Si défini dans la location matchée, on répond immédiatement — pas de lookup fichier, pas de CGI, pas de root.</span></div>
+472|472|      <div class="key-point"><span class="key-point-icon">📐</span><span>Matching par préfixe uniquement (plus long préfixe = winner). Voir la page dédiée <em>Sélection de route : préfixe le plus long</em> pour l'algo complet.</span></div>
+473|473|    </div>
+474|474|
+475|475|    <div class="code-panel" style="--step-color: var(--accent-5);">
+476|476|      <div class="code-header">
+477|477|        <div class="code-header-left">
+478|478|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+479|479|          <span class="code-filename">longest-prefix.cpp</span>
+480|480|        </div>
+481|481|        <span class="code-tag">Algo de sélection</span>
+482|482|      </div>
+483|483|      <pre><span class="kw">const</span> Location* findLocation(<span class="kw">const</span> Server&amp; srv, <span class="kw">const</span> std::string&amp; uri) {
+484|484|  <span class="kw">const</span> Location* best = NULL;
+485|485|  <span class="typ">size_t</span> bestLen = <span class="num">0</span>;
+486|486|
+487|487|  <span class="kw">for</span> (std::vector&lt;Location&gt;::const_iterator it = srv.locations.begin(); it != srv.locations.end(); ++it) {
+488|488|    <span class="kw">const</span> std::string&amp; p = it-&gt;path;
+489|489|    <span class="kw">if</span> (uri.compare(<span class="num">0</span>, p.size(), p) == <span class="num">0</span> &&
+490|490|        (uri.size() == p.size() || uri[p.size()] == <span class="str">'/'</span>)) {
+491|491|      <span class="kw">if</span> (p.size() &gt; bestLen) {
+492|492|        best = &amp;(*it);
+493|493|        bestLen = p.size();
+494|494|      }
+495|495|    }
+496|496|  }
+497|497|  <span class="kw">return</span> best;
+498|498|}</pre>
+499|499|    </div>
+500|500|  </section>
+501|501|
+502|502|  <div class="step-divider"></div>
+503|503|
+504|504|  <section class="step-section" id="routeio" style="--step-color: var(--accent-6); scroll-margin-top: 80px;">
+505|505|    <div class="step-header">
+506|506|      <div class="step-number-badge">05</div>
+507|507|      <div>
+508|508|        <div class="step-fn">root + index + autoindex</div>
+509|509|        <div class="step-subtitle">Résolution du chemin et réponse fichier</div>
+510|510|      </div>
+511|511|    </div>
+512|512|
+513|513|    <div class="panel">
+514|514|      <div class="panel-label">Point critique root</div>
+515|515|      <p>
+516|516|        La seule formule correcte (confirmée par l'exemple du sujet) : <strong>root + URI résiduelle</strong> — on retire le préfixe de la location gagnante, puis on colle le résidu au <code>root</code>.
+517|517|        Résultat : <code>/kapouet/pouic/toto/pouet</code> avec location <code>/kapouet</code> et root <code>/tmp/www</code> → <code>/tmp/www/pouic/toto/pouet</code>. Le préfixe <code>/kapouet</code> disparaît.
+518|518|      </p>
+519|519|    </div>
+520|520|
+521|521|    <div class="code-panel" style="--step-color: var(--accent-6);">
+522|522|      <div class="code-header">
+523|523|        <div class="code-header-left">
+524|524|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+525|525|          <span class="code-filename">path-resolution.txt</span>
+526|526|        </div>
+527|527|        <span class="code-tag">Exemple concret</span>
+528|528|      </div>
+529|529|      <pre><span class="cmt"># Seule formule correcte — root + URI résiduelle (préfixe retiré)</span>
+530|530|URI      = /kapouet/pouic/toto/pouet
+531|531|location = /kapouet        <span class="cmt"># préfixe → retiré</span>
+532|532|résidu   = /pouic/toto/pouet
+533|533|root     = /tmp/www
+534|534|résultat = /tmp/www/pouic/toto/pouet</pre>
+535|535|    </div>
+536|536|
+537|537|    <div class="two-col">
+538|538|      <div class="panel">
+539|539|        <div class="panel-label">index</div>
+540|540|        <p>
+541|541|          Si la cible est un dossier, tu testes les index dans l'ordre (<code>index.html</code>, puis <code>index.htm</code>, etc.).
+542|542|          Si aucun index trouvé : soit <code>autoindex on</code> (listing), soit refus (<code>403</code> en pratique).
+543|543|        </p>
+544|544|      </div>
+545|545|      <div class="panel">
+546|546|        <div class="panel-label">autoindex</div>
+547|547|        <p>
+548|548|          Quand activé, tu génères une page HTML listant les entrées du dossier via <code>opendir/readdir</code>.
+549|549|          Chaque entrée doit devenir un lien cliquable. C'est utile en debug/partage, à manier prudemment en prod.
+550|550|        </p>
+551|551|      </div>
+552|552|    </div>
+553|553|
+554|554|    <div class="key-points">
+555|555|      <div class="key-point"><span class="key-point-icon">📌</span><span><strong>Le sujet donne l'exemple Cas 2</strong> : <code>/kapouet/pouic/toto/pouet</code> avec root <code>/tmp/www</code> → <code>/tmp/www/pouic/toto/pouet</code>. Le préfixe <code>/kapouet</code> est retiré avant la concat.</span></div>
+556|556|      <div class="key-point"><span class="key-point-icon">🗂️</span><span><code>index</code> : tester les fichiers dans l'ordre de la liste. Premier trouvé = servi. Si aucun et <code>autoindex off</code> → <code>403</code>.</span></div>
+557|557|      <div class="key-point"><span class="key-point-icon">📋</span><span><code>autoindex on</code> : générer une page HTML avec <code>opendir</code>/<code>readdir</code>. Chaque entrée = lien cliquable. Utilise les fonctions autorisées dans le sujet.</span></div>
+558|558|    </div>
+559|559|
+560|560|    <div class="code-panel" style="--step-color: var(--accent-6);">
+561|561|      <div class="code-header">
+562|562|        <div class="code-header-left">
+563|563|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+564|564|          <span class="code-filename">directory-flow.cpp</span>
+565|565|        </div>
+566|566|        <span class="code-tag">Arbre de décision</span>
+567|567|      </div>
+568|568|      <pre><span class="kw">if</span> (!exists(path)) {
+569|569|  <span class="kw">return</span> <span class="num">404</span>;
+570|570|}
+571|571|
+572|572|<span class="kw">if</span> (isDirectory(path)) {
+573|573|  std::string idx = findFirstExistingIndex(path, loc.indexFiles);
+574|574|  <span class="kw">if</span> (!idx.empty()) {
+575|575|    <span class="kw">return</span> serveFile(idx, <span class="num">200</span>);
+576|576|  }
+577|577|  <span class="kw">if</span> (loc.autoindex) {
+578|578|    <span class="kw">return</span> buildDirectoryListing(path, uri);
+579|579|  }
+580|580|  <span class="kw">return</span> <span class="num">403</span>;
+581|581|}
+582|582|
+583|583|<span class="kw">return</span> serveFile(path, <span class="num">200</span>);</pre>
+584|584|    </div>
+585|585|  </section>
+586|586|
+587|587|  <div class="step-divider"></div>
+588|588|
+589|589|  <section class="step-section" id="advanced" style="--step-color: var(--accent-1); scroll-margin-top: 80px;">
+590|590|    <div class="step-header">
+591|591|      <div class="step-number-badge">06</div>
+592|592|      <div>
+593|593|        <div class="step-fn">upload_store + cgi_pass</div>
+594|594|        <div class="step-subtitle">Les directives avancées côté webserv</div>
+595|595|      </div>
+596|596|    </div>
+597|597|
+598|598|    <div class="code-panel" style="--step-color: var(--accent-1);">
+599|599|      <div class="code-header">
+600|600|        <div class="code-header-left">
+601|601|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+602|602|          <span class="code-filename">advanced-routes.conf</span>
+603|603|        </div>
+604|604|        <span class="code-tag">Upload + CGI</span>
+605|605|      </div>
+606|606|      <pre><span class="dir">location</span> /upload {
+607|607|  <span class="dir">allowed_methods</span> POST;
+608|608|  <span class="dir">upload_store</span> /tmp/uploads;
+609|609|}
+610|610|
+611|611|<span class="dir">location</span> /cgi-bin {
+612|612|  <span class="dir">root</span> /var/www/cgi-bin;
+613|613|  <span class="dir">allowed_methods</span> GET POST;
+614|614|  <span class="dir">cgi_pass</span> .py /usr/bin/python3;
+615|615|  <span class="dir">cgi_pass</span> .php /usr/bin/php-cgi;
+616|616|}</pre>
+617|617|    </div>
+618|618|
+619|619|    <div class="two-col">
+620|620|      <div class="panel">
+621|621|        <div class="panel-label">upload_store</div>
+622|622|        <p>
+623|623|          Pour un <code>multipart/form-data</code>, tu découpes les parts avec le boundary, extrais le fichier,
+624|624|          puis écris le contenu binaire dans le dossier cible. Le dossier doit exister et être writable.
+625|625|        </p>
+626|626|        <div class="warning">
+627|627|          <span>🔒</span>
+628|628|          <div><strong>Point sécurité :</strong> nettoyer le nom de fichier (path traversal, caractères interdits, collisions).</div>
+629|629|        </div>
+630|630|      </div>
+631|631|
+632|632|      <div class="panel">
+633|633|        <div class="panel-label">cgi_pass</div>
+634|634|        <p>
+635|635|          Si l'extension matche, tu exécutes l'interpréteur via <code>fork</code> + <code>execve</code>.
+636|636|          Tu injectes les variables CGI en environnement, le body en stdin, puis tu lis stdout.
+637|637|        </p>
+638|638|        <div class="sub-block">
+639|639|          <div class="mini-title">Variables incontournables</div>
+640|640|          <p><code>REQUEST_METHOD</code>, <code>QUERY_STRING</code>, <code>CONTENT_LENGTH</code>, <code>CONTENT_TYPE</code>, <code>SCRIPT_NAME</code>, <code>PATH_INFO</code>.</p>
+641|641|        </div>
+642|642|      </div>
+643|643|    </div>
+644|644|
+645|645|    <div class="code-panel" style="--step-color: var(--accent-1);">
+646|646|      <div class="code-header">
+647|647|        <div class="code-header-left">
+648|648|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+649|649|          <span class="code-filename">cgi-launch.cpp</span>
+650|650|        </div>
+651|651|        <span class="code-tag">Flux CGI simplifié</span>
+652|652|      </div>
+653|653|      <pre><span class="typ">pid_t</span> pid = fork();
+654|654|<span class="kw">if</span> (pid == <span class="num">0</span>) {
+655|655|  <span class="cmt">// child</span>
+656|656|  dup2(inPipe[<span class="num">0</span>], STDIN_FILENO);
+657|657|  dup2(outPipe[<span class="num">1</span>], STDOUT_FILENO);
+658|658|  chdir(scriptDirectory.c_str());
+659|659|  execve(interpreter.c_str(), argv, envp);
+660|660|  _exit(<span class="num">1</span>);
+661|661|}
+662|662|
+663|663|<span class="cmt">// parent</span>
+664|664|write(inPipe[<span class="num">1</span>], requestBody.data(), requestBody.size());
+665|665|close(inPipe[<span class="num">1</span>]);
+666|666|std::string cgiOutput = readAll(outPipe[<span class="num">0</span>]);
+667|667|waitpid(pid, NULL, <span class="num">0</span>);</pre>
+668|668|    </div>
+669|669|
+670|670|    <div class="info-box">
+671|671|      <span>💡</span>
+672|672|      <div><strong>Chunked + CGI :</strong> pour les requêtes chunked, il faut reconstituer le body avant de le donner au CGI.
+673|673|      Le script CGI attend un flux body normal terminé par EOF.</div>
+674|674|    </div>
+675|675|
+676|676|    <div class="key-points">
+677|677|      <div class="key-point"><span class="key-point-icon">🔱</span><span><code>fork</code> est autorisé <strong>uniquement pour le CGI</strong>. C'est une règle dure du sujet — l'utiliser ailleurs annule la note.</span></div>
+678|678|      <div class="key-point"><span class="key-point-icon">📂</span><span>Le CGI doit être exécuté dans le <strong>bon répertoire de travail</strong> (<code>chdir</code> avant <code>execve</code>). Les scripts qui utilisent des chemins relatifs en dépendent.</span></div>
+679|679|      <div class="key-point"><span class="key-point-icon">📦</span><span>Upload : le dossier <code>upload_store</code> doit exister et être writable. Nettoyer le nom de fichier (path traversal, <code>..</code>, caractères interdits).</span></div>
+680|680|      <div class="key-point"><span class="key-point-icon">🔄</span><span>Si le CGI ne retourne pas de <code>Content-Length</code>, le serveur utilise <code>EOF</code> pour détecter la fin de la réponse — lire stdout jusqu'à fermeture du pipe.</span></div>
+681|681|    </div>
+682|682|  </section>
+683|683|
+684|684|  <div class="step-divider"></div>
+685|685|
+686|686|  <section class="step-section" id="parser" style="--step-color: var(--accent-3); scroll-margin-top: 80px;">
+687|687|    <div class="step-header">
+688|688|      <div class="step-number-badge">07</div>
+689|689|      <div>
+690|690|        <div class="step-fn">lexer + parser + validation</div>
+691|691|        <div class="step-subtitle">Comment l'implémenter proprement en C++</div>
+692|692|      </div>
+693|693|    </div>
+694|694|
+695|695|    <div class="two-col">
+696|696|      <div class="panel">
+697|697|        <div class="panel-label">Lexer</div>
+698|698|        <p>
+699|699|          Le lexer transforme un texte brut en tokens structurés. Cette étape simplifie radicalement
+700|700|          le parser et améliore les erreurs de diagnostic (ligne/colonne).
+701|701|        </p>
+702|702|        <ul>
+703|703|          <li>Ignorer espaces et commentaires <code># ...</code>.</li>
+704|704|          <li>Sortir les séparateurs : <code>{</code>, <code>}</code>, <code>;</code>.</li>
+705|705|          <li>Capturer les mots/directives/valeurs en <code>WORD</code>.</li>
+706|706|        </ul>
+707|707|      </div>
+708|708|      <div class="panel">
+709|709|        <div class="panel-label">Parser</div>
+710|710|        <p>
+711|711|          Le parser lit la suite de tokens et remplit des structures C++.
+712|712|          Le plus simple : parser récursif-descendant avec <code>expect()</code> et exceptions explicites.
+713|713|        </p>
+714|714|        <ul>
+715|715|          <li><code>server</code> ouvre un <code>Server</code>.</li>
+716|716|          <li><code>location</code> ouvre un <code>Location</code>.</li>
+717|717|          <li>Chaque directive remplit un champ strictement typé.</li>
+718|718|        </ul>
+719|719|      </div>
+720|720|    </div>
+721|721|
+722|722|    <div class="code-panel" style="--step-color: var(--accent-3);">
+723|723|      <div class="code-header">
+724|724|        <div class="code-header-left">
+725|725|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+726|726|          <span class="code-filename">config-parser.hpp</span>
+727|727|        </div>
+728|728|        <span class="code-tag">Structures recommandées</span>
+729|729|      </div>
+730|730|      <pre><span class="typ">struct</span> Location {
+731|731|  std::string path;
+732|732|  std::string root;
+733|733|  std::vector&lt;std::string&gt; indexFiles;
+734|734|  std::vector&lt;std::string&gt; allowed_methods;
+735|735|  bool autoindex;
+736|736|  std::map&lt;std::string, std::string&gt; cgi_pass;
+737|737|  std::string upload_store;
+738|738|  int returnCode;
+739|739|  std::string returnTarget;
+740|740|};
+741|741|
+742|742|<span class="typ">struct</span> Server {
+743|743|  std::vector&lt;std::pair&lt;std::string, int&gt; &gt; listens;
+744|744|  std::vector&lt;std::string&gt; server_names;
+745|745|  size_t client_max_body_size;
+746|746|  std::map&lt;int, std::string&gt; error_pages;
+747|747|  std::vector&lt;Location&gt; locations;
+748|748|};</pre>
+749|749|    </div>
+750|750|
+751|751|    <div class="key-points">
+752|752|      <div class="key-point"><span class="key-point-icon">✂️</span><span>Le <strong>lexer</strong> supprime commentaires et espaces. Il produit une suite plate de tokens : <code>WORD</code>, <code>{</code>, <code>}</code>, <code>;</code>. Le parser ne voit jamais de whitespace.</span></div>
+753|753|      <div class="key-point"><span class="key-point-icon">🌲</span><span>Le <strong>parser</strong> lit les tokens et remplit les structs. Approche recommandée : récursif-descendant avec <code>expect(token)</code> — si le token attendu n'est pas là, lever une exception claire.</span></div>
+754|754|      <div class="key-point"><span class="key-point-icon">🛡️</span><span>La <strong>validation</strong> s'exécute après le parsing, avant d'ouvrir tout socket. Elle vérifie les ports valides, les locations non-vides, les chemins accessibles, les méthodes connues.</span></div>
+755|755|    </div>
+756|756|
+757|757|    <div class="code-panel" style="--step-color: var(--accent-3);">
+758|758|      <div class="code-header">
+759|759|        <div class="code-header-left">
+760|760|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+761|761|          <span class="code-filename">config-validation.cpp</span>
+762|762|        </div>
+763|763|        <span class="code-tag">Validation startup</span>
+764|764|      </div>
+765|765|      <pre><span class="kw">void</span> validate(<span class="kw">const</span> std::vector&lt;Server&gt;&amp; servers) {
+766|766|  <span class="kw">for</span> (size_t i = <span class="num">0</span>; i &lt; servers.size(); ++i) {
+767|767|    <span class="kw">const</span> Server&amp; s = servers[i];
+768|768|
+769|769|    <span class="kw">if</span> (s.listens.empty()) <span class="kw">throw</span> std::runtime_error(<span class="str">"server without listen"</span>);
+770|770|    <span class="kw">if</span> (s.locations.empty()) <span class="kw">throw</span> std::runtime_error(<span class="str">"server without location"</span>);
+771|771|
+772|772|    <span class="kw">for</span> (size_t j = <span class="num">0</span>; j &lt; s.listens.size(); ++j) {
+773|773|      <span class="kw">if</span> (s.listens[j].second &lt; <span class="num">1</span> || s.listens[j].second &gt; <span class="num">65535</span>)
+774|774|        <span class="kw">throw</span> std::runtime_error(<span class="str">"invalid listen port"</span>);
+775|775|    }
+776|776|  }
+777|777|}</pre>
+778|778|    </div>
+779|779|  </section>
+780|780|
+781|781|  <div class="step-divider"></div>
+782|782|
+783|783|  <section class="step-section" id="runtime" style="--step-color: var(--accent-4); scroll-margin-top: 80px;">
+784|784|    <div class="step-header">
+785|785|      <div class="step-number-badge">08</div>
+786|786|      <div>
+787|787|        <div class="step-fn">ordre de priorité runtime</div>
+788|788|        <div class="step-subtitle">Ce que fait le serveur quand une requête arrive</div>
+789|789|      </div>
+790|790|    </div>
+791|791|
+792|792|    <div class="panel">
+793|793|      <div class="panel-label">Algorithme complet conseillé</div>
+794|794|      <ul>
+795|795|        <li>Sélectionner le <code>server</code> par port (et éventuellement <code>Host</code>).</li>
+796|796|        <li>Sélectionner la <code>location</code> par plus long préfixe.</li>
+797|797|        <li>Vérifier <code>allowed_methods</code> (sinon <code>405</code>).</li>
+798|798|        <li>Si <code>return</code> existe : répondre immédiatement.</li>
+799|799|        <li>Construire le chemin fichier (root + stratégie URI).</li>
+800|800|        <li>Si extension CGI match : exécuter CGI.</li>
+801|801|        <li>Sinon servir fichier / index / autoindex / erreur.</li>
+802|802|      </ul>
+803|803|    </div>
+804|804|
+805|805|    <div class="code-panel" style="--step-color: var(--accent-4);">
+806|806|      <div class="code-header">
+807|807|        <div class="code-header-left">
+808|808|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+809|809|          <span class="code-filename">request-dispatch.cpp</span>
+810|810|        </div>
+811|811|        <span class="code-tag">Pseudo-code d'orchestration</span>
+812|812|      </div>
+813|813|      <pre>Response dispatch(<span class="kw">const</span> Request&amp; req) {
+814|814|  <span class="kw">const</span> Server* srv = selectServer(req.localPort, req.host);
+815|815|  <span class="kw">const</span> Location* loc = selectLocation(*srv, req.uri);
+816|816|
+817|817|  <span class="kw">if</span> (!methodAllowed(*loc, req.method)) {
+818|818|    <span class="kw">return</span> make405(loc-&gt;allowed_methods);
+819|819|  }
+820|820|
+821|821|  <span class="kw">if</span> (loc-&gt;returnCode != <span class="num">0</span>) {
+822|822|    <span class="kw">return</span> makeReturn(loc-&gt;returnCode, loc-&gt;returnTarget);
+823|823|  }
+824|824|
+825|825|  std::string path = resolvePath(*loc, req.uri);
+826|826|
+827|827|  <span class="kw">if</span> (isCgiTarget(*loc, path)) {
+828|828|    <span class="kw">return</span> executeCgi(req, *loc, path);
+829|829|  }
+830|830|
+831|831|  <span class="kw">return</span> serveStatic(req, *loc, path, srv-&gt;error_pages);
+832|832|}</pre>
+833|833|    </div>
+834|834|
+835|835|    <div class="warning">
+836|836|      <span>⚠️</span>
+837|837|      <div><strong>Robustesse attendue :</strong> toute erreur de route/fichier/CGI doit renvoyer une réponse HTTP propre,
+838|838|      jamais faire planter la boucle événementielle.</div>
+839|839|    </div>
+840|840|
+841|841|    <div class="info-box">
+842|842|      <span>💡</span>
+843|843|      <div><strong>Évaluation :</strong> prépare plusieurs fichiers de config + fichiers web par défaut
+844|844|      pour démontrer toutes les features (méthodes, redirection, erreurs, listing, upload, CGI).</div>
+845|845|    </div>
+846|846|
+847|847|    <div class="key-points">
+848|848|      <div class="key-point"><span class="key-point-icon">1️⃣</span><span>L'ordre de priorité est fixe : <strong>server → location → methods → return → path → CGI → static</strong>. Une étape qui échoue renvoie une réponse HTTP, elle ne saute pas à l'étape suivante.</span></div>
+849|849|      <div class="key-point"><span class="key-point-icon">🔒</span><span>Chaque branche de l'arbre de décision doit produire une réponse. Pas de chemin sans réponse, pas de réponse vide. Le serveur ne doit <strong>jamais crasher</strong> quelle que soit la requête.</span></div>
+850|850|      <div class="key-point"><span class="key-point-icon">🧪</span><span>Le sujet demande explicitement de fournir des fichiers de config de test. Prépare un fichier qui couvre tous les cas : statique, redirection, 404, upload, CGI, autoindex.</span></div>
+851|851|    </div>
+852|852|  </section>
+853|853|
+854|854|  <div class="step-divider"></div>
+855|855|
+856|856|  <section class="step-section" id="walkthrough" style="--step-color: var(--accent-2); scroll-margin-top: 80px;">
+857|857|    <div class="step-header">
+858|858|      <div class="step-number-badge">09</div>
+859|859|      <div>
+860|860|        <div class="step-fn">walkthrough complet</div>
+861|861|        <div class="step-subtitle">Lecture pas à pas de ton fichier de configuration</div>
+862|862|      </div>
+863|863|    </div>
+864|864|
+865|865|    <div class="panel">
+866|866|      <div class="panel-label">Ton fichier exact (base de travail)</div>
+867|867|      <p>
+868|868|        Ci-dessous, on reprend ton exemple tel quel. Juste après, on le démonte bloc par bloc pour expliquer
+869|869|        ce qui se passe en runtime quand une requête arrive sur chaque route.
+870|870|      </p>
+871|871|    </div>
+872|872|
+873|873|    <div class="code-panel" style="--step-color: var(--accent-2);">
+874|874|      <div class="code-header">
+875|875|        <div class="code-header-left">
+876|876|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+877|877|          <span class="code-filename">my-webserv.conf</span>
+878|878|        </div>
+879|879|        <span class="code-tag">Configuration complète</span>
+880|880|      </div>
+881|881|      <pre><span class="cmt"># Site principal sur le port 8080</span>
+882|882|<span class="dir">server</span> {
+883|883|    <span class="dir">listen</span> <span class="num">8080</span>;
+884|884|    <span class="dir">server_name</span> localhost;
+885|885|    <span class="dir">client_max_body_size</span> <span class="num">10m</span>;
+886|886|
+887|887|    <span class="dir">error_page</span> <span class="num">404</span> /errors/404.html;
+888|888|    <span class="dir">error_page</span> <span class="num">500</span> /errors/500.html;
+889|889|
+890|890|    <span class="cmt"># Route racine : fichiers statiques</span>
+891|891|    <span class="dir">location</span> / {
+892|892|        <span class="dir">root</span>            /var/www/html;
+893|893|        <span class="dir">index</span>           index.html;
+894|894|        <span class="dir">allowed_methods</span> GET;
+895|895|        <span class="dir">autoindex</span>       off;
+896|896|    }
+897|897|
+898|898|    <span class="cmt"># API : GET et POST autorisés</span>
+899|899|    <span class="dir">location</span> /api {
+900|900|        <span class="dir">root</span>            /var/www/api;
+901|901|        <span class="dir">allowed_methods</span> GET POST DELETE;
+902|902|        <span class="dir">autoindex</span>       off;
+903|903|    }
+904|904|
+905|905|    <span class="cmt"># Upload de fichiers</span>
+906|906|    <span class="dir">location</span> /upload {
+907|907|        <span class="dir">root</span>            /var/www;
+908|908|        <span class="dir">allowed_methods</span> POST;
+909|909|        <span class="dir">upload_store</span>    /tmp/uploads;
+910|910|    }
+911|911|
+912|912|    <span class="cmt"># Directory listing activé</span>
+913|913|    <span class="dir">location</span> /files {
+914|914|        <span class="dir">root</span>            /var/www/shared;
+915|915|        <span class="dir">allowed_methods</span> GET;
+916|916|        <span class="dir">autoindex</span>       on;
+917|917|    }
+918|918|
+919|919|    <span class="cmt"># Redirection permanente</span>
+920|920|    <span class="dir">location</span> /old-page {
+921|921|        <span class="dir">return</span> <span class="num">301</span> /new-page;
+922|922|    }
+923|923|
+924|924|    <span class="cmt"># CGI Python</span>
+925|925|    <span class="dir">location</span> /cgi-bin {
+926|926|        <span class="dir">root</span>            /var/www/cgi-bin;
+927|927|        <span class="dir">allowed_methods</span> GET POST;
+928|928|        <span class="dir">cgi_pass</span>        .py /usr/bin/python3;
+929|929|        <span class="dir">cgi_pass</span>        .php /usr/bin/php-cgi;
+930|930|    }
+931|931|}
+932|932|
+933|933|<span class="cmt"># Deuxième serveur sur port 8081</span>
+934|934|<span class="dir">server</span> {
+935|935|    <span class="dir">listen</span> <span class="num">8081</span>;
+936|936|    <span class="dir">client_max_body_size</span> <span class="num">1m</span>;
+937|937|
+938|938|    <span class="dir">location</span> / {
+939|939|        <span class="dir">root</span>            /var/www/site2;
+940|940|        <span class="dir">index</span>           index.html;
+941|941|        <span class="dir">allowed_methods</span> GET;
+942|942|        <span class="dir">autoindex</span>       off;
+943|943|    }
+944|944|}</pre>
+945|945|    </div>
+946|946|
+947|947|    <div class="two-col">
+948|948|      <div class="panel">
+949|949|        <div class="panel-label">Ce que ce fichier implique au démarrage</div>
+950|950|        <ul>
+951|951|          <li>Création de 2 contextes <code>Server</code>.</li>
+952|952|          <li>Ouverture de 2 sockets d'écoute : 8080 et 8081.</li>
+953|953|          <li>Construction de la table de routes pour chaque serveur.</li>
+954|954|          <li>Préchargement/validation des directives globales (taille body, pages d'erreur).</li>
+955|955|          <li>Préparation des maps CGI (extension → interpréteur).</li>
+956|956|        </ul>
+957|957|      </div>
+958|958|
+959|959|      <div class="panel">
+960|960|        <div class="panel-label">Exemples de requêtes et résultat attendu</div>
+961|961|        <ul>
+962|962|          <li><code>GET /</code> sur port 8080 → route <code>/</code>, fichier <code>index.html</code>.</li>
+963|963|          <li><code>GET /api/users</code> sur 8080 → route <code>/api</code>, méthodes GET/POST/DELETE.</li>
+964|964|          <li><code>POST /upload</code> sur 8080 → route <code>/upload</code>, stockage <code>/tmp/uploads</code>.</li>
+965|965|          <li><code>GET /old-page</code> sur 8080 → redirection <code>301 Location: /new-page</code>.</li>
+966|966|          <li><code>GET /foo.py</code> sous <code>/cgi-bin</code> → exécution via <code>/usr/bin/python3</code>.</li>
+967|967|          <li><code>GET /</code> sur 8081 → racine <code>/var/www/site2</code>.</li>
+968|968|        </ul>
+969|969|      </div>
+970|970|    </div>
+971|971|
+972|972|    <div class="code-panel" style="--step-color: var(--accent-2);">
+973|973|      <div class="code-header">
+974|974|        <div class="code-header-left">
+975|975|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+976|976|          <span class="code-filename">runtime-trace.txt</span>
+977|977|        </div>
+978|978|        <span class="code-tag">Trace mentale</span>
+979|979|      </div>
+980|980|      <pre><span class="cmt"># Requête: DELETE /api/item/42 (port 8080)</span>
+981|981|1) server sélectionné = listen 8080
+982|982|2) location sélectionnée = /api (longest prefix)
+983|983|3) méthode DELETE autorisée ? <span class="ok">oui</span>
+984|984|4) return présent ? <span class="bad">non</span>
+985|985|5) chemin fichier/rsource calculé à partir de root=/var/www/api
+986|986|6) traitement selon ton handler API / fichier statique / CGI éventuel
+987|987|
+988|988|<span class="cmt"># Requête: PUT /api/item/42 (port 8080)</span>
+989|989|1) server=8080
+990|990|2) location=/api
+991|991|3) méthode PUT autorisée ? <span class="bad">non</span>
+992|992|4) réponse immédiate: 405 + Allow: GET, POST, DELETE</pre>
+993|993|    </div>
+994|994|  </section>
+995|995|
+996|996|  <div class="step-divider"></div>
+997|997|
+998|998|  <section class="step-section" id="terms" style="--step-color: var(--accent-5); scroll-margin-top: 80px;">
+999|999|    <div class="step-header">
+1000|1000|      <div class="step-number-badge">10</div>
+1001|1001|      <div>
+1002|1002|        <div class="step-fn">glossaire exhaustif</div>
+1003|1003|        <div class="step-subtitle">Tous les termes importants (définitions + implications code)</div>
+1004|1004|      </div>
+1005|1005|    </div>
+1006|1006|
+1007|1007|    <div class="two-col">
+1008|1008|      <div class="panel">
+1009|1009|        <div class="panel-label">Termes de structure</div>
+1010|1010|        <ul>
+1011|1011|          <li><code>directive</code> : instruction de config terminée par <code>;</code>.</li>
+1012|1012|          <li><code>block directive</code> : directive avec bloc <code>{ ... }</code>.</li>
+1013|1013|          <li><code>context</code> : zone de validité d'une directive.</li>
+1014|1014|          <li><code>server block</code> : site virtuel complet (ports + routes).</li>
+1015|1015|          <li><code>location block</code> : règles applicables à un préfixe d'URI.</li>
+1016|1016|          <li><code>token</code> : unité lexicale produite par ton lexer.</li>
+1017|1017|          <li><code>AST / config model</code> : représentation interne parsée.</li>
+1018|1018|        </ul>
+1019|1019|      </div>
+1020|1020|
+1021|1021|      <div class="panel">
+1022|1022|        <div class="panel-label">Termes réseau/HTTP</div>
+1023|1023|        <ul>
+1024|1024|          <li><code>interface</code> : IP sur laquelle le socket écoute (ex: 127.0.0.1).</li>
+1025|1025|          <li><code>port</code> : numéro de service TCP (ex: 8080).</li>
+1026|1026|          <li><code>Host header</code> : nom d'hôte demandé par le client HTTP.</li>
+1027|1027|          <li><code>method</code> : verbe HTTP (GET/POST/DELETE...).</li>
+1028|1028|          <li><code>body</code> : données transportées par la requête.</li>
+1029|1029|          <li><code>multipart/form-data</code> : format d'upload de fichiers.</li>
+1030|1030|          <li><code>Content-Length</code> : taille annoncée du body.</li>
+1031|1031|        </ul>
+1032|1032|      </div>
+1033|1033|    </div>
+1034|1034|
+1035|1035|    <div class="two-col">
+1036|1036|      <div class="panel">
+1037|1037|        <div class="panel-label">Termes filesystem/routing</div>
+1038|1038|        <ul>
+1039|1039|          <li><code>root</code> : ancrage disque pour résoudre les fichiers.</li>
+1040|1040|          <li><code>index</code> : fichier par défaut d'un dossier.</li>
+1041|1041|          <li><code>autoindex</code> : listing auto d'un répertoire.</li>
+1042|1042|          <li><code>longest prefix match</code> : location la plus spécifique.</li>
+1043|1043|          <li><code>error_page</code> : page custom pour un code HTTP.</li>
+1044|1044|          <li><code>redirect</code> : réponse 3xx + header Location.</li>
+1045|1045|          <li><code>fallback</code> : comportement de secours si règle absente.</li>
+1046|1046|        </ul>
+1047|1047|      </div>
+1048|1048|
+1049|1049|      <div class="panel">
+1050|1050|        <div class="panel-label">Termes CGI</div>
+1051|1051|        <ul>
+1052|1052|          <li><code>CGI</code> : exécution d'un script externe pour générer la réponse.</li>
+1053|1053|          <li><code>interpreter</code> : binaire appelé via <code>execve</code> (python/php).</li>
+1054|1054|          <li><code>env vars</code> : infos requête passées au script CGI.</li>
+1055|1055|          <li><code>stdin</code> : body envoyé au script.</li>
+1056|1056|          <li><code>stdout</code> : réponse CGI récupérée par le serveur.</li>
+1057|1057|          <li><code>EOF</code> : fin de flux, surtout critique si pas de Content-Length CGI.</li>
+1058|1058|          <li><code>working directory</code> : dossier d'exécution du script.</li>
+1059|1059|        </ul>
+1060|1060|      </div>
+1061|1061|    </div>
+1062|1062|
+1063|1063|    <div class="code-panel" style="--step-color: var(--accent-5);">
+1064|1064|      <div class="code-header">
+1065|1065|        <div class="code-header-left">
+1066|1066|          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+1067|1067|          <span class="code-filename">checklist-terminologie.txt</span>
+1068|1068|        </div>
+1069|1069|        <span class="code-tag">Checklist de maîtrise</span>
+1070|1070|      </div>
+1071|1071|      <pre>[ ] Je sais expliquer la différence server vs location
+1072|1072|[ ] Je sais expliquer root/index/autoindex avec exemple d'URI
+1073|1073|[ ] Je sais justifier le 405 + header Allow
+1074|1074|[ ] Je sais décrire quand return court-circuite le flux
+1075|1075|[ ] Je sais décrire le flux CGI (env, stdin, stdout, EOF)
+1076|1076|[ ] Je sais décrire le parsing (lexer → parser → validation)
+1077|1077|[ ] Je sais tracer une requête de l'arrivée socket jusqu'à la réponse HTTP</pre>
+1078|1078|    </div>
+1079|1079|
+1080|1080|    <div class="info-box">
+1081|1081|      <span>💡</span>
+1082|1082|      <div><strong>Conseil oral soutenance :</strong> pour chaque terme, donne systématiquement
+1083|1083|      un exemple concret de requête + ce que le serveur fait. C'est ça qui rend l'explication limpide.</div>
+1084|1084|    </div>
+1085|1085|  </section>
+1086|1086|
+1087|1087|</div>
+1088|1088|
+1089|1089|<footer class="footer">
+1090|1090|  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+1091|1091|  <p style="margin-top:0.5rem; opacity:0.4">42 Project — Document d'étude — 04 Fichier de configuration (guide complet)</p>
+1092|1092|</footer>
+1093|1093|
+1094|1094|<script>
+1095|1095|  document.body.style.opacity = '0';
+1096|1096|  document.body.style.transition = 'opacity 0.14s ease';
+1097|1097|  window.addEventListener('DOMContentLoaded', function() {
+1098|1098|    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+1099|1099|  });
+1100|1100|
+1101|1101|  function navigateTo(href) {
+1102|1102|    document.body.style.opacity = '0';
+1103|1103|    setTimeout(function() { window.location.href = href; }, 140);
+1104|1104|  }
+1105|1105|
+1106|1106|  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(function(a) {
+1107|1107|    a.addEventListener('click', function(e) {
+1108|1108|      e.preventDefault();
+1109|1109|      navigateTo(a.href);
+1110|1110|    });
+1111|1111|  });
+1112|1112|
+1113|1113|  function scrollToId(id) {
+1114|1114|    if (id === 'top') {
+1115|1115|      window.scrollTo({ top: 0, behavior: 'smooth' });
+1116|1116|      return;
+1117|1117|    }
+1118|1118|    var el = document.getElementById(id);
+1119|1119|    if (!el) return;
+1120|1120|    var nav = document.querySelector('.progress-bar');
+1121|1121|    var navH = nav ? nav.offsetHeight : 0;
+1122|1122|    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+1123|1123|    window.scrollTo({ top: top, behavior: 'smooth' });
+1124|1124|  }
+1125|1125|
+1126|1126|  document.querySelectorAll('a[href^="#"]').forEach(function(el) {
+1127|1127|    el.addEventListener('click', function(e) {
+1128|1128|      var href = this.getAttribute('href');
+1129|1129|      if (!href || href.length < 2) return;
+1130|1130|      e.preventDefault();
+1131|1131|      scrollToId(href.slice(1));
+1132|1132|    });
+1133|1133|  });
+1134|1134|
+1135|1135|  var sections = document.querySelectorAll('.step-section');
+1136|1136|  var navPills = document.querySelectorAll('.step-pill');
+1137|1137|
+1138|1138|  var observer = new IntersectionObserver(function(entries) {
+1139|1139|    entries.forEach(function(entry) {
+1140|1140|      if (entry.isIntersecting) {
+1141|1141|        entry.target.classList.add('visible');
+1142|1142|        var id = entry.target.id;
+1143|1143|        navPills.forEach(function(pill) {
+1144|1144|          pill.classList.toggle('active', pill.getAttribute('href') === '#' + id);
+1145|1145|        });
+1146|1146|      }
+1147|1147|    });
+1148|1148|  }, { threshold: 0.2 });
+1149|1149|
+1150|1150|  sections.forEach(function(s) { observer.observe(s); });
+1151|1151|</script>
+1152|1152|</body>
+1153|1153|</html>
+1154|1154|

@@ -147,12 +147,18 @@ window.T = (function () {
 		["stress.html", "Stress"],
 		["bonus.html",  "Bonus"],
 	];
+	const external = [
+		["/studies/webserv-mindmap.html", "Études"],
+	];
 	const here = location.pathname.split("/").pop() || "index.html";
 	const nav = document.createElement("nav");
 	let html = "<a class='brand' href='/default/'>webserv&nbsp;tests</a>";
 	pages.forEach(function (p) {
 		html += "<a href='/default/" + p[0] + "'" +
 			(p[0] === here ? " class='current'" : "") + ">" + p[1] + "</a>";
+	});
+	external.forEach(function (p) {
+		html += "<a href='" + p[0] + "'>" + p[1] + "</a>";
 	});
 	nav.innerHTML = html;
 	document.addEventListener("DOMContentLoaded", function () {

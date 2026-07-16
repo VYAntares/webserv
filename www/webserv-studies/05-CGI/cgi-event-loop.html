@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CGI — Intégrer le CGI dans l'event loop (Reactor) de notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#asynchrone" class="step-pill active" id="nav-asynchrone"><span class="step-dot"></span>Asynchrone</a>
+    <div class="step-connector"></div>
+    <a href="#sink" class="step-pill" id="nav-sink"><span class="step-dot"></span>IResponseSink</a>
+    <div class="step-connector"></div>
+    <a href="#cycle" class="step-pill" id="nav-cycle"><span class="step-dot"></span>Le cycle</a>
+    <div class="step-connector"></div>
+    <a href="#timeout" class="step-pill" id="nav-timeout"><span class="step-dot"></span>Timeout</a>
+    <div class="step-connector"></div>
+    <a href="#detach" class="step-pill" id="nav-detach"><span class="step-dot"></span>detachSink</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">CGI &mdash; L'int&eacute;gration Reactor, dans notre code</div>
+  <h1>Le CGI dans <em>l'event loop</em><br>&mdash; l'interface <em>IResponseSink</em></h1>
+  <p class="header-desc">
+    Un script peut mettre 3 secondes &agrave; r&eacute;pondre. Pendant ce temps, le serveur doit continuer
+    &agrave; servir tout le monde. Dans notre webserv, les pipes CGI sont des
+    <strong>handlers comme les autres</strong> dans l'EventLoop (pattern Reactor), et le client
+    re&ccedil;oit sa r&eacute;ponse plus tard via un callback : <code>IResponseSink::onCgiDone()</code>
+    (pattern Observer).
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : LE PROBLÈME ASYNCHRONE    -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="asynchrone" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Le probl&egrave;me</div>
+        <div class="step-subtitle">Une r&eacute;ponse qui n'existe pas encore</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Requ&ecirc;te statique &mdash; synchrone</div>
+        <p>
+          <code>Router::route()</code> retourne un <code>StaticHandler</code>, la r&eacute;ponse est
+          construite <strong>imm&eacute;diatement</strong> (lire un fichier disque est exempt de la r&egrave;gle epoll),
+          et <code>ClientHandler</code> bascule en <code>WRITE_EVENT</code> dans la foul&eacute;e.
+          Tout se passe dans le m&ecirc;me tour de boucle.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Requ&ecirc;te CGI &mdash; asynchrone</div>
+        <p>
+          Le script tourne dans un autre processus, &agrave; son rythme. Attendre sa sortie avec un
+          <code>read()</code> bloquant g&egrave;lerait <strong>tout le serveur</strong> (interdit par le sujet).
+          <code>Router::route()</code> retourne donc <code>NULL</code>, et la r&eacute;ponse arrivera&hellip;
+          quand epoll dira que le pipe a parl&eacute;.
+        </p>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ClientHandler.cpp &mdash; _handleComplete()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Notre code &mdash; le client se met en attente</span>
+      </div>
+      <pre><span class="var">_rh</span> = <span class="type">Router</span>::<span class="fn-name">route</span>(<span class="var">req</span>, <span class="var">_server</span>, <span class="var">_peerAddr</span>, <span class="kw">this</span>);
+<span class="kw">if</span> (!<span class="var">_rh</span>) {
+    <span class="cmt">// CGI -&gt; async : la réponse arrivera via onCgiDone()</span>
+    <span class="cmt">// La réponse CGI est construite sans connaître notre keep-alive,</span>
+    <span class="cmt">// elle annonce toujours "Connection: close" → on ferme après envoi.</span>
+    <span class="var">_keepAlive</span> = <span class="num">false</span>;
+    <span class="cmt">// Plus rien à lire tant que le CGI tourne : on ne garde que la</span>
+    <span class="cmt">// détection de déconnexion (EPOLLHUP/EPOLLERR restent signalés).</span>
+<span class="highlight-line">    <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">modify_handler</span>(<span class="kw">this</span>, <span class="kw">static_cast</span>&lt;<span class="type">EventType</span>&gt;(<span class="num">0</span>));</span>
+    <span class="kw">return</span>;
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong><code>modify_handler(this, 0)</code> = mode silence radio.</strong>
+        Le client reste enregistr&eacute; dans epoll mais sans EPOLLIN ni EPOLLOUT :
+        on ne veut ni lire une nouvelle requ&ecirc;te au milieu du CGI, ni &ecirc;tre notifi&eacute;
+        &laquo; pr&ecirc;t &agrave; &eacute;crire &raquo; alors qu'on n'a encore rien &agrave; &eacute;crire.
+        <code>EPOLLHUP</code>/<code>EPOLLERR</code> restent signal&eacute;s par le kernel m&ecirc;me avec un
+        masque vide : si le client raccroche pendant le CGI, on le voit quand m&ecirc;me.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : IRESPONSESINK              -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="sink" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">IResponseSink</div>
+        <div class="step-subtitle">L'interface qui d&eacute;couple le CGI du client (pattern Observer)</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">includes/core/IResponseSink.hpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Notre code &mdash; le contrat complet</span>
+      </div>
+      <pre><span class="kw">class</span> <span class="type">CGIReadHandler</span>;
+
+<span class="cmt">// Interface (pattern Observer) : CGIReadHandler ne connait que ce contrat,</span>
+<span class="cmt">// pas ClientHandler directement, ce qui evite un #include circulaire.</span>
+<span class="kw">class</span> <span class="type">IResponseSink</span> {
+    <span class="kw">public</span>:
+<span class="highlight-line">        <span class="kw">virtual</span> <span class="type">void</span> <span class="fn-name">onCgiDone</span>(<span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">rawHttpResp</span>) = <span class="num">0</span>;</span>
+        <span class="kw">virtual</span> <span class="type">void</span> <span class="fn-name">onCgiStart</span>(<span class="type">CGIReadHandler</span>* <span class="var">rd</span>) { (<span class="type">void</span>)<span class="var">rd</span>; }
+        <span class="kw">virtual</span> ~<span class="fn-name">IResponseSink</span>() {}
+};</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-top: 1.5rem; margin-bottom: 1.5rem;">
+      <div class="panel-label">Pourquoi une interface plut&ocirc;t qu'un ClientHandler* ?</div>
+      <p>
+        <code>CGIReadHandler</code> n'a pas besoin de savoir ce qu'est un client : il a juste besoin
+        d'un endroit o&ugrave; d&eacute;poser la r&eacute;ponse finie. <code>ClientHandler</code> h&eacute;rite donc de
+        <strong>deux</strong> interfaces : <code>IEventHandler</code> (pour epoll) et
+        <code>IResponseSink</code> (pour le CGI). Le <code>this</code> pass&eacute; &agrave;
+        <code>Router::route(req, server, peerAddr, this)</code> voyage jusqu'au
+        <code>CGIReadHandler</code> sous forme d'<code>IResponseSink*</code>.
+        B&eacute;n&eacute;fices : pas d'include circulaire, et un couplage minimal entre les deux mondes.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ClientHandler.cpp &mdash; les deux callbacks</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">void</span> <span class="type">ClientHandler</span>::<span class="fn-name">onCgiStart</span>(<span class="type">CGIReadHandler</span>* <span class="var">rd</span>) {
+    <span class="var">_cgiRead</span> = <span class="var">rd</span>;      <span class="cmt">// mémoriser le CGI en cours, pour le timeout et le détachement</span>
+}
+
+<span class="type">void</span> <span class="type">ClientHandler</span>::<span class="fn-name">onCgiDone</span>(<span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">rawHttpResp</span>) {
+    <span class="var">_response</span> = <span class="var">rawHttpResp</span>;
+    <span class="var">_cgiRead</span>  = <span class="macro">NULL</span>;   <span class="cmt">// le CGIReadHandler se détruit juste après, ne plus y toucher</span>
+    <span class="var">_sent</span>     = <span class="num">0</span>;
+<span class="highlight-line">    <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">modify_handler</span>(<span class="kw">this</span>, <span class="macro">WRITE_EVENT</span>);   <span class="cmt">// réveil : à envoyer !</span></span>
+}</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : LE CYCLE COMPLET           -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="cycle" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">Le cycle complet</div>
+        <div class="step-subtitle">Trois handlers dans la m&ecirc;me boucle epoll</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Une requ&ecirc;te GET /cgi-bin/hello.py, vue par l'EventLoop</div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-step-num">1</div>
+          <div><code>EPOLLIN</code> sur le fd client &rarr; <code>ClientHandler::handle_input()</code> &rarr; requ&ecirc;te compl&egrave;te &rarr;
+          <code>Router::route()</code> d&eacute;tecte <code>.py</code> &rarr; <code>CGIHandler</code> fork le script et enregistre
+          <strong>deux nouveaux handlers</strong> dans l'EventLoop. Le client passe en masque vide (silence radio).</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">2</div>
+          <div><code>EPOLLOUT</code> sur le pipe stdin &rarr; <code>CGIWriteHandler::handle_output()</code> &eacute;crit le body
+          (en une ou plusieurs notifications). Termin&eacute; &rarr; <code>return -1</code> &rarr; l'EventLoop le d&eacute;truit
+          &rarr; son destructeur <code>close(_fd)</code> &rarr; <strong>EOF sur le stdin du script</strong>.</div>
+        </div>
+        <div class="flow-arrow">&darr; (pendant ce temps, les autres clients sont servis normalement)</div>
+        <div class="flow-step">
+          <div class="flow-step-num">3</div>
+          <div><code>EPOLLIN</code> sur le pipe stdout &rarr; <code>CGIReadHandler::handle_input()</code> accumule la sortie
+          dans <code>_out</code>, notification apr&egrave;s notification, jusqu'&agrave; <code>read() == 0</code> (EOF).</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">4</div>
+          <div>EOF &rarr; <code>reapChild()</code> + analyse du status + <code>parseCgi()</code> &rarr;
+          <code>_sink-&gt;onCgiDone(raw)</code> &rarr; le ClientHandler stocke la r&eacute;ponse et repasse en
+          <code>WRITE_EVENT</code>. Le CGIReadHandler retourne -1 et dispara&icirc;t.</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">5</div>
+          <div><code>EPOLLOUT</code> sur le fd client &rarr; <code>ClientHandler::handle_output()</code> envoie la r&eacute;ponse
+          par <code>send()</code> successifs, puis ferme (la r&eacute;ponse CGI est toujours <code>Connection: close</code>).</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Pourquoi &ccedil;a ne bloque jamais.</strong> Chaque fl&egrave;che ci-dessus est un
+        &eacute;v&eacute;nement epoll distinct. Entre deux fl&egrave;ches, la boucle traite ce qu'elle veut :
+        d'autres clients, d'autres CGI, des timeouts. Les pipes sont non-bloquants
+        (<code>O_NONBLOCK</code> pos&eacute; dans <code>CGIProcess</code>), et chaque handler fait
+        <strong>un seul</strong> read/write par notification. Le sujet est respect&eacute; &agrave; la lettre :
+        m&ecirc;me les I/O des pipes CGI passent par <code>epoll_wait()</code>.
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Qui poss&egrave;de quoi ?</strong> <code>CGIHandler</code> est un objet <strong>local</strong>
+        dans <code>Router::route()</code> : il meurt &agrave; la fin de la fonction, apr&egrave;s avoir
+        enregistr&eacute; les deux handlers de pipe. Ce sont eux (et l'EventLoop qui les d&eacute;truit
+        sur <code>return -1</code>) qui portent le cycle de vie : <code>CGIWriteHandler</code> ferme
+        le stdin, <code>CGIReadHandler</code> ferme le stdout, tue et reap l'enfant.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : TIMEOUT                    -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="timeout" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">getLastActivity()</div>
+        <div class="step-subtitle">Le CGI participe au timeout global de la boucle</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Pas de timer d&eacute;di&eacute; : le m&ecirc;me m&eacute;canisme que les clients</div>
+      <p>
+        <code>EventLoop::checkTimeOut()</code> tourne apr&egrave;s chaque <code>epoll_wait()</code>
+        (dont le timeout de 500&nbsp;ms garantit un passage r&eacute;gulier m&ecirc;me sans trafic).
+        Tout handler dont <code>getLastActivity()</code> date de plus de
+        <code>CLIENT_TIMEOUT</code> (30&nbsp;s) est d&eacute;truit. <code>CGIReadHandler</code> expose
+        son <code>_lastActivity</code> (mis &agrave; jour &agrave; chaque lecture) : un script muet est donc
+        <strong>tu&eacute; au bout de 30&nbsp;s</strong>, et son destructeur envoie le 504 au client.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/ClientHandler.cpp &mdash; handle_timeout()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code &mdash; le 504 c&ocirc;t&eacute; client</span>
+      </div>
+      <pre><span class="cmt">// Dernière chance de répondre avant que checkTimeOut() ne nous détruise.</span>
+<span class="cmt">// On ne fait AUCUN send() ici : on prépare juste la réponse et on redemande</span>
+<span class="cmt">// à epoll de nous notifier en écriture, comme le fait déjà onCgiDone().</span>
+<span class="type">int</span> <span class="type">ClientHandler</span>::<span class="fn-name">handle_timeout</span>() {
+    <span class="kw">if</span> (!<span class="var">_cgiRead</span>)
+        <span class="kw">return</span> <span class="num">0</span>;      <span class="cmt">// pas de CGI en cours, rien a faire, comportement inchangé</span>
+
+<span class="highlight-line">    <span class="type">ErrorHandler</span> <span class="fn-name">err</span>(<span class="var">_server</span>, <span class="num">504</span>, <span class="str">""</span>);</span>
+    <span class="var">_response</span> = <span class="var">err</span>.<span class="fn-name">buildResponse</span>();
+    <span class="var">_sent</span> = <span class="num">0</span>;
+    <span class="var">_keepAlive</span> = <span class="num">false</span>;
+    <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">modify_handler</span>(<span class="kw">this</span>, <span class="macro">WRITE_EVENT</span>);
+<span class="highlight-new">    <span class="kw">return</span> <span class="num">1</span>;          <span class="cmt">// "ne me détruis pas tout de suite : j'ai un 504 à livrer"</span></span>
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/core/EventLoop.cpp &mdash; checkTimeOut()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code &mdash; le sursis</span>
+      </div>
+      <pre><span class="kw">for</span> (<span class="type">size_t</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">timedOut</span>.<span class="fn-name">size</span>(); <span class="var">i</span>++) {
+    <span class="cmt">// avant de supprimer le client, il faut verifier si il nya pas un cgi en cours (erreur 504)</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">timedOut</span>[<span class="var">i</span>]-&gt;<span class="fn-name">handle_timeout</span>())</span>
+<span class="highlight-line">        <span class="kw">continue</span>;                        <span class="cmt">// sursis accordé : il enverra son 504</span></span>
+    <span class="cmt">// ensuite on peut le supprimer.</span>
+    <span class="fn-name">remove_handler</span>(<span class="var">timedOut</span>[<span class="var">i</span>]);
+    <span class="kw">delete</span> <span class="var">timedOut</span>[<span class="var">i</span>];
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Deux chemins vers le 504, un seul gagnant.</strong>
+        Client et CGIReadHandler timeoutent tous les deux &agrave; 30&nbsp;s, mais l'ordre importe peu :
+        si le <code>CGIReadHandler</code> meurt en premier, son destructeur appelle
+        <code>onCgiDone(504)</code>. Si le client passe par <code>handle_timeout()</code> d'abord,
+        il pr&eacute;pare lui-m&ecirc;me son 504 et gagne un sursis pour l'envoyer. Dans les deux cas :
+        <em>&laquo; a request to your server should never hang indefinitely &raquo;</em>. Test&eacute; en live avec
+        <code>www/cgi-bin/slow.py</code>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : DETACHSINK                 -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="detach" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">detachSink()</div>
+        <div class="step-subtitle">Quand l'un des deux meurt avant l'autre &mdash; z&eacute;ro use-after-free</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le sc&eacute;nario dangereux</div>
+      <p>
+        Le client lance un CGI puis <strong>ferme son navigateur</strong>. L'EventLoop d&eacute;truit le
+        <code>ClientHandler</code> (EPOLLHUP)&hellip; mais le <code>CGIReadHandler</code> d&eacute;tient toujours
+        un <code>_sink</code> pointant vers l'objet d&eacute;truit. &Agrave; l'EOF du script, il appellerait
+        <code>onCgiDone()</code> sur de la m&eacute;moire lib&eacute;r&eacute;e &mdash; use-after-free, crash.
+        La solution : les deux objets se connaissent (via <code>onCgiStart</code>) et
+        <strong>se pr&eacute;viennent mutuellement</strong> &agrave; leur destruction.
+      </p>
+    </div>
+
+    <div class="two-col">
+      <div class="code-panel" style="--step-color: var(--accent-4)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">~ClientHandler()</span>
+          </div>
+        </div>
+        <pre><span class="type">ClientHandler</span>::~<span class="fn-name">ClientHandler</span>() {
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">_cgiRead</span>)</span>
+<span class="highlight-line">        <span class="var">_cgiRead</span>-&gt;<span class="fn-name">detachSink</span>();</span>
+    <span class="kw">delete</span> <span class="var">_rh</span>;
+    <span class="fn-name">close</span>(<span class="var">_fd</span>);
+}</pre>
+      </div>
+      <div class="code-panel" style="--step-color: var(--accent-2)">
+        <div class="code-header">
+          <div class="code-header-left">
+            <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+            <span class="code-filename">CGIReadHandler.hpp</span>
+          </div>
+        </div>
+        <pre><span class="cmt">// appelé par ~ClientHandler si le</span>
+<span class="cmt">// client meurt avant le CGI : on ne</span>
+<span class="cmt">// doit plus jamais toucher au sink</span>
+<span class="type">void</span> <span class="fn-name">detachSink</span>() { <span class="var">_sink</span> = <span class="macro">NULL</span>; }</pre>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-top: 1.5rem;">
+      <div class="panel-label">La sym&eacute;trie compl&egrave;te</div>
+      <table class="compare-table">
+        <tr><td>Client meurt d'abord</td><td><code>~ClientHandler</code> appelle <code>_cgiRead-&gt;detachSink()</code> &rarr; le CGI finit dans le vide, sans jamais toucher le sink (chaque acc&egrave;s est gard&eacute; par <code>if (_sink)</code>)</td></tr>
+        <tr><td>CGI meurt d'abord (cas normal)</td><td><code>onCgiDone()</code> remet <code>_cgiRead = NULL</code> c&ocirc;t&eacute; client &rarr; le destructeur du client ne touchera pas un CGIReadHandler d&eacute;j&agrave; d&eacute;truit</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; le CGI <em>asynchrone</em></div>
+    <div class="summary-subtitle">Deux pipes = deux handlers. Un callback pour livrer. Un timeout pour ne jamais pendre.</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#127922;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Router retourne NULL</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Le signal asynchrone : pas de handler = la r&eacute;ponse viendra plus tard. Le client passe en masque epoll vide et attend.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128268;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Les pipes sont des citoyens de l'EventLoop</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">CGIWriteHandler (WRITE_EVENT) pousse le body, CGIReadHandler (READ_EVENT) collecte la sortie. M&ecirc;me interface IEventHandler, m&ecirc;me r&egrave;gle &laquo; un I/O par notification &raquo;, m&ecirc;me epoll que les sockets.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128276;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-3); margin-bottom:0.2rem;">IResponseSink = Observer</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Le CGI ne conna&icirc;t pas le client, juste le contrat onCgiDone(). onCgiStart() cr&eacute;e le lien invers&eacute; pour pouvoir se d&eacute;tacher proprement (detachSink) si l'un meurt avant l'autre.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9200;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">30 secondes, pas une de plus</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">getLastActivity() int&egrave;gre le CGI au checkTimeOut() global. Script muet &rarr; SIGKILL + waitpid + 504 livr&eacute; au client via handle_timeout() ou le destructeur.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="cgi-mecanisme.html" class="back-link">&larr; Revoir le m&eacute;canisme fork/execve/pipe</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; CGI : l'event loop. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['asynchrone','sink','cycle','timeout','detach'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

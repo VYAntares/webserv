@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CGI — fork() + execve() + pipe() dans notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#detection" class="step-pill active" id="nav-detection"><span class="step-dot"></span>D&eacute;tection</a>
+    <div class="step-connector"></div>
+    <a href="#chaine" class="step-pill" id="nav-chaine"><span class="step-dot"></span>La cha&icirc;ne</a>
+    <div class="step-connector"></div>
+    <a href="#pipes" class="step-pill" id="nav-pipes"><span class="step-dot"></span>pipe()</a>
+    <div class="step-connector"></div>
+    <a href="#fork" class="step-pill" id="nav-fork"><span class="step-dot"></span>fork()</a>
+    <div class="step-connector"></div>
+    <a href="#enfant" class="step-pill" id="nav-enfant"><span class="step-dot"></span>Enfant</a>
+    <div class="step-connector"></div>
+    <a href="#parent" class="step-pill" id="nav-parent"><span class="step-dot"></span>Parent</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">CGI &mdash; Le m&eacute;canisme, dans notre code</div>
+  <h1><em>fork()</em> + <em>execve()</em> + <em>pipe()</em><br>&mdash; la classe <em>CGIProcess</em></h1>
+  <p class="header-desc">
+    Le seul endroit du projet o&ugrave; <code>fork()</code> est autoris&eacute;.
+    Dans notre webserv, tout le m&eacute;canisme bas-niveau vit dans <strong>une seule classe</strong> :
+    <code>CGIProcess</code> (<code>srcs/cgi/CGIProcess.cpp</code>). Elle cr&eacute;e les deux pipes,
+    fork, branche stdin/stdout de l'enfant, <code>chdir</code> dans le dossier du script et <code>execve</code> l'interpr&eacute;teur.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : DÉTECTION PAR LE ROUTER   -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="detection" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">Router::isCgi()</div>
+        <div class="step-subtitle">Comment une requ&ecirc;te devient une requ&ecirc;te CGI</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Extension &rarr; interpr&eacute;teur, via la config</div>
+      <p>
+        Tout part du fichier de configuration : chaque <code>location</code> peut d&eacute;clarer des directives
+        <code>cgi_pass .py /usr/bin/python3;</code>. Le parser les range dans
+        <code>Location::cgi_pass</code>, une <code>std::map&lt;extension, interpr&eacute;teur&gt;</code>.
+        Au moment du routing, <code>Router::isCgi()</code> extrait l'extension de l'URI et regarde si
+        la location matched la conna&icirc;t.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/Router.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="fn-name">Router::isCgi</span>(<span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">uri</span>, <span class="kw">const</span> <span class="type">Location</span>* <span class="var">loc</span>) {
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="var">uri</span>.<span class="fn-name">rfind</span>(<span class="str">'.'</span>);
+    <span class="type">std::string</span> <span class="var">ext</span>;
+    <span class="kw">if</span> (<span class="var">pos</span> == <span class="type">std::string</span>::<span class="var">npos</span>)
+        <span class="kw">return</span> <span class="str">""</span>;
+    <span class="kw">else</span>
+        <span class="var">ext</span> = <span class="var">uri</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>);
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">loc</span>-&gt;<span class="var">cgi_pass</span>.<span class="fn-name">find</span>(<span class="var">ext</span>) != <span class="var">loc</span>-&gt;<span class="var">cgi_pass</span>.<span class="fn-name">end</span>())</span>
+<span class="highlight-line">        <span class="kw">return</span> <span class="var">loc</span>-&gt;<span class="var">cgi_pass</span>.<span class="fn-name">find</span>(<span class="var">ext</span>)-&gt;<span class="var">second</span>;</span>
+    <span class="kw">return</span> <span class="str">""</span>;
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/Router.cpp &mdash; dans Router::route()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Le d&eacute;clencheur</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="var">interpreter</span> = <span class="fn-name">isCgi</span>(<span class="var">uriPath</span>, <span class="var">loc</span>);
+<span class="kw">if</span> (!<span class="var">interpreter</span>.<span class="fn-name">empty</span>() &amp;&amp; (<span class="var">req</span>.<span class="var">method</span> == <span class="str">"GET"</span> || <span class="var">req</span>.<span class="var">method</span> == <span class="str">"POST"</span>)) {
+<span class="highlight-new">    <span class="type">CGIHandler</span> <span class="fn-name">cgi</span>(<span class="var">req</span>, <span class="var">path</span>, <span class="var">interpreter</span>, <span class="var">peerAddr</span>, <span class="var">loc</span>, <span class="var">sink</span>);</span>
+<span class="highlight-new">    <span class="kw">return</span> <span class="macro">NULL</span>;   <span class="cmt">// ← pas de handler : la réponse arrivera plus tard, en asynchrone</span></span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong><code>return NULL</code> est le signal asynchrone.</strong>
+        Pour une page statique, <code>Router::route()</code> retourne un <code>ARequestHandler*</code>
+        et la r&eacute;ponse est construite imm&eacute;diatement. Pour un CGI, il retourne <code>NULL</code> :
+        <code>ClientHandler</code> comprend alors que la r&eacute;ponse viendra <strong>plus tard</strong>,
+        via le callback <code>onCgiDone()</code> (voir la fiche
+        <a href="cgi-event-loop.html">Int&eacute;grer le CGI dans l'event loop</a>).
+      </div>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>GET et POST uniquement.</strong> Chez nous, un DELETE sur un fichier <code>.py</code>
+        ne lance pas l'interpr&eacute;teur : il tombe dans le circuit statique classique.
+        Seuls GET et POST d&eacute;clenchent l'ex&eacute;cution CGI.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LA CHAÎNE DE CLASSES      -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="chaine" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">La cha&icirc;ne de classes</div>
+        <div class="step-subtitle">Qui fait quoi entre le Router et le script Python</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">Quatre classes, quatre responsabilit&eacute;s</div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-step-num">1</div>
+          <div><strong><code>CGIHandler</code></strong> (<code>srcs/handlers/CGIHandler.cpp</code>) &mdash; l'orchestrateur.
+          Cr&eacute;e le <code>CGIProcess</code>, puis branche les deux pipes dans l'EventLoop en cr&eacute;ant
+          un <code>CGIWriteHandler</code> et un <code>CGIReadHandler</code>.</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">2</div>
+          <div><strong><code>CGIProcess</code></strong> (<code>srcs/cgi/CGIProcess.cpp</code>) &mdash; le bas-niveau.
+          <code>pipe()</code> &times;2, <code>fork()</code>, <code>dup2()</code>, <code>chdir()</code>,
+          <code>execve()</code>, et la construction du <code>char** envp</code>.</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">3</div>
+          <div><strong><code>CGIWriteHandler</code></strong> &mdash; enregistr&eacute; en <code>WRITE_EVENT</code> :
+          envoie le body de la requ&ecirc;te dans le stdin de l'enfant, morceau par morceau,
+          au rythme des notifications epoll.</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">4</div>
+          <div><strong><code>CGIReadHandler</code></strong> &mdash; enregistr&eacute; en <code>READ_EVENT</code> :
+          accumule la sortie du script, d&eacute;tecte l'EOF, <code>waitpid()</code> l'enfant,
+          parse les headers CGI et livre la r&eacute;ponse finale au client via <code>IResponseSink</code>.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIHandler.cpp</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">L'orchestrateur complet</span>
+      </div>
+      <pre><span class="type">CGIHandler</span>::<span class="fn-name">CGIHandler</span>(<span class="kw">const</span> <span class="type">HttpRequest</span>&amp; <span class="var">req</span>, <span class="type">std::string</span>&amp; <span class="var">path</span>, <span class="type">std::string</span>&amp; <span class="var">interpreter</span>,
+                        <span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">peerAddr</span>, <span class="kw">const</span> <span class="type">Location</span>* <span class="var">loc</span>, <span class="type">IResponseSink</span>* <span class="var">sink</span>) {
+    <span class="cmt">// Processus CGI (fork + exec + pipes)</span>
+    <span class="var">_process</span> = <span class="kw">new</span> <span class="type">CGIProcess</span>(<span class="var">req</span>, <span class="var">path</span>, <span class="var">interpreter</span>, <span class="var">peerAddr</span>);
+
+    <span class="cmt">// brancher les pipes</span>
+<span class="highlight-new">    <span class="type">CGIWriteHandler</span>* <span class="var">wr</span> = <span class="kw">new</span> <span class="type">CGIWriteHandler</span>(<span class="var">_process</span>-&gt;<span class="fn-name">getWriteFd</span>(), <span class="var">req</span>.<span class="var">body</span>);</span>
+<span class="highlight-new">    <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">register_handler</span>(<span class="var">wr</span>, <span class="macro">WRITE_EVENT</span>);</span>
+
+<span class="highlight-new">    <span class="type">CGIReadHandler</span>* <span class="var">rd</span> = <span class="kw">new</span> <span class="type">CGIReadHandler</span>(<span class="var">_process</span>-&gt;<span class="fn-name">getReadFd</span>(), <span class="var">_process</span>-&gt;<span class="fn-name">getPid</span>(), <span class="var">loc</span>, <span class="var">sink</span>);</span>
+<span class="highlight-new">    <span class="type">EventLoop</span>::<span class="fn-name">instance</span>()-&gt;<span class="fn-name">register_handler</span>(<span class="var">rd</span>, <span class="macro">READ_EVENT</span>);</span>
+    <span class="cmt">// le client doit connaître son CGIReadHandler pour pouvoir se détacher</span>
+    <span class="cmt">// si l'un des deux meurt avant l'autre (voir IResponseSink)</span>
+    <span class="kw">if</span> (<span class="var">sink</span>)
+        <span class="var">sink</span>-&gt;<span class="fn-name">onCgiStart</span>(<span class="var">rd</span>);
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le script CGI ne comprend rien &agrave; HTTP.</strong>
+        C'est un programme &agrave; part (Python, bash&hellip;) qui lit du texte sur son entr&eacute;e standard
+        et &eacute;crit du texte sur sa sortie standard, comme dans un terminal.
+        &laquo; Mettre le body en stdin &raquo; veut dire : ce qu'on &eacute;crit dans le pipe arrive &agrave; l'enfant
+        exactement comme s'il l'avait lu au clavier. Ce que l'enfant <code>print</code>,
+        on le r&eacute;cup&egrave;re par l'autre pipe &mdash; et &ccedil;a devient le corps de la r&eacute;ponse HTTP.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : LES DEUX PIPES            -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="pipes" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">pipe() &times; 2</div>
+        <div class="step-subtitle">Quatre file descriptors pour un aller-retour</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Un pipe = un sens unique</div>
+      <p>
+        Un <code>pipe()</code> cr&eacute;e 2 fd : <code>[0]</code> pour lire, <code>[1]</code> pour &eacute;crire.
+        Comme il nous faut les <strong>deux sens</strong> (envoyer le body au script, lire sa r&eacute;ponse),
+        on en cr&eacute;e deux :
+      </p>
+      <ul>
+        <li><code>pipe_stdin[0]</code> &rarr; l'enfant lit (son futur STDIN)</li>
+        <li><code>pipe_stdin[1]</code> &rarr; le parent &eacute;crit le body dedans</li>
+        <li><code>pipe_stdout[0]</code> &rarr; le parent lit la r&eacute;ponse du CGI</li>
+        <li><code>pipe_stdout[1]</code> &rarr; l'enfant &eacute;crit (son futur STDOUT)</li>
+      </ul>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; constructeur</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">CGIProcess</span>::<span class="fn-name">CGIProcess</span>(<span class="kw">const</span> <span class="type">HttpRequest</span>&amp; <span class="var">req</span>, <span class="type">std::string</span>&amp; <span class="var">path</span>,
+                        <span class="type">std::string</span>&amp; <span class="var">interpreter</span>, <span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">peerAddr</span>)
+                        : <span class="var">_req</span>(<span class="var">req</span>), <span class="var">_peerAddr</span>(<span class="var">peerAddr</span>),
+                          <span class="var">_pid</span>(-<span class="num">1</span>), <span class="var">_write_fd</span>(-<span class="num">1</span>), <span class="var">_read_fd</span>(-<span class="num">1</span>) {
+    <span class="type">int</span> <span class="var">pipe_stdin</span>[<span class="num">2</span>];
+    <span class="type">int</span> <span class="var">pipe_stdout</span>[<span class="num">2</span>];
+    <span class="kw">if</span> (<span class="fn-name">pipe</span>(<span class="var">pipe_stdin</span>) == -<span class="num">1</span>)
+        <span class="kw">throw</span> <span class="type">std::runtime_error</span>(<span class="str">"pipe() stdin failed"</span>);
+    <span class="kw">if</span> (<span class="fn-name">pipe</span>(<span class="var">pipe_stdout</span>) == -<span class="num">1</span>) {
+<span class="highlight-line">        <span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">0</span>]);   <span class="cmt">// le 1er pipe a réussi : le fermer avant de throw,</span></span>
+<span class="highlight-line">        <span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">1</span>]);   <span class="cmt">// sinon 2 fds fuient à chaque échec</span></span>
+        <span class="kw">throw</span> <span class="type">std::runtime_error</span>(<span class="str">"pipe() stdout failed"</span>);
+    }
+    <span class="fn-name">CGIFork</span>(<span class="var">pipe_stdout</span>, <span class="var">pipe_stdin</span>, <span class="var">interpreter</span>, <span class="var">path</span>);
+}</pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>La r&egrave;gle d'or des pipes.</strong> Tant qu'un fd d'&eacute;criture tra&icirc;ne ouvert quelque part
+        (m&ecirc;me par erreur, dans le mauvais processus), le lecteur en face ne voit <strong>jamais l'EOF</strong>
+        et peut rester bloqu&eacute; ind&eacute;finiment. C'est pour &ccedil;a que chaque processus ferme
+        imm&eacute;diatement les extr&eacute;mit&eacute;s qui ne le concernent pas &mdash; et c'est aussi la raison
+        du <code>FD_CLOEXEC</code> pos&eacute; plus loin.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : FORK                       -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="fork" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">CGIFork()</div>
+        <div class="step-subtitle">Un processus devient deux &mdash; qui garde quoi ?</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">Le partage des 4 fd</div>
+      <p>
+        <code>fork()</code> duplique le processus courant : les deux copies partagent &agrave; cet instant
+        les 4 fd de pipe. Chacune ne garde que ce qui la concerne et ferme le reste :
+      </p>
+      <table class="compare-table">
+        <tr><td><code>pipe_stdin[0]</code></td><td>&mdash;lecture&rarr; <strong>enfant</strong> (dup2 &rarr; STDIN_FILENO)</td></tr>
+        <tr><td><code>pipe_stdin[1]</code></td><td>&mdash;&eacute;criture&rarr; <strong>parent</strong> (<code>_write_fd</code>)</td></tr>
+        <tr><td><code>pipe_stdout[0]</code></td><td>&mdash;lecture&rarr; <strong>parent</strong> (<code>_read_fd</code>)</td></tr>
+        <tr><td><code>pipe_stdout[1]</code></td><td>&mdash;&eacute;criture&rarr; <strong>enfant</strong> (dup2 &rarr; STDOUT_FILENO)</td></tr>
+      </table>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; CGIFork(), le fork et l'erreur</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">void</span> <span class="type">CGIProcess</span>::<span class="fn-name">CGIFork</span>(<span class="type">int</span>* <span class="var">pipe_stdout</span>, <span class="type">int</span>* <span class="var">pipe_stdin</span>,
+                          <span class="type">std::string</span>&amp; <span class="var">interpreter</span>, <span class="type">std::string</span>&amp; <span class="var">path</span>) {
+<span class="highlight-line">    <span class="var">_pid</span> = <span class="fn-name">fork</span>();</span>
+    <span class="cmt">// erreur, fermer tous les pipes.</span>
+    <span class="kw">if</span> (<span class="var">_pid</span> == -<span class="num">1</span>) {
+        <span class="fn-name">close</span>(<span class="var">pipe_stdout</span>[<span class="num">0</span>]); <span class="fn-name">close</span>(<span class="var">pipe_stdout</span>[<span class="num">1</span>]);
+        <span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">0</span>]); <span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">1</span>]);
+        <span class="kw">throw</span> <span class="type">std::runtime_error</span>(<span class="str">"fork() failed"</span>);
+    }
+    <span class="cmt">// _pid == 0 → bloc enfant  (section 05)</span>
+    <span class="cmt">// _pid  &gt; 0 → bloc parent  (section 06)</span>
+}</pre>
+    </div>
+
+    <div class="two-col">
+      <div class="analogy-panel" style="border-color: rgba(255,107,74,0.3);">
+        <div class="analogy-icon">&#129516;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-1);">fork() = photocopie</div>
+          <p>
+            Apr&egrave;s <code>fork()</code>, deux processus ex&eacute;cutent <strong>la m&ecirc;me ligne de code</strong>.
+            La seule diff&eacute;rence : la valeur de retour. <code>0</code> chez l'enfant,
+            le PID de l'enfant chez le parent. C'est ce <code>if</code> qui s&eacute;pare les deux mondes.
+          </p>
+        </div>
+      </div>
+      <div class="analogy-panel" style="border-color: rgba(74,224,255,0.3);">
+        <div class="analogy-icon">&#128274;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-2);">Le seul fork() du projet</div>
+          <p>
+            Le sujet est formel : <em>&laquo; fork() must be used only to run another program (CGI, for example) &raquo;</em>.
+            Chez nous il n'existe qu'&agrave; un seul endroit : <code>CGIProcess::CGIFork()</code>,
+            imm&eacute;diatement suivi d'un <code>execve()</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 5 : CÔTÉ ENFANT               -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="enfant" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">Bloc enfant</div>
+        <div class="step-subtitle">dup2 + chdir + execve &mdash; devenir l'interpr&eacute;teur</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; CGIFork(), bloc enfant</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">if</span> (<span class="var">_pid</span> == <span class="num">0</span>) {
+<span class="highlight-line">    <span class="fn-name">dup2</span>(<span class="var">pipe_stdin</span>[<span class="num">0</span>], <span class="macro">STDIN_FILENO</span>);      <span class="cmt">// connecter le stdin au pipe (enfant lit)</span></span>
+<span class="highlight-line">    <span class="fn-name">dup2</span>(<span class="var">pipe_stdout</span>[<span class="num">1</span>], <span class="macro">STDOUT_FILENO</span>);    <span class="cmt">// connecter le stdout au pipe (enfant écrit)</span></span>
+    <span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">0</span>]); <span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">1</span>]);
+    <span class="fn-name">close</span>(<span class="var">pipe_stdout</span>[<span class="num">0</span>]); <span class="fn-name">close</span>(<span class="var">pipe_stdout</span>[<span class="num">1</span>]);
+
+    <span class="cmt">// On se place dans le dossier du script (accès aux fichiers relatifs,</span>
+    <span class="cmt">// exigé par le sujet). L'argument passé à l'interpréteur doit alors</span>
+    <span class="cmt">// être le SEUL nom de fichier : passer "www/cgi-bin/hello.py" après</span>
+    <span class="cmt">// un chdir dans "www/cgi-bin" ferait chercher un chemin dédoublé.</span>
+    <span class="type">size_t</span> <span class="var">slash</span> = <span class="var">path</span>.<span class="fn-name">rfind</span>(<span class="str">'/'</span>);
+    <span class="type">std::string</span> <span class="var">dir</span>  = (<span class="var">slash</span> == <span class="type">std::string</span>::<span class="var">npos</span>) ? <span class="str">"."</span> : <span class="var">path</span>.<span class="fn-name">substr</span>(<span class="num">0</span>, <span class="var">slash</span>);
+    <span class="type">std::string</span> <span class="var">file</span> = (<span class="var">slash</span> == <span class="type">std::string</span>::<span class="var">npos</span>) ? <span class="var">path</span> : <span class="var">path</span>.<span class="fn-name">substr</span>(<span class="var">slash</span> + <span class="num">1</span>);
+<span class="highlight-new">    <span class="kw">if</span> (<span class="fn-name">chdir</span>(<span class="var">dir</span>.<span class="fn-name">c_str</span>()) == -<span class="num">1</span>)</span>
+<span class="highlight-new">        <span class="fn-name">exit</span>(<span class="num">1</span>);</span>
+
+    <span class="type">char</span>** <span class="var">envp</span> = <span class="fn-name">buildEnvp</span>(<span class="var">path</span>);
+    <span class="type">char</span>* <span class="var">av</span>[] = { (<span class="type">char</span>*)<span class="var">interpreter</span>.<span class="fn-name">c_str</span>(), (<span class="type">char</span>*)<span class="var">file</span>.<span class="fn-name">c_str</span>(), <span class="macro">NULL</span> };
+<span class="highlight-new">    <span class="fn-name">execve</span>(<span class="var">interpreter</span>.<span class="fn-name">c_str</span>(), <span class="var">av</span>, <span class="var">envp</span>);</span>
+<span class="highlight-new">    <span class="fn-name">exit</span>(<span class="num">1</span>);   <span class="cmt">// on n'arrive ici QUE si execve a échoué</span></span>
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">Pourquoi dup2 ?</div>
+        <p>
+          <code>dup2(pipe_stdin[0], STDIN_FILENO)</code> fait pointer le fd <code>0</code> de l'enfant
+          vers le bout de lecture du pipe. Quand le script Python fera
+          <code>sys.stdin.read()</code>, il lira en r&eacute;alit&eacute; ce que notre serveur
+          &eacute;crit dans <code>_write_fd</code>. Idem pour stdout : chaque <code>print()</code>
+          part dans le pipe que le parent lit. Apr&egrave;s le dup2, les 4 fd originaux
+          sont ferm&eacute;s &mdash; les copies 0 et 1 suffisent.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Pourquoi chdir + nom de fichier seul ?</div>
+        <p>
+          Le sujet exige : <em>&laquo; The CGI should be run in the correct directory for
+          relative path file access &raquo;</em>. On <code>chdir()</code> donc dans le dossier du script
+          (ex. <code>www/cgi-bin</code>), et on passe &agrave; l'interpr&eacute;teur le nom de fichier
+          <strong>seul</strong> (<code>hello.py</code>) : garder le chemin complet apr&egrave;s le chdir
+          ferait chercher <code>www/cgi-bin/www/cgi-bin/hello.py</code>. C'est aussi ce qui permet
+          &agrave; <code>session.py</code> d'ouvrir son dossier <code>sessions/</code> en relatif.
+        </p>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong><code>execve()</code> ne revient jamais&hellip; sauf en cas d'&eacute;chec.</strong>
+        S'il r&eacute;ussit, tout l'espace m&eacute;moire du processus est remplac&eacute; par l'interpr&eacute;teur :
+        le code apr&egrave;s <code>execve()</code> n'existe plus. S'il &eacute;choue (interpr&eacute;teur introuvable,
+        pas ex&eacute;cutable&hellip;), on <code>exit(1)</code> &mdash; et ce code de sortie non-nul sera vu
+        par le parent via <code>waitpid()</code>, qui transformera &ccedil;a en <strong>500 Internal Server Error</strong>
+        (voir <a href="cgi-pieges.html">la fiche sur les pi&egrave;ges</a>).
+        C'est aussi pour &ccedil;a que le <code>strdup()</code> de l'envp n'est jamais free :
+        soit execve emporte tout le tas avec lui, soit exit(1) suit imm&eacute;diatement.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 6 : CÔTÉ PARENT               -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="parent" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">06</div>
+      <div>
+        <div class="step-fn">Bloc parent</div>
+        <div class="step-subtitle">O_NONBLOCK + FD_CLOEXEC &mdash; pr&eacute;parer les pipes pour epoll</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; CGIFork(), bloc parent</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">else</span> {
+    <span class="fn-name">close</span>(<span class="var">pipe_stdin</span>[<span class="num">0</span>]);
+    <span class="fn-name">close</span>(<span class="var">pipe_stdout</span>[<span class="num">1</span>]);
+    <span class="var">_write_fd</span> = <span class="var">pipe_stdin</span>[<span class="num">1</span>];   <span class="cmt">// parent écrit ici → stdin de l'enfant</span>
+    <span class="var">_read_fd</span>  = <span class="var">pipe_stdout</span>[<span class="num">0</span>];  <span class="cmt">// parent lit ici ← stdout de l'enfant</span>
+
+    <span class="cmt">// Non-bloquant seulement côté parent : chaque extrémité d'un pipe est</span>
+    <span class="cmt">// une open file description à part, donc ça ne touche pas le stdin/</span>
+    <span class="cmt">// stdout (bloquants) de l'enfant. Indispensable avec epoll : sinon un</span>
+    <span class="cmt">// read()/write() peut bloquer tout le event loop si le pipe est plein</span>
+    <span class="cmt">// ou vide au moment de l'appel.</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="fn-name">fcntl</span>(<span class="var">_write_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">_write_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>) == -<span class="num">1</span></span>
+<span class="highlight-line">        || <span class="fn-name">fcntl</span>(<span class="var">_read_fd</span>, <span class="macro">F_SETFL</span>, <span class="fn-name">fcntl</span>(<span class="var">_read_fd</span>, <span class="macro">F_GETFL</span>) | <span class="macro">O_NONBLOCK</span>) == -<span class="num">1</span>) {</span>
+        <span class="cmt">// nettoyer avant de throw : sinon fds et process enfant fuient</span>
+        <span class="fn-name">close</span>(<span class="var">_write_fd</span>);
+        <span class="fn-name">close</span>(<span class="var">_read_fd</span>);
+        <span class="fn-name">kill</span>(<span class="var">_pid</span>, <span class="macro">SIGKILL</span>);
+        <span class="fn-name">waitpid</span>(<span class="var">_pid</span>, <span class="macro">NULL</span>, <span class="num">0</span>);
+        <span class="kw">throw</span> <span class="type">std::runtime_error</span>(<span class="str">"fcntl() failed: "</span> + <span class="type">std::string</span>(<span class="fn-name">strerror</span>(<span class="var">errno</span>)));
+    }
+
+    <span class="cmt">// FD_CLOEXEC : si un AUTRE CGI est forké pendant que celui-ci tourne,</span>
+    <span class="cmt">// l'enfant du second hériterait de nos deux fds de pipe — le premier</span>
+    <span class="cmt">// CGI ne verrait alors jamais l'EOF sur son stdin (fd d'écriture</span>
+    <span class="cmt">// encore ouvert ailleurs) et resterait bloqué.</span>
+<span class="highlight-new">    <span class="fn-name">fcntl</span>(<span class="var">_write_fd</span>, <span class="macro">F_SETFD</span>, <span class="macro">FD_CLOEXEC</span>);</span>
+<span class="highlight-new">    <span class="fn-name">fcntl</span>(<span class="var">_read_fd</span>, <span class="macro">F_SETFD</span>, <span class="macro">FD_CLOEXEC</span>);</span>
+}</pre>
+    </div>
+
+    <div class="two-col" style="margin-top: 1.5rem;">
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">O_NONBLOCK c&ocirc;t&eacute; parent seulement</div>
+        <p>
+          Subtilit&eacute; importante : le flag est pos&eacute; sur <code>_write_fd</code> et <code>_read_fd</code>
+          <strong>apr&egrave;s</strong> le fork, donc uniquement sur les open file descriptions du parent.
+          Le stdin/stdout de l'enfant restent <strong>bloquants</strong> &mdash; c'est ce qu'un script
+          Python attend : <code>sys.stdin.read()</code> doit dormir jusqu'&agrave; l'EOF, pas
+          retourner imm&eacute;diatement.
+        </p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Le sc&eacute;nario du double CGI</div>
+        <p>
+          Sans <code>FD_CLOEXEC</code> : le CGI n&deg;1 tourne, ses pipes sont ouverts dans le serveur.
+          Un client lance le CGI n&deg;2 &rarr; <code>fork()</code> duplique <strong>tous</strong> les fd du serveur,
+          y compris <code>_write_fd</code> du CGI n&deg;1. M&ecirc;me si notre <code>CGIWriteHandler</code> ferme
+          son fd, la copie h&eacute;rit&eacute;e par l'enfant n&deg;2 reste ouverte &rarr; le CGI n&deg;1 ne re&ccedil;oit
+          jamais son EOF et p&egrave;nd &agrave; vie. <code>FD_CLOEXEC</code> fait fermer ces copies
+          automatiquement pendant l'<code>execve()</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; CGIProcess en <em>4 mouvements</em></div>
+    <div class="summary-subtitle">pipe &times;2 &rarr; fork &rarr; (enfant : dup2 + chdir + execve) / (parent : O_NONBLOCK + FD_CLOEXEC)</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128268;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">Deux pipes, quatre fd</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem;">pipe_stdin</code> transporte le body vers le script, <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">pipe_stdout</code> ram&egrave;ne sa sortie. Chaque processus ferme les extr&eacute;mit&eacute;s qui ne le concernent pas.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#129516;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">L'enfant devient l'interpr&eacute;teur</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem;">dup2</code> branche stdin/stdout sur les pipes, <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">chdir</code> se place dans le dossier du script, <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">execve(interpreter, [interpreter, file], envp)</code> remplace le processus. <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">exit(1)</code> si &eacute;chec &rarr; 500 c&ocirc;t&eacute; serveur.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9889;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Le parent pr&eacute;pare epoll</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem;">O_NONBLOCK</code> sur les deux fd (jamais de blocage de l'event loop), <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">FD_CLOEXEC</code> pour que les futurs CGI n'h&eacute;ritent pas des pipes des autres.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128737;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-4); margin-bottom:0.2rem;">Chaque &eacute;chec nettoie derri&egrave;re lui</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">pipe rat&eacute; &rarr; fermer le pipe d&eacute;j&agrave; ouvert. fork rat&eacute; &rarr; fermer les 4 fd. fcntl rat&eacute; &rarr; fermer les fd + <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">kill(SIGKILL)</code> + <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">waitpid</code>. Jamais de fd ni de zombie qui fuit.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="cgi-env.html" class="back-link">Fiche suivante : les variables d'environnement CGI &rarr;</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; CGI : le m&eacute;canisme. eahmeti</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['detection','chaine','pipes','fork','enfant','parent'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

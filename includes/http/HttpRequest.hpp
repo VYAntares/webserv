@@ -14,7 +14,9 @@ struct UploadedFile {
 
 struct Multipart {
 	std::map<std::string, std::string>	uploadedForm;
-	std::map<std::string, UploadedFile>	uploadedFiles;
+	// plusieurs fichiers peuvent partager le même nom de champ (input multiple) :
+	// il faut pouvoir garder toutes les entrées avec une clé identique
+	std::multimap<std::string, UploadedFile>	uploadedFiles;
 };
 
 

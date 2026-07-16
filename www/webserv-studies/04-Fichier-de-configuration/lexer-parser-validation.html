@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webserv — Lexer + Parser + Validation</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">← Retour à la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#pourquoi" class="step-pill active" id="nav-pourquoi"><span class="step-dot"></span>Pourquoi</a>
+    <div class="step-connector"></div>
+    <a href="#lexer" class="step-pill" id="nav-lexer"><span class="step-dot"></span>Lexer</a>
+    <div class="step-connector"></div>
+    <a href="#parser" class="step-pill" id="nav-parser"><span class="step-dot"></span>Parser</a>
+    <div class="step-connector"></div>
+    <a href="#validation" class="step-pill" id="nav-validation"><span class="step-dot"></span>Validation</a>
+    <div class="step-connector"></div>
+    <a href="#pipeline" class="step-pill" id="nav-pipeline"><span class="step-dot"></span>Pipeline</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">04 — Parsing config webserv</div>
+  <h1>Lexer + Parser + <em>Validation</em></h1>
+  <p class="header-desc">
+    Explication complète, étape par étape, pour comprendre exactement ce que doit faire ce point du projet.
+    Objectif : que tu puisses expliquer le flux à l'oral sans zone floue.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ===== SECTION 01 : POURQUOI ===== -->
+  <section class="step-section" id="pourquoi" style="--step-color: var(--accent-1); scroll-margin-top: 80px">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">pourquoiToutCa()</div>
+        <div class="step-subtitle">Pourquoi on sépare Lexer, Parser et Validation</div>
+      </div>
+    </div>
+
+    <div class="flow-mini">
+      <div class="flow-mini-step current">fichier.conf</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">lexer</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">parser</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">validation</div>
+      <div class="flow-mini-arrow">→</div>
+      <div class="flow-mini-step next">runtime</div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-1)">
+        <div class="panel-label">Le problème concret</div>
+        <p>Ton serveur lit un texte libre avec des accolades, points-virgules, commentaires, directives, etc.</p>
+        <p>Si tu tentes de tout parser "à la main" en un seul bloc, tu te retrouves vite avec un code fragile,
+          des erreurs difficiles à localiser, et une couverture incomplète des cas d'erreur.</p>
+        <p>La séparation en 3 phases rend le système stable et lisible :</p>
+        <ul>
+          <li><code>Lexer</code> : découpe le texte en briques atomiques (tokens).</li>
+          <li><code>Parser</code> : comprend la grammaire et remplit tes structures C++.</li>
+          <li><code>Validation</code> : vérifie la cohérence avant de lancer le serveur.</li>
+        </ul>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🏗️</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie Lego</div>
+          <p>
+            <strong>Lexer</strong> = tu sors toutes les pièces Lego de la boîte et tu les tries par forme.
+          </p>
+          <p>
+            <strong>Parser</strong> = tu assembles selon le plan de montage, pièce par pièce.
+          </p>
+          <p>
+            <strong>Validation</strong> = tu vérifies que la maison tient debout avant d'y habiter.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>💡</span>
+      <div>
+        <strong>Point clé soutenance :</strong> ces 3 phases se font au <em>startup</em> uniquement, pas à chaque requête HTTP.
+        Le runtime utilise simplement les structures déjà construites et validées.
+        Echec au startup = message clair. Echec au runtime = catastrophe silencieuse.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">①</span>
+        <span><strong>startup vs runtime</strong> : tout le travail de parsing est fait une seule fois au démarrage.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">②</span>
+        <span><strong>séparation des responsabilités</strong> : chaque phase n'a qu'une seule mission — plus facile à tester et déboguer.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">③</span>
+        <span><strong>fail fast</strong> : une config invalide doit faire <code>exit(1)</code> avec un message explicite avant tout <code>bind()</code>.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ===== SECTION 02 : LEXER ===== -->
+  <section class="step-section" id="lexer" style="--step-color: var(--accent-2); scroll-margin-top: 80px">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">lexer()</div>
+        <div class="step-subtitle">C'est quoi un lexer, exactement ?</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-2)">
+        <div class="panel-label">Définition claire</div>
+        <p>Le lexer (tokenizer) lit le fichier caractère par caractère et produit une suite de <strong>tokens</strong>.</p>
+        <p>Un token = une "brique atomique" utile au parser : mot, <code>{</code>, <code>}</code>, <code>;</code>, fin de fichier.</p>
+        <p>Il <strong>ignore</strong> les espaces et les commentaires (<code>#</code>). Il peut aussi stocker le numéro de ligne pour afficher des erreurs précises (<code>"syntax error line 12"</code>).</p>
+        <p>Le lexer ne comprend <strong>pas</strong> la grammaire. Il ne sait pas si <code>listen</code> est bien placé — c'est le parser qui décide.</p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">✂️</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie scanner de caisse</div>
+          <p>
+            Le lexer lit le texte comme un scanner lit des codes-barres :
+            il identifie chaque article (token) un par un, sans savoir ce que tu vas cuisiner.
+          </p>
+          <p>
+            C'est le caissier (parser) qui vérifie que tu as bien un plat et ses ingrédients.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="token-table">
+        <tr><th>Token Type</th><th>Exemple</th><th>Rôle</th></tr>
+        <tr><td><code>TOK_WORD</code></td><td><code>server</code>, <code>listen</code>, <code>8080</code>, <code>/var/www</code></td><td>directive, argument, chemin, valeur</td></tr>
+        <tr><td><code>TOK_LBRACE</code></td><td><code>{</code></td><td>ouverture de bloc</td></tr>
+        <tr><td><code>TOK_RBRACE</code></td><td><code>}</code></td><td>fermeture de bloc</td></tr>
+        <tr><td><code>TOK_SEMI</code></td><td><code>;</code></td><td>fin de directive simple</td></tr>
+        <tr><td><code>TOK_EOF</code></td><td>EOF</td><td>fin de flux — signal d'arrêt au parser</td></tr>
+      </table>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">includes/config/Token.hpp — enum TokenType + struct Token</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+<pre><span class="kw">enum</span> <span class="type">TokenType</span> <span class="punct">{</span>
+	<span class="macro">TOK_WORD</span><span class="punct">,</span>	<span class="cmt">// listen, GET, 8080, tout ce qui n'est pas un symbole</span>
+	<span class="macro">TOK_LBRACE</span><span class="punct">,</span>	<span class="cmt">// {</span>
+	<span class="macro">TOK_RBRACE</span><span class="punct">,</span>	<span class="cmt">// }</span>
+	<span class="macro">TOK_SEMI</span><span class="punct">,</span>	<span class="cmt">// ;</span>
+	<span class="macro">TOK_EOF</span>		<span class="cmt">// évite de checker _pos &lt; _token.size()</span>
+<span class="punct">};</span>
+
+<span class="kw">struct</span> <span class="type">Token</span> <span class="punct">{</span>
+	<span class="type">TokenType</span>	<span class="var">type</span><span class="punct">;</span>
+	<span class="type">std::string</span>	<span class="var">value</span><span class="punct">;</span>
+	<span class="type">size_t</span>		<span class="var">line</span><span class="punct">;</span>
+	<span class="type">size_t</span>		<span class="var">col</span><span class="punct">;</span>	<span class="cmt">// débogage</span>
+<span class="punct">};</span></pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2); margin-top: 1.2rem;">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/config/Lexer.cpp — tokenize()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+<pre><span class="cmt">// prend l'input et retourne un vecteur de tokens.</span>
+<span class="type">std::vector&lt;Token&gt;</span> <span class="fn-name">Lexer::tokenize</span><span class="punct">()</span> <span class="punct">{</span>
+	<span class="type">std::vector&lt;Token&gt;</span> <span class="var">token</span><span class="punct">;</span>
+	<span class="kw">while</span> <span class="punct">(</span><span class="punct">!</span><span class="fn-name">atEnd</span><span class="punct">())</span> <span class="punct">{</span>
+<span class="highlight-line">		<span class="fn-name">skipWhitespacesAndComments</span><span class="punct">();</span>	<span class="cmt">// espace, tab, \\r, \\n + commentaires #</span></span>
+		<span class="kw">if</span> <span class="punct">(</span><span class="fn-name">atEnd</span><span class="punct">())</span>
+			<span class="kw">break</span><span class="punct">;</span>
+		<span class="kw">char</span> <span class="var">c</span> <span class="punct">=</span> <span class="fn-name">current</span><span class="punct">();</span>
+		<span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">'{'</span><span class="punct">)</span> <span class="punct">{</span>
+			<span class="var">token</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">(</span><span class="fn-name">makeToken</span><span class="punct">(</span><span class="macro">TOK_LBRACE</span><span class="punct">,</span> <span class="str">"{"</span><span class="punct">));</span>
+			<span class="fn-name">advance</span><span class="punct">();</span>
+		<span class="punct">}</span> <span class="kw">else if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">'}'</span><span class="punct">)</span> <span class="punct">{</span>
+			<span class="var">token</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">(</span><span class="fn-name">makeToken</span><span class="punct">(</span><span class="macro">TOK_RBRACE</span><span class="punct">,</span> <span class="str">"}"</span><span class="punct">));</span>
+			<span class="fn-name">advance</span><span class="punct">();</span>
+		<span class="punct">}</span> <span class="kw">else if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">';'</span><span class="punct">)</span> <span class="punct">{</span>
+			<span class="var">token</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">(</span><span class="fn-name">makeToken</span><span class="punct">(</span><span class="macro">TOK_SEMI</span><span class="punct">,</span> <span class="str">";"</span><span class="punct">));</span>
+			<span class="fn-name">advance</span><span class="punct">();</span>
+		<span class="punct">}</span> <span class="kw">else if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="str">'"'</span> <span class="punct">||</span> <span class="var">c</span> <span class="punct">==</span> <span class="str">'\''</span><span class="punct">)</span>
+			<span class="var">token</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">(</span><span class="fn-name">readQuote</span><span class="punct">(</span><span class="var">c</span><span class="punct">));</span>	<span class="cmt">// gestion quotes simples et doubles</span>
+		<span class="kw">else</span>
+			<span class="var">token</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">(</span><span class="fn-name">readWord</span><span class="punct">());</span>
+	<span class="punct">}</span>
+	<span class="var">token</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">(</span><span class="fn-name">makeToken</span><span class="punct">(</span><span class="macro">TOK_EOF</span><span class="punct">,</span> <span class="str">""</span><span class="punct">));</span>
+	<span class="kw">return</span> <span class="var">token</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>⚠️</span>
+      <div>
+        <strong>Le lexer ne "comprend" pas la config.</strong> Il découpe seulement.
+        Si un token <code>listen</code> apparaît dans un bloc <code>location</code>, c'est le parser (puis la validation) qui doit le refuser — pas le lexer.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">①</span>
+        <span><strong>5 types de tokens suffisent</strong> pour le format nginx-like : <code>TOK_WORD</code>, <code>TOK_LBRACE</code>, <code>TOK_RBRACE</code>, <code>TOK_SEMI</code>, <code>TOK_EOF</code>.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">②</span>
+        <span><strong>stocker le numéro de ligne ET de colonne</strong> dans chaque token te permet d'afficher <code>"erreur line 12 col 5"</code> exacte lors du parsing.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">③</span>
+        <span><strong>ignorer <code>#</code></strong> en sautant tout jusqu'au <code>\n</code> suivant — via <code>skipWhitespacesAndComments()</code>, les commentaires disparaissent avant le parser.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ===== SECTION 03 : PARSER ===== -->
+  <section class="step-section" id="parser" style="--step-color: var(--accent-3); scroll-margin-top: 80px">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">parser()</div>
+        <div class="step-subtitle">Que fait le parser ?</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-3)">
+        <div class="panel-label">Son rôle exact</div>
+        <p>Le parser lit la séquence de tokens et applique les règles de grammaire : ce qui est autorisé, où, et dans quel ordre.</p>
+        <p>Règles de base :</p>
+        <ul>
+          <li>Un bloc <code>server</code> doit ouvrir avec <code>{</code> et fermer avec <code>}</code>.</li>
+          <li>Une directive simple se termine par <code>;</code>.</li>
+          <li><code>location /path { ... }</code> est un sous-bloc dans <code>server</code>.</li>
+          <li>Certaines directives acceptent plusieurs arguments (<code>allowed_methods GET POST;</code>).</li>
+        </ul>
+        <p>Le parser remplit ensuite les structures <code>Server</code> / <code>Location</code> (définies dans <code>ConfigStruct.hpp</code>).</p>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🧠</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie grammaire</div>
+          <p>
+            Le lexer reconnaît les mots. Le parser construit des phrases grammaticalement correctes.
+          </p>
+          <p>
+            <em>"listen 8080 ;"</em> → sujet + complément + point final = phrase valide.<br>
+            <em>"8080 listen ;"</em> → même mots, grammaire incorrecte → rejeté.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">includes/config/Parser.hpp — classe Parser</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(175,169,236,0.08)">Notre code</span>
+      </div>
+<pre><span class="kw">class</span> <span class="type">Parser</span> <span class="punct">{</span>
+	<span class="kw">public</span><span class="punct">:</span>
+		<span class="fn-name">Parser</span><span class="punct">(</span><span class="kw">const</span> <span class="type">std::vector&lt;Token&gt;</span><span class="punct">&amp;</span> <span class="var">tokens</span><span class="punct">);</span>
+		<span class="type">Config</span>	<span class="fn-name">parse</span><span class="punct">();</span>
+
+	<span class="kw">private</span><span class="punct">:</span>
+		<span class="type">size_t</span>			<span class="var">_pos</span><span class="punct">;</span>
+		<span class="type">std::vector&lt;Token&gt;</span>	<span class="var">_tokens</span><span class="punct">;</span>
+		<span class="type">Config</span>			<span class="var">_c</span><span class="punct">;</span>
+
+		<span class="kw">void</span> 	<span class="fn-name">parseServerBlock</span><span class="punct">();</span>
+		<span class="kw">void</span>	<span class="fn-name">parseLocationBlock</span><span class="punct">(</span><span class="type">Server</span><span class="punct">&amp;</span> <span class="var">s</span><span class="punct">);</span>
+		<span class="kw">void</span> 	<span class="fn-name">parseDirective</span><span class="punct">(</span><span class="type">Server</span><span class="punct">&amp;</span> <span class="var">s</span><span class="punct">);</span>
+		<span class="kw">void</span> 	<span class="fn-name">parseDirective</span><span class="punct">(</span><span class="type">Location</span><span class="punct">&amp;</span> <span class="var">l</span><span class="punct">);</span>
+		<span class="kw">void</span> 	<span class="fn-name">putDirective</span><span class="punct">(</span><span class="type">BaseBlock</span><span class="punct">&amp;</span> <span class="var">b</span><span class="punct">,</span> <span class="kw">const</span> <span class="type">std::string</span><span class="punct">&amp;</span> <span class="var">key</span><span class="punct">);</span>
+<span class="punct">};</span></pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3); margin-top: 1.2rem;">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/config/Parser.cpp — parseServerBlock()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(175,169,236,0.08)">Notre code</span>
+      </div>
+<pre><span class="cmt">// parse un bloc server : appelle le parser de location ou parse une directive</span>
+<span class="kw">void</span>	<span class="fn-name">Parser::parseServerBlock</span><span class="punct">()</span> <span class="punct">{</span>
+	<span class="type">Server</span> <span class="var">s</span><span class="punct">;</span>
+
+	<span class="fn-name">consume</span><span class="punct">();</span>				<span class="cmt">// mange le token "server"</span>
+	<span class="fn-name">expect</span><span class="punct">(</span><span class="macro">TOK_LBRACE</span><span class="punct">);</span>
+
+	<span class="kw">while</span> <span class="punct">(</span><span class="fn-name">current</span><span class="punct">().</span><span class="var">type</span> <span class="punct">!=</span> <span class="macro">TOK_RBRACE</span><span class="punct">)</span> <span class="punct">{</span>
+<span class="highlight-line">		<span class="kw">if</span> <span class="punct">(</span><span class="fn-name">current</span><span class="punct">().</span><span class="var">value</span> <span class="punct">==</span> <span class="str">"location"</span><span class="punct">)</span></span>
+<span class="highlight-line">			<span class="fn-name">parseLocationBlock</span><span class="punct">(</span><span class="var">s</span><span class="punct">);</span></span>
+<span class="highlight-line">		<span class="kw">else if</span> <span class="punct">(</span><span class="fn-name">current</span><span class="punct">().</span><span class="var">type</span> <span class="punct">==</span> <span class="macro">TOK_WORD</span><span class="punct">)</span></span>
+<span class="highlight-line">			<span class="fn-name">parseDirective</span><span class="punct">(</span><span class="var">s</span><span class="punct">);</span></span>
+		<span class="kw">else if</span> <span class="punct">(</span><span class="fn-name">current</span><span class="punct">().</span><span class="var">type</span> <span class="punct">==</span> <span class="macro">TOK_EOF</span><span class="punct">)</span>
+			<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"unclosed server block"</span><span class="punct">);</span>
+		<span class="kw">else</span>
+			<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"unexpected token"</span><span class="punct">);</span>
+	<span class="punct">}</span>
+	<span class="fn-name">expect</span><span class="punct">(</span><span class="macro">TOK_RBRACE</span><span class="punct">);</span>
+
+	<span class="cmt">// max_body_client à 1MB par défaut si non défini</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="var">s</span><span class="punct">.</span><span class="var">max_body_client</span> <span class="punct">==</span> <span class="macro">SIZE_MAX</span><span class="punct">)</span>
+		<span class="var">s</span><span class="punct">.</span><span class="var">max_body_client</span> <span class="punct">=</span> <span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">;</span>
+	<span class="var">_c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">.</span><span class="fn-name">push_back</span><span class="punct">(</span><span class="var">s</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>🧩</span>
+      <div>
+        <strong>Résumé parser :</strong> il transforme une suite de tokens en structures métier utilisables au runtime.
+        Sans parser, tu as des tokens. Avec parser, tu as des <code>Server</code> et <code>Location</code> (définis dans <code>ConfigStruct.hpp</code>) prêts à être exploités et validés.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">①</span>
+        <span><strong>recursive descent</strong> : <code>parseServer()</code> appelle <code>parseLocation()</code> — structure naturelle qui suit la hiérarchie de la config.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">②</span>
+        <span><strong><code>allowed_methods</code> est multi-valeurs</strong> : boucle sur les <code>WORD</code> jusqu'au <code>SEMICOLON</code> — ne pas oublier ce cas particulier.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">③</span>
+        <span><strong>erreur inconnue immédiate</strong> : directive non reconnue → <code>throw</code> avec le numéro de ligne. Ne jamais silencieusement ignorer un token inconnu.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ===== SECTION 04 : VALIDATION ===== -->
+  <section class="step-section" id="validation" style="--step-color: var(--accent-4); scroll-margin-top: 80px">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">validate()</div>
+        <div class="step-subtitle">La validation, c'est quoi ?</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-4)">
+        <div class="panel-label">La différence avec le parser</div>
+        <p><strong>Parser</strong> = validité syntaxique (<em>"est-ce que le fichier est bien écrit ?"</em>).</p>
+        <p><strong>Validation</strong> = validité fonctionnelle (<em>"est-ce que ça a du sens pour lancer un serveur HTTP ?"</em>).</p>
+        <p>Exemples de checks de validation spécifiques à notre webserv :</p>
+        <ul>
+          <li>Pas de directive <code>listen</code> dans un serveur → erreur.</li>
+          <li>Aucun bloc <code>location</code> dans un <code>server</code> → erreur.</li>
+          <li>Duplicat de <code>listen</code> entre deux serveurs → refusé.</li>
+          <li>Méthode inconnue ou dupliquée dans <code>allowed_methods</code> (seuls GET/POST/DELETE valides).</li>
+          <li><code>root</code> OU <code>return</code> obligatoire dans chaque location.</li>
+          <li><code>error_page</code> path doit être absolu (commence par <code>/</code>).</li>
+          <li><code>upload_store</code> exige <code>POST</code> dans <code>allowed_methods</code>.</li>
+          <li>Extension <code>cgi_pass</code> doit commencer par <code>.</code>, interpréteur par <code>/</code>.</li>
+          <li>Propagation server→locations : root, index, max_body, autoindex, return, error_page si absents dans la location.</li>
+        </ul>
+      </div>
+      <div class="analogy-panel">
+        <div class="analogy-icon">🔍</div>
+        <div class="analogy-text">
+          <div class="analogy-label">Analogie inspection de chantier</div>
+          <p>
+            Le parser vérifie que les plans respectent le format standard.
+          </p>
+          <p>
+            La validation est l'inspecteur qui va <em>sur place</em> vérifier que les fondations existent, que les portes s'ouvrent, que les câbles sont branchés.
+          </p>
+          <p>
+            Une belle maison sur des plans incorrects → bloquée au parser.<br>
+            Des plans corrects mais sans fondations → bloquée à la validation.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/config/Validator.cpp — validate()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+<pre><span class="type">Config</span> <span class="fn-name">Validator::validate</span><span class="punct">()</span> <span class="punct">{</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="var">_c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span>
+		<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"Config is empty."</span><span class="punct">);</span>
+
+	<span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">_c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+		<span class="type">Server</span><span class="punct">&amp;</span> <span class="var">s</span> <span class="punct">=</span> <span class="var">_c</span><span class="punct">.</span><span class="var">cfg</span><span class="punct">[</span><span class="var">i</span><span class="punct">];</span>
+<span class="highlight-line">		<span class="kw">if</span> <span class="punct">(</span><span class="var">s</span><span class="punct">.</span><span class="var">listen</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span></span>
+<span class="highlight-line">			<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"No 'listen' directive in server"</span><span class="punct">);</span></span>
+<span class="highlight-line">		<span class="kw">if</span> <span class="punct">(</span><span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span></span>
+<span class="highlight-line">			<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"No location block in Server "</span> <span class="punct">+</span> <span class="fn-name">toString</span><span class="punct">(</span><span class="var">i</span><span class="punct">+</span><span class="num">1</span><span class="punct">));</span></span>
+		<span class="fn-name">checkDuplicateIntraServer</span><span class="punct">(</span><span class="var">s</span><span class="punct">,</span> <span class="var">i</span><span class="punct">);</span>
+		<span class="fn-name">propogateServerToLocations</span><span class="punct">(</span><span class="var">s</span><span class="punct">);</span>
+		<span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">j</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">j</span> <span class="punct">&lt;</span> <span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">j</span><span class="punct">++)</span>
+			<span class="fn-name">checkLocationConfig</span><span class="punct">(</span><span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">[</span><span class="var">j</span><span class="punct">]);</span>
+	<span class="punct">}</span>
+	<span class="kw">return</span> <span class="var">_c</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4); margin-top: 1.2rem;">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/config/Validator.cpp — propogateServerToLocations()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre code</span>
+      </div>
+<pre><span class="cmt">// propagation des directives du server vers ses locations</span>
+<span class="kw">void</span> <span class="fn-name">Validator::propogateServerToLocations</span><span class="punct">(</span><span class="type">Server</span><span class="punct">&amp;</span> <span class="var">s</span><span class="punct">)</span> <span class="punct">{</span>
+	<span class="kw">for</span> <span class="punct">(</span><span class="type">size_t</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">.</span><span class="fn-name">size</span><span class="punct">();</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+		<span class="type">Location</span><span class="punct">&amp;</span> <span class="var">l</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">locations</span><span class="punct">[</span><span class="var">i</span><span class="punct">];</span>
+		<span class="kw">if</span> <span class="punct">(</span><span class="var">l</span><span class="punct">.</span><span class="var">root</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span>              <span class="var">l</span><span class="punct">.</span><span class="var">root</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">root</span><span class="punct">;</span>
+		<span class="kw">if</span> <span class="punct">(</span><span class="var">l</span><span class="punct">.</span><span class="var">index</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span>             <span class="var">l</span><span class="punct">.</span><span class="var">index</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">index</span><span class="punct">;</span>
+		<span class="kw">if</span> <span class="punct">(</span><span class="var">l</span><span class="punct">.</span><span class="var">max_body_client</span> <span class="punct">==</span> <span class="macro">SIZE_MAX</span><span class="punct">)</span>  <span class="var">l</span><span class="punct">.</span><span class="var">max_body_client</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">max_body_client</span><span class="punct">;</span>
+		<span class="kw">if</span> <span class="punct">(</span><span class="var">l</span><span class="punct">.</span><span class="var">autoindex</span> <span class="punct">==</span> <span class="punct">-</span><span class="num">1</span><span class="punct">)</span>             <span class="var">l</span><span class="punct">.</span><span class="var">autoindex</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">autoindex</span><span class="punct">;</span>
+		<span class="kw">if</span> <span class="punct">(</span><span class="var">l</span><span class="punct">.</span><span class="var">return_path</span><span class="punct">.</span><span class="var">first</span> <span class="punct">==</span> <span class="punct">-</span><span class="num">1</span><span class="punct">)</span>     <span class="var">l</span><span class="punct">.</span><span class="var">return_path</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">return_path</span><span class="punct">;</span>
+		<span class="cmt">// propagation des error_page : le server définit, la location hérite si absent</span>
+		<span class="kw">for</span> <span class="punct">(</span><span class="type">std::map&lt;int, str&gt;::iterator</span> <span class="var">it</span> <span class="punct">=</span> <span class="var">s</span><span class="punct">.</span><span class="var">error_page</span><span class="punct">.</span><span class="fn-name">begin</span><span class="punct">();</span>
+			<span class="var">it</span> <span class="punct">!=</span> <span class="var">s</span><span class="punct">.</span><span class="var">error_page</span><span class="punct">.</span><span class="fn-name">end</span><span class="punct">();</span> <span class="punct">++</span><span class="var">it</span><span class="punct">)</span> <span class="punct">{</span>
+				<span class="kw">if</span> <span class="punct">(</span><span class="var">l</span><span class="punct">.</span><span class="var">error_page</span><span class="punct">.</span><span class="fn-name">find</span><span class="punct">(</span><span class="var">it</span><span class="punct">-&gt;</span><span class="var">first</span><span class="punct">)</span> <span class="punct">==</span> <span class="var">l</span><span class="punct">.</span><span class="var">error_page</span><span class="punct">.</span><span class="fn-name">end</span><span class="punct">())</span>
+					<span class="var">l</span><span class="punct">.</span><span class="var">error_page</span><span class="punct">[</span><span class="var">it</span><span class="punct">-&gt;</span><span class="var">first</span><span class="punct">]</span> <span class="punct">=</span> <span class="var">it</span><span class="punct">-&gt;</span><span class="var">second</span><span class="punct">;</span>
+			<span class="punct">}</span>
+	<span class="punct">}</span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>🚫</span>
+      <div>
+        <strong>Ne lance jamais le serveur avec une config invalide.</strong>
+        Mieux vaut <code>exit(1)</code> au startup avec un message clair que planter en plein traitement de requête.
+        Un serveur qui démarre avec une config incohérente est un bug caché garanti.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">①</span>
+        <span><strong>parser ≠ validation</strong> : syntaxe correcte ne signifie pas config fonctionnelle — les deux phases sont indispensables.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">②</span>
+        <span><strong>propagation automatique</strong> : <code>propogateServerToLocations()</code> hérite root, index, max_body, autoindex, return, error_page du server vers chaque location si absent.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">③</span>
+        <span><strong>messages d'erreur précis</strong> : chaque <code>throw</code> indique exactement quelle directive est invalide et pourquoi — le constructeur <code>ConfigLoader</code> ajoute le nom du fichier en prefix.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ===== SECTION 05 : PIPELINE ===== -->
+  <section class="step-section" id="pipeline" style="--step-color: var(--accent-6); scroll-margin-top: 80px">
+    <div class="step-header">
+      <div class="step-number-badge">05</div>
+      <div>
+        <div class="step-fn">pipelineComplet()</div>
+        <div class="step-subtitle">Du fichier .conf au runtime HTTP</div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-6)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/config/ConfigLoader.cpp — constructeur (pipeline complet)</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-6); background:rgba(240,153,123,0.08)">Notre code</span>
+      </div>
+<pre><span class="cmt">// ConfigLoader vérifie le bon lancement du programme, lit le fichier,</span>
+<span class="cmt">// puis lance le parsing : lexer → parser → validator.</span>
+<span class="fn-name">ConfigLoader::ConfigLoader</span><span class="punct">(</span><span class="kw">int</span> <span class="var">argc</span><span class="punct">,</span> <span class="kw">char</span> <span class="punct">**</span><span class="var">argv</span><span class="punct">)</span> <span class="punct">{</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="var">argc</span> <span class="punct">&gt;</span> <span class="num">2</span><span class="punct">)</span>
+		<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"Too many arguments, usage: ./webserv [configFile path]"</span><span class="punct">);</span>
+
+	<span class="type">std::string</span> <span class="var">path</span> <span class="punct">=</span> <span class="punct">(</span><span class="var">argc</span> <span class="punct">==</span> <span class="num">2</span><span class="punct">)</span> <span class="punct">?</span> <span class="type">std::string</span><span class="punct">(</span><span class="var">argv</span><span class="punct">[</span><span class="num">1</span><span class="punct">])</span> <span class="punct">:</span> <span class="macro">DEFAULT_CONFIG_PATH</span><span class="punct">;</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="var">argc</span> <span class="punct">==</span> <span class="num">1</span><span class="punct">)</span>
+		<span class="type">std::cerr</span> <span class="punct">&lt;&lt;</span> <span class="str">"No config file provided, using default: "</span> <span class="punct">&lt;&lt;</span> <span class="macro">DEFAULT_CONFIG_PATH</span><span class="punct">;</span>
+
+	<span class="cmt">// vérification de l'extension .conf</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="var">path</span><span class="punct">.</span><span class="fn-name">find</span><span class="punct">(</span><span class="str">".conf"</span><span class="punct">)</span> <span class="punct">==</span> <span class="type">std::string::npos</span><span class="punct">)</span>
+		<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"Config file must have: .conf extension."</span><span class="punct">);</span>
+
+	<span class="cmt">// stat() vérifie que le path est un fichier régulier (S_ISREG)</span>
+	<span class="kw">struct</span> <span class="type">stat</span> <span class="var">st</span><span class="punct">;</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="fn-name">stat</span><span class="punct">(</span><span class="var">path</span><span class="punct">.</span><span class="fn-name">c_str</span><span class="punct">(),</span> <span class="punct">&amp;</span><span class="var">st</span><span class="punct">)</span> <span class="punct">!=</span> <span class="num">0</span> <span class="punct">||</span> <span class="punct">!</span><span class="fn-name">S_ISREG</span><span class="punct">(</span><span class="var">st</span><span class="punct">.</span><span class="var">st_mode</span><span class="punct">))</span>
+		<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"Not a regular file: "</span> <span class="punct">+</span> <span class="var">path</span><span class="punct">);</span>
+
+	<span class="cmt">// lecture du contenu via ifstream → ostringstream</span>
+	<span class="type">std::ifstream</span> <span class="fn-name">file</span><span class="punct">(</span><span class="var">path</span><span class="punct">.</span><span class="fn-name">c_str</span><span class="punct">());</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="punct">!</span><span class="var">file</span><span class="punct">.</span><span class="fn-name">is_open</span><span class="punct">())</span> <span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"Can not open config file: "</span> <span class="punct">+</span> <span class="var">path</span><span class="punct">);</span>
+
+	<span class="type">std::ostringstream</span> <span class="var">ss</span><span class="punct">;</span>
+	<span class="var">ss</span> <span class="punct">&lt;&lt;</span> <span class="var">file</span><span class="punct">.</span><span class="fn-name">rdbuf</span><span class="punct">();</span>
+	<span class="var">_input</span> <span class="punct">=</span> <span class="var">ss</span><span class="punct">.</span><span class="fn-name">str</span><span class="punct">();</span>
+	<span class="kw">if</span> <span class="punct">(</span><span class="var">_input</span><span class="punct">.</span><span class="fn-name">empty</span><span class="punct">())</span> <span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="str">"Config file is empty."</span><span class="punct">);</span>
+
+<span class="highlight-line">	<span class="kw">try</span> <span class="punct">{</span></span>
+<span class="highlight-line">		<span class="fn-name">startLexer</span><span class="punct">();</span>		<span class="cmt">// phase 1 : Lexer</span></span>
+<span class="highlight-line">		<span class="fn-name">startParser</span><span class="punct">();</span>		<span class="cmt">// phase 2 : Parser</span></span>
+<span class="highlight-line">		<span class="fn-name">startValidator</span><span class="punct">();</span>	<span class="cmt">// phase 3 : Validator</span></span>
+<span class="highlight-line">	<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="type">std::exception</span> <span class="punct">&amp;</span><span class="var">e</span><span class="punct">)</span> <span class="punct">{</span></span>
+<span class="highlight-line">		<span class="kw">throw</span> <span class="type">std::runtime_error</span><span class="punct">(</span><span class="type">std::string</span><span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="fn-name">what</span><span class="punct">())</span></span>
+<span class="highlight-line">			<span class="punct">+</span> <span class="str">"\nparser: configuration file "</span> <span class="punct">+</span> <span class="var">path</span> <span class="punct">+</span> <span class="str">" failed."</span><span class="punct">);</span></span>
+<span class="highlight-line">	<span class="punct">}</span></span>
+<span class="punct">}</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="--step-color: var(--accent-6)">
+        <div class="panel-label">Lecture runtime</div>
+        <p>Une fois ce pipeline terminé, chaque requête HTTP fait <em>seulement</em> :</p>
+        <ul>
+          <li>Choix du <code>Server</code> par port (et <code>Host:</code> header si plusieurs <code>server_name</code>).</li>
+          <li>Choix de la <code>Location</code> (préfixe le plus long via <code>findLocation()</code>).</li>
+          <li>Application des règles déjà validées — aucun accès fichier de config en runtime.</li>
+        </ul>
+        <p>Le travail "lourd" est déplacé au startup pour garder le runtime propre et robuste.</p>
+      </div>
+      <div class="panel" style="--step-color: var(--accent-5)">
+        <div class="panel-label">Que se passe-t-il en cas d'erreur ?</div>
+        <ul>
+          <li>Fichier config introuvable → <code>readFile()</code> lance une exception → <code>exit(1)</code>.</li>
+          <li>Syntaxe cassée (accolade manquante) → lexer/parser lèvent une exception → <code>exit(1)</code>.</li>
+          <li>Config incohérente (port invalide, CGI manquant) → validation lève une exception → <code>exit(1)</code>.</li>
+        </ul>
+        <p>Dans tous les cas, le serveur <strong>ne démarre pas</strong> et affiche le message précis sur <code>stderr</code>.</p>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <span>✅</span>
+      <div>
+        <strong>Réponse directe soutenance :</strong>
+        <code>lexer</code> découpe, <code>parser</code> structure, <code>validation</code> sécurise.
+        Les trois phases se font au startup et sont obligatoires pour un webserv stable.
+        Le runtime n'accède jamais au fichier de config.
+      </div>
+    </div>
+
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon">①</span>
+        <span><strong>try/catch global dans main()</strong> : toute exception du pipeline devient un <code>exit(1)</code> propre avec message stderr.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">②</span>
+        <span><strong>l'ordre des 3 phases est fixe</strong> : lex → parse → validate. Impossible d'inverser — le parser a besoin des tokens, la validation a besoin des structs.</span>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon">③</span>
+        <span><strong>runtime = lecture seule</strong> des structs <code>Server</code> / <code>Location</code>. Aucun re-parsing pendant le traitement des requêtes.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="summary-section">
+    <div class="summary-title">Résumé <em>ultra-court</em></div>
+    <div class="summary-subtitle">Si tu dois l'expliquer en 20 secondes</div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">✂️</div>
+        <div>
+          <div class="summary-card-fn">Lexer</div>
+          <div class="summary-card-desc">Texte brut → liste de tokens (WORD / braces / semicolon). Ignore espaces et commentaires.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🧱</div>
+        <div>
+          <div class="summary-card-fn">Parser</div>
+          <div class="summary-card-desc">Tokens → structs <code>Server</code> / <code>Location</code>. Vérifie la grammaire (accolades, points-virgules, directives).</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🛡️</div>
+        <div>
+          <div class="summary-card-fn">Validation</div>
+          <div class="summary-card-desc">Structs → vérification fonctionnelle (ports, méthodes, chemins CGI). Refuse les configs incohérentes.</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🚀</div>
+        <div>
+          <div class="summary-card-fn">Runtime</div>
+          <div class="summary-card-desc">Utilise une config déjà saine. Plus aucun accès au fichier .conf pendant le traitement des requêtes.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>← <a href="../webserv-mindmap.html">Retour à la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project — 04 Fichier de configuration — Lexer + Parser + Validation</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', function() {
+    requestAnimationFrame(function() { document.body.style.opacity = '1'; });
+  });
+
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(function() { window.location.href = href; }, 140);
+  }
+
+  var backBtn = document.getElementById('back-btn');
+  if (backBtn) {
+    backBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateTo(backBtn.href);
+    });
+  }
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nav = document.querySelector('.progress-bar');
+    var navH = nav ? nav.offsetHeight : 0;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - navH - 16;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      var href = a.getAttribute('href');
+      if (!href || href.length < 2) return;
+      scrollToId(href.slice(1));
+    });
+  });
+
+  var sectionIds = ['pourquoi', 'lexer', 'parser', 'validation', 'pipeline'];
+  var sections = sectionIds.map(function(id) { return document.getElementById(id); });
+  var navEls   = sectionIds.map(function(id) { return document.getElementById('nav-' + id); });
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        navEls.forEach(function(n) { if (n) n.classList.remove('active'); });
+        var idx = sections.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { threshold: 0.2 });
+
+  sections.forEach(function(s) { if (s) observer.observe(s); });
+</script>
+</body>
+</html>
