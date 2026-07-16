@@ -37,7 +37,6 @@ MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req,
         setBody(body);
 
     setErrorPage(loc);
-    getCookie(req);
 }
 
 

@@ -18,13 +18,6 @@ void ARequestHandler::handleReturn(const std::pair<int, std::string>& return_pat
 
 
 
-// void ARequestHandler::setErrorPage(const Location& loc) {
-// 	std::map<int, std::string>::const_iterator it = loc.error_page.find(_ncode);
-// 	if (it != loc.error_page.end()) {
-// 	 	_errorpage = it->second;
-// 	}
-// }
-
 void ARequestHandler::setErrorPage(const BaseBlock& b) {
 	std::map<int, std::string>::const_iterator it = b.error_page.find(_ncode);
 	if (it != b.error_page.end()) {
@@ -51,14 +44,6 @@ void	ARequestHandler::getErrorPage() {
 	file.close();
 }
 
-void ARequestHandler::getCookie(const HttpRequest& r) {
-	std::map<std::string, std::string>::const_iterator it;
-	for (it = r.headers.begin(); it != r.headers.end(); ++it) {
-		if (it->first == "Set-Cookie") {
-			_cookie = it->second;
-		}
-	}
-}
 
 std::string ARequestHandler::buildResponse() {
     if (!_noBody && isError(_ncode) && _location.empty() && _body.empty()) {

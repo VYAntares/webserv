@@ -20,7 +20,6 @@ class ARequestHandler {
 		void				stripBody() { _body.clear(); _noBody = true; }
 		void				setType(std::string& type) { _type = type; }
 		void				setCookie(std::string& cookie) { _cookie = cookie; }
-		void				getCookie(const HttpRequest& r);
 		
 	protected:
 		int					_ncode;

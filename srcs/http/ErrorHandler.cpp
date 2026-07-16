@@ -10,5 +10,4 @@ ErrorHandler::ErrorHandler(const BaseBlock& b, int code, std::string body) {
 		return ;
 	}
 	setErrorPage(b);
-	// setCookie(b);
 }
