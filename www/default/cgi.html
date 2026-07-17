@@ -23,17 +23,80 @@
 	<div id="tests"></div>
 
 	<h2>Tests manuels</h2>
+
+	<!-- ═══ GET — Python ═══ -->
+	<h3 style="color:var(--accent-4); margin-top:1rem;">GET &mdash; Python</h3>
+	<div class="grid2">
+		<div class="card">
+			<h4>🎲 Citations aléatoires</h4>
+			<p class="desc">Génère une citation de programmeur célèbre. Change le thème couleur via <code>?cyan</code>, <code>?purple</code>, <code>?green</code>, <code>?orange</code>.</p>
+			<a href="/cgi-bin/fortune.py" target="_blank" class="btn" style="display:inline-block;margin-top:.5rem;">fortune.py</a>
+			<a href="/cgi-bin/fortune.py?purple" target="_blank" class="btn" style="display:inline-block;margin-top:.5rem;">thème violet</a>
+		</div>
+		<div class="card">
+			<h4>🎨 Générateur de palettes</h4>
+			<p class="desc">Palette de couleurs aléatoire avec valeurs RGB et hex. Ajoute <code>?n=8</code> pour 8 couleurs.</p>
+			<a href="/cgi-bin/palette.py" target="_blank" class="btn" style="display:inline-block;margin-top:.5rem;">palette.py</a>
+			<a href="/cgi-bin/palette.py?n=8" target="_blank" class="btn" style="display:inline-block;margin-top:.5rem;">8 couleurs</a>
+		</div>
+	</div>
+
+	<!-- ═══ GET — Bash ═══ -->
+	<h3 style="color:var(--accent-5); margin-top:1.5rem;">GET &mdash; Bash</h3>
+	<div class="grid2">
+		<div class="card">
+			<h4>🖥️ Infos système</h4>
+			<p class="desc">Informations sur la machine qui fait tourner le serveur : hostname, uptime, date, shell.</p>
+			<a href="/cgi-bin/sysinfo.sh" target="_blank" class="btn" style="display:inline-block;margin-top:.5rem;">sysinfo.sh</a>
+		</div>
+		<div class="card">
+			<h4>🕐 Horloge mondiale</h4>
+			<p class="desc">Horloge qui se rafraîchit chaque seconde. Change de fuseau : <code>?offset=1</code> (Paris), <code>?offset=-5</code> (NY), <code>?offset=9</code> (Tokyo).</p>
+			<a href="/cgi-bin/clock.sh" target="_blank" class="btn" style="display:inline-block;margin-top:.5rem;">clock.sh (UTC)</a>
+			<a href="/cgi-bin/clock.sh?offset=1" target="_blank" class="btn" style="display:inline-block;margin-top:.5rem;">Paris</a>
+		</div>
+	</div>
+
+	<!-- ═══ POST — Formulaires ═══ -->
+	<h3 style="color:var(--accent-3); margin-top:1.5rem;">POST &mdash; Formulaires interactifs</h3>
+	<div class="grid2">
+		<div class="card">
+			<h4>📝 Feedback</h4>
+			<p class="desc">Donne ton avis ! Le CGI reçoit le body en POST, parse les champs, et renvoie une page de remerciement.</p>
+			<form action="/cgi-bin/feedback.py" method="post">
+				<input type="text" name="nom" value="Antares" placeholder="Ton nom" style="width:100%;margin-bottom:.4rem;">
+				<textarea name="message" rows="2" placeholder="Ton message..." style="width:100%;margin-bottom:.4rem;">Super projet !</textarea>
+				<select name="note" style="margin-bottom:.4rem;">
+					<option value="5">🤩 5 — Excellent</option>
+					<option value="4">😊 4 — Très bien</option>
+					<option value="3">😐 3 — Correct</option>
+					<option value="2">😕 2 — Bof</option>
+					<option value="1">😡 1 — Nul</option>
+				</select>
+				<button type="submit" class="primary">Envoyer le feedback</button>
+			</form>
+		</div>
+		<div class="card">
+			<h4>📮 Livre d'or</h4>
+			<p class="desc">Envoie un message depuis une ville. Le CGI bash parse le body POST et génère une carte postale.</p>
+			<form action="/cgi-bin/guestbook.sh" method="post">
+				<input type="text" name="nom" value="Marvin" placeholder="Ton nom" style="width:100%;margin-bottom:.4rem;">
+				<input type="text" name="ville" value="Paris" placeholder="Ta ville" style="width:100%;margin-bottom:.4rem;">
+				<textarea name="message" rows="2" placeholder="Ton message..." style="width:100%;margin-bottom:.4rem;">Le webserv tourne impeccable !</textarea>
+				<button type="submit" class="primary">Signer le livre d'or</button>
+			</form>
+		</div>
+	</div>
+
+	<!-- ═══ GET — Formulaire classique ═══ -->
+	<h3 style="color:var(--accent-2); margin-top:1.5rem;">GET &mdash; Formulaire classique (calc.sh)</h3>
 	<div class="card">
-		<p>
-			<a href="/cgi-bin/hello.py?nom=evaluateur" target="_blank">hello.py?nom=evaluateur</a> ·
-			<a href="/cgi-bin/env.py?a=1&b=2" target="_blank">env.py (dump environnement CGI)</a> ·
-			<a href="/cgi-bin/calc.sh?a=6&b=7" target="_blank">calc.sh?a=6&b=7 (CGI bash)</a>
-		</p>
-		<p class="desc">Formulaire GET → le navigateur construit la query string lui-même :</p>
-		<form action="/cgi-bin/calc.sh" method="get">
-			<input type="number" name="a" value="19"> +
-			<input type="number" name="b" value="23">
-			<button type="submit" class="primary">Calculer via CGI bash</button>
+		<p class="desc">Le navigateur construit la query string. Le CGI bash reçoit <code>QUERY_STRING=a=19&b=23</code> et calcule.</p>
+		<form action="/cgi-bin/calc.sh" method="get" style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+			<input type="number" name="a" value="19" style="width:5rem;"> <span style="color:var(--text-dim);">+</span>
+			<input type="number" name="b" value="23" style="width:5rem;">
+			<button type="submit" class="primary">Calculer (CGI bash)</button>
+			<a href="/cgi-bin/calc.sh?a=6&b=7" target="_blank" class="btn">6 + 7</a>
 		</form>
 	</div>
 

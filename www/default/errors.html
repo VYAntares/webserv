@@ -31,6 +31,113 @@
 		</p>
 	</div>
 
+	<h3 style="margin-top:1.5rem;">Toutes les pages d'erreur</h3>
+	<p class="desc" style="margin-bottom:1rem;">
+		<button id="triggerAll" class="primary" style="font-size:.9rem;">⚡ Déclencher toutes les erreurs</button>
+		<span id="triggerStatus" class="summary"></span>
+	</p>
+	<div class="grid2" id="errorGrid">
+
+		<!-- 400 -->
+		<div class="card" data-code="400">
+			<h4>🔴 400 Bad Request</h4>
+			<p class="desc" style="font-size:.78rem;">Requête HTTP malformée (header sans <code>:</code>).</p>
+			<a href="/default/errors/400.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 400</a>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">printf 'GET / HTTP/1.1\r\nHost: x\r\nBadHeader\r\n\r\n' | nc 100.124.128.83 8080</pre>
+		</div>
+
+		<!-- 403 -->
+		<div class="card" data-code="403">
+			<h4>🔒 403 Forbidden</h4>
+			<p class="desc" style="font-size:.78rem;">Accès interdit à un dossier sans index.</p>
+			<a href="/default/errors/403.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 403</a>
+			<button class="trigger-btn" data-url="/private/" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/private/</pre>
+		</div>
+
+		<!-- 404 -->
+		<div class="card" data-code="404">
+			<h4>❓ 404 Not Found</h4>
+			<p class="desc" style="font-size:.78rem;">Ressource inexistante sur le serveur.</p>
+			<a href="/default/errors/404.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 404</a>
+			<button class="trigger-btn" data-url="/nexiste-pas" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/nexiste-pas</pre>
+		</div>
+
+		<!-- 405 -->
+		<div class="card" data-code="405">
+			<h4>🚫 405 Method Not Allowed</h4>
+			<p class="desc" style="font-size:.78rem;">Méthode interdite sur cette route.</p>
+			<a href="/default/errors/405.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 405</a>
+			<button class="trigger-btn" data-method="POST" data-url="/" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i -X POST http://100.124.128.83:8080/</pre>
+		</div>
+
+		<!-- 413 -->
+		<div class="card" data-code="413">
+			<h4>📦 413 Payload Too Large</h4>
+			<p class="desc" style="font-size:.78rem;">Body dépasse <code>client_max_body_size</code> de la route.</p>
+			<a href="/default/errors/413.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 413</a>
+			<button class="trigger-btn" data-method="POST" data-url="/tiny/limit.txt" data-body="200" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i -X POST -d "$(python3 -c "print('x'*200)")" http://100.124.128.83:8080/tiny/limit.txt</pre>
+		</div>
+
+		<!-- 431 -->
+		<div class="card" data-code="431">
+			<h4>📏 431 Header Too Large</h4>
+			<p class="desc" style="font-size:.78rem;">Un header dépasse 32 Ko.</p>
+			<a href="/default/errors/431.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 431</a>
+			<button class="trigger-btn" data-url="/" data-bigheader="1" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i -H "X-Big: $(python3 -c "print('A'*40000)")" http://100.124.128.83:8080/</pre>
+		</div>
+
+		<!-- 500 -->
+		<div class="card" data-code="500">
+			<h4>💥 500 Internal Server Error</h4>
+			<p class="desc" style="font-size:.78rem;">Le CGI crash (exit code ≠ 0).</p>
+			<a href="/default/errors/500.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 500</a>
+			<button class="trigger-btn" data-url="/cgi-bin/crash.py" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/cgi-bin/crash.py</pre>
+		</div>
+
+		<!-- 501 -->
+		<div class="card" data-code="501">
+			<h4>🔧 501 Not Implemented</h4>
+			<p class="desc" style="font-size:.78rem;">Méthode HTTP inconnue du serveur.</p>
+			<a href="/default/errors/501.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 501</a>
+			<button class="trigger-btn" data-method="PATCH" data-url="/" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i -X PATCH http://100.124.128.83:8080/</pre>
+		</div>
+
+		<!-- 502 -->
+		<div class="card" data-code="502">
+			<h4>🌉 502 Bad Gateway</h4>
+			<p class="desc" style="font-size:.78rem;">Le CGI est tué par un signal (SIGSEGV).</p>
+			<a href="/default/errors/502.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 502</a>
+			<button class="trigger-btn" data-url="/cgi-bin/sigsegv.py" data-target="1">🚀 Déclencher</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/cgi-bin/sigsegv.py</pre>
+		</div>
+
+		<!-- 504 -->
+		<div class="card" data-code="504">
+			<h4>⏱️ 504 Gateway Timeout</h4>
+			<p class="desc" style="font-size:.78rem;">Le CGI met trop longtemps (>30s).</p>
+			<a href="/default/errors/504.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 504</a>
+			<button class="trigger-btn" data-url="/cgi-bin/slow.py" data-slow="1" data-target="1">🚀 Déclencher (~30s)</button>
+			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
+			<pre class="curl-cmd">curl -i --max-time 35 http://100.124.128.83:8080/cgi-bin/slow.py</pre>
+		</div>
+	</div>
+
 	<script>
 	T.add("404 — ressource inexistante", "GET /nexiste-pas → 404", async () => {
 		const r = await T.req("/nexiste-pas");
@@ -101,6 +208,115 @@
 	});
 
 	document.addEventListener("DOMContentLoaded", function () { T.mount("#tests"); });
+
+	/* ---------- Copie curl au clic ---------- */
+	var toast = document.createElement("div");
+	toast.style.cssText = "position:fixed;top:5rem;right:1rem;z-index:9999;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:.45rem 1rem;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.78rem;opacity:0;transition:opacity .2s;pointer-events:none;";
+	toast.textContent = "✓ Copié dans le presse-papier";
+	document.body.appendChild(toast);
+	var toastTimer = null;
+
+	document.querySelectorAll(".curl-cmd").forEach(function (pre) {
+		pre.title = "Cliquer pour copier";
+		pre.style.cursor = "pointer";
+		pre.addEventListener("click", function () {
+			var txt = pre.textContent.trim();
+			var ta = document.createElement("textarea");
+			ta.value = txt;
+			ta.style.position = "fixed"; ta.style.opacity = "0";
+			document.body.appendChild(ta);
+			ta.select();
+			document.execCommand("copy");
+			document.body.removeChild(ta);
+			var orig = pre.style.background;
+			pre.style.background = "rgba(74,222,128,0.15)";
+			pre.style.borderColor = "rgba(74,222,128,0.4)";
+			setTimeout(function () {
+				pre.style.background = orig;
+				pre.style.borderColor = "";
+			}, 600);
+			// Toast
+			toast.style.opacity = "1";
+			if (toastTimer) clearTimeout(toastTimer);
+			toastTimer = setTimeout(function () { toast.style.opacity = "0"; }, 1500);
+		});
+	});
+
+	/* ---------- Déclencheurs visuels ---------- */
+	(function () {
+		var statusEl = document.getElementById("triggerStatus");
+
+		async function triggerOne(btn) {
+			var card = btn.closest(".card");
+			var url = btn.getAttribute("data-url") || "/";
+			var method = btn.getAttribute("data-method") || "GET";
+			var bodySize = parseInt(btn.getAttribute("data-body") || "0");
+			var bigHeader = btn.getAttribute("data-bigheader");
+			var isSlow = btn.getAttribute("data-slow");
+			var openTarget = btn.getAttribute("data-target");
+			var code = card.getAttribute("data-code");
+
+			btn.textContent = "...";
+			btn.disabled = true;
+
+			// Pour GET : ouvrir direct dans un nouvel onglet (1 seule requête)
+			if (openTarget && method === "GET") {
+				window.open(url, "_blank");
+				btn.textContent = "onglet ✔";
+				btn.style.background = "rgba(74,222,128,0.15)";
+				btn.style.borderColor = "rgba(74,222,128,0.4)";
+				return;
+			}
+
+			// Pour POST/PATCH : fetch + afficher le résultat inline
+			try {
+				var opts = { method: method, cache: "no-store" };
+				if (bodySize > 0) opts.body = "x".repeat(bodySize);
+				if (bigHeader) opts.headers = { "X-Big": "A".repeat(40 * 1024) };
+
+				var controller = new AbortController();
+				var timeout = isSlow ? 35000 : 10000;
+				var timer = setTimeout(function () { controller.abort(); }, timeout);
+				opts.signal = controller.signal;
+
+				var r = await fetch(url, opts);
+				clearTimeout(timer);
+				btn.textContent = r.status + " ✔";
+				btn.style.background = r.status == code ? "rgba(74,222,128,0.15)" : "rgba(250,204,21,0.15)";
+				btn.style.borderColor = r.status == code ? "rgba(74,222,128,0.4)" : "rgba(250,204,21,0.4)";
+			} catch (e) {
+				if (isSlow && e.name === "AbortError") {
+					btn.textContent = "timeout ✔";
+					btn.style.background = "rgba(74,222,128,0.15)";
+					btn.style.borderColor = "rgba(74,222,128,0.4)";
+				} else {
+					btn.textContent = "err ✘";
+					btn.style.background = "rgba(255,107,74,0.15)";
+					btn.style.borderColor = "rgba(255,107,74,0.4)";
+				}
+			}
+		}
+
+		document.querySelectorAll(".trigger-btn").forEach(function (btn) {
+			btn.addEventListener("click", function () { triggerOne(btn); });
+		});
+
+		var allBtn = document.getElementById("triggerAll");
+		if (allBtn) {
+			allBtn.addEventListener("click", async function () {
+				allBtn.disabled = true;
+				allBtn.textContent = "⚡ Lancement...";
+				var btns = document.querySelectorAll(".trigger-btn:not([disabled])");
+				for (var i = 0; i < btns.length; i++) {
+					await triggerOne(btns[i]);
+					statusEl.textContent = (i + 1) + "/" + btns.length + " déclenchées";
+				}
+				allBtn.textContent = "⚡ Terminé — " + btns.length + " erreurs";
+				statusEl.textContent = "";
+				allBtn.disabled = false;
+			});
+		}
+	})();
 	</script>
 </main>
 </body>

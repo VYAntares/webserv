@@ -16,8 +16,6 @@
 	<p class="desc">
 		Envoie des rafales de requêtes concurrentes (mélange statique / 404 / autoindex / CGI)
 		et vérifie que tout est répondu et que le serveur reste disponible ensuite.
-		Pour un vrai stress (connexions brutes, keep-alive, malformées), utiliser
-		<code>python3 tests/stress_test.py</code> ou <code>siege</code>.
 	</p>
 
 	<div class="card">
@@ -37,6 +35,50 @@
 			<progress id="bar" max="100" value="0"></progress>
 			<pre id="report">—</pre>
 		</div>
+	</div>
+
+	<h2>Tests avec siege (terminal)</h2>
+	<p class="desc">
+		<code>siege</code> est l'outil de benchmarking utilisé en soutenance. Installer : <code>sudo apt install siege</code>.
+		Clic sur une commande = copie automatique.
+	</p>
+
+	<div class="grid2">
+		<div class="card">
+			<h4>📋 Test officiel soutenance — benchmark</h4>
+			<p class="desc" style="font-size:.78rem;"><code>-b</code> = mode benchmark (pas de pause). Le barème exige <strong>&gt; 99.5%</strong> de disponibilité.</p>
+			<pre class="curl-cmd">siege -b -c50 -t30s http://localhost:8080/default/index.html</pre>
+			<p class="desc" style="font-size:.72rem;margin-top:.3rem;">✅ Attendu : <code>Availability &gt; 99.5%</code>, <code>Failed: 0</code></p>
+		</div>
+		<div class="card">
+			<h4>📋 Variante — 100 clients, 30s</h4>
+			<p class="desc" style="font-size:.78rem;">Pousser plus fort avec 100 connexions simultanées.</p>
+			<pre class="curl-cmd">siege -b -c100 -t30s http://localhost:8080/default/index.html</pre>
+			<p class="desc" style="font-size:.72rem;margin-top:.3rem;">✅ Attendu : <code>Availability &gt; 99.5%</code></p>
+		</div>
+		<div class="card">
+			<h4>📋 Avec délai — -d (recommandé grille)</h4>
+			<p class="desc" style="font-size:.78rem;">La grille conseille <code>-d</code> (délai entre reconnexions) pour un test plus réaliste.</p>
+			<pre class="curl-cmd">siege -c50 -d1 -r50 http://localhost:8080/default/index.html</pre>
+			<p class="desc" style="font-size:.72rem;margin-top:.3rem;">✅ Attendu : <code>Availability: 100%</code>, <code>Failed: 0</code></p>
+		</div>
+		<div class="card">
+			<h4>📋 Test longue durée — infini</h4>
+			<p class="desc" style="font-size:.78rem;">La grille dit : « utiliser siege indéfiniment sans redémarrer le serveur ». Ctrl+C pour arrêter.</p>
+			<pre class="curl-cmd">siege -b -c30 http://localhost:8080/default/index.html</pre>
+			<p class="desc" style="font-size:.72rem;margin-top:.3rem;">✅ Attendu : le serveur ne crashe jamais. Ctrl+C après plusieurs minutes, <code>Availability: 100%</code></p>
+		</div>
+		<div class="card">
+			<h4>📋 Mix URLs + benchmark</h4>
+			<p class="desc" style="font-size:.78rem;">Fichier d'URLs variées, mode benchmark.</p>
+			<pre class="curl-cmd">echo -e "http://localhost:8080/default/index.html\nhttp://localhost:8080/files/hello.txt\nhttp://localhost:8080/nexiste-pas\nhttp://localhost:8080/files/\nhttp://localhost:8080/cgi-bin/hello.py" > /tmp/urls.txt && siege -b -c30 -t30s -f /tmp/urls.txt</pre>
+			<p class="desc" style="font-size:.72rem;margin-top:.3rem;">✅ Attendu : <code>Availability &gt; 98%</code> (le 404 est normal)</p>
+		</div>
+	</div>
+
+	<div class="note info" style="margin-top:1.5rem;">
+		<strong>Rappel grille de soutenance :</strong> availability &gt; 99.5% pour un GET simple avec <code>siege -b</code>.
+		Pas de fuite mémoire (surveiller avec <code>htop</code>). Pas de connexions bloquées. Le serveur doit tourner indéfiniment sans crash.
 	</div>
 
 	<script>
@@ -88,7 +130,6 @@
 			await Promise.all(workers);
 			bar.value = 100;
 
-			/* le serveur répond-il encore normalement après la rafale ? */
 			let alive = "✘";
 			try {
 				const r = await fetch("/default/index.html", { cache: "no-store" });
@@ -106,6 +147,33 @@
 				"Disponibilité   : " + alive;
 			btn.disabled = false;
 		};
+
+		/* ---------- Copie au clic ---------- */
+		var toast = document.createElement("div");
+		toast.style.cssText = "position:fixed;top:5rem;right:1rem;z-index:9999;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:.45rem 1rem;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.78rem;opacity:0;transition:opacity .2s;pointer-events:none;";
+		toast.textContent = "✓ Copié dans le presse-papier";
+		document.body.appendChild(toast);
+		var toastTimer = null;
+
+		document.querySelectorAll(".curl-cmd").forEach(function (pre) {
+			pre.title = "Cliquer pour copier";
+			pre.style.cursor = "pointer";
+			pre.addEventListener("click", function () {
+				var txt = pre.textContent.trim();
+				var ta = document.createElement("textarea");
+				ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+				document.body.appendChild(ta); ta.select();
+				document.execCommand("copy");
+				document.body.removeChild(ta);
+				var orig = pre.style.background;
+				pre.style.background = "rgba(74,222,128,0.15)";
+				pre.style.borderColor = "rgba(74,222,128,0.4)";
+				setTimeout(function () { pre.style.background = orig; pre.style.borderColor = ""; }, 600);
+				toast.style.opacity = "1";
+				if (toastTimer) clearTimeout(toastTimer);
+				toastTimer = setTimeout(function () { toast.style.opacity = "0"; }, 1500);
+			});
+		});
 	});
 	</script>
 </main>

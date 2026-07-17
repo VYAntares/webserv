@@ -84,7 +84,9 @@ nav {
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   display: flex; flex-wrap: wrap; gap: .15rem;
-  padding: .55rem 1.2rem; align-items: center;
+  padding: .55rem 1.2rem;
+  align-items: center;
+  justify-content: center;
 }
 nav .brand {
   font-family: 'Space Mono', monospace;
