@@ -8,13 +8,6 @@
 #include <sstream>
 #include <cstdlib>
 
-// HTTPParser   →   HTTPRequest   →   Router   →   ARequestHandler
-// (stateful,       (pure data,       (choisit       (Static, CGI,
-//  accumule,        méthode,          le bon          Error...)
-//  parse)           uri, headers,     handler)
-//                   body)
-
-// taille max de la section headers d'une requête (protection mémoire)
 #define MAX_HEADER_SIZE 32768
 
 class HttpParser {
@@ -52,9 +45,8 @@ class HttpParser {
 		std::string		_buffer;
 		std::string		_body;
 		std::string		_header;
-	
-		HttpRequest		_req;
 
+		HttpRequest		_req;
 
 		size_t			_bodyExcepted;
 		size_t			_bodyReceived;

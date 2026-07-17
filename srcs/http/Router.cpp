@@ -10,9 +10,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 									const std::string& peerAddr, IResponseSink* sink) {
 	if (req.error != 200)
 		return new ErrorHandler(server, req.error, "");
-	
-	// matcher la location sur le chemin SANS la query string : avec elle,
-	// "/upload?x=1" ne matchait jamais "/upload" et retombait sur "/"
+
 	std::string uriPath = req.uri.substr(0, req.uri.find('?'));
 
 	const Location *loc = bestRouteFound(req.uri, server);
@@ -25,17 +23,13 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 	if (!methodAllowed(req.method, loc))
 		return new ErrorHandler(*loc, 405, "");
 
-	// la redirection s'applique avant tout accès au filesystem : sinon un
-	// "return" sur une URL sans fichier réel renvoyait 404 au lieu de rediriger
 	if (loc->return_path.first != -1)
 		return new StaticHandler(req, *loc, "");
 
 	std::string path = resolvePath(loc, uriPath);
-	if (path.empty())  // le chemin normalisé sort de root (ex: /../..)
+	if (path.empty())
 		return new ErrorHandler(*loc, 403, "");
 
-	// upload : si un dossier de stockage est configuré, c'est lui qui reçoit
-    // les fichiers (exigence du sujet), pas root + URI
 	if (req.method == "POST" && !loc->upload_store.empty()) {
 		if (req.isMultipart == true)
 			path = loc->upload_store;
@@ -65,8 +59,6 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 	return new StaticHandler(req, *loc, path);
 }
 
-
-
 std::string Router::isCgi(const std::string& uri, const Location* loc) {
 	size_t pos = uri.rfind('.');
 	std::string ext;
@@ -78,8 +70,6 @@ std::string Router::isCgi(const std::string& uri, const Location* loc) {
 		return loc->cgi_pass.find(ext)->second;
 	return "";
 }
-
-
 
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
 	bool    	slash = (uri[uri.length() - 1] == '/');
@@ -100,15 +90,11 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
 	return path;
 }
 
-
-
 int Router::fileExist(const std::string& path, const std::string& method) {
 	if (fileFound(path) == false && method != "POST")
 		return 0;
 	return 1;
 }
-
-
 
 int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
 	int			mode = 0;
@@ -125,19 +111,13 @@ int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
 	return 0;
 }
 
-
-
 const Location* Router::bestRouteFound(const std::string& uri, const Server& server) {
 	return findLocation(uri, server);
 }
 
-
-
 bool Router::methodImplemented(const std::string& method) {
 	return (method == "GET" || method == "DELETE" || method == "POST" || method == "HEAD");
 }
-
-
 
 int Router::methodAllowed(const std::string& method, const Location *loc) {
 	if (loc->allowed_methods.size() == 0)

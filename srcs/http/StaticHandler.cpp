@@ -33,8 +33,6 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 	setErrorPage(loc);
 }
 
-
-
 StaticHandler::StaticHandler(const Location& loc, int code, const std::string& body) : _req(NULL), _loc(&loc) {
 	_ncode = code;
 	_body = body;
@@ -42,13 +40,11 @@ StaticHandler::StaticHandler(const Location& loc, int code, const std::string& b
 	setErrorPage(loc);
 }
 
-
-
 void	StaticHandler::handleGet() {
 	_type = getType(_path);
 
 	std::ifstream file(_path.c_str());
-	
+
 	if (!file.is_open()) {
 		_ncode = 403;
 		_type = getType(".html");
@@ -60,8 +56,6 @@ void	StaticHandler::handleGet() {
 	_body = ss.str();
 	file.close();
 }
-
-
 
 void	StaticHandler::handlePost() {
 	bool			exist = fileFound(_path);
@@ -79,14 +73,12 @@ void	StaticHandler::handlePost() {
 
 	if (pos != std::string::npos || pos2 != std::string::npos)
 		body = decodeHexa(_req->body, 1);
-	
+
 	file << body;
 
 	if (!exist)
 		_ncode = 201;
 }
-
-
 
 void	StaticHandler::handleDelete() {
 	int res = unlink(_path.c_str());
@@ -97,13 +89,11 @@ void	StaticHandler::handleDelete() {
 		_ncode = 204;
 }
 
-
-
 void	StaticHandler::throwList() {
 	_type = getType(".html");
 	std::string path = _loc->root + _req->uri;
-	// if (path[path.length() - 1] != '/')
-	// 	path = path + '/';
+	if (path[path.length() - 1] != '/')
+		path = path + '/';
 
 	std::string html;
 	DIR* dir = opendir(path.c_str());
@@ -130,14 +120,12 @@ void	StaticHandler::throwList() {
 	_body += "</ul>\n</body>\n</html>\n";
 }
 
-
-
 void StaticHandler::headerListe(const std::string& path) {
 
 	_body += "<!DOCTYPE html>\n";
 	_body += "<html>\n";
 	_body += "<head>\n";
-	// _body += "<link rel=\"stylesheet\" href=\"/css/style.css\">";
+	_body += "<link rel=\"stylesheet\" href=\"/css/style.css\">";
 	_body += "<title>Index of " + path + "</title>\n";
 	_body += "</head>\n";
 	_body += "<body>\n";

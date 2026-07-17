@@ -10,29 +10,21 @@ struct UploadedFile {
 	size_t 		size;
 };
 
-
-
 struct Multipart {
 	std::map<std::string, std::string>	uploadedForm;
-	// plusieurs fichiers peuvent partager le même nom de champ (input multiple) :
-	// il faut pouvoir garder toutes les entrées avec une clé identique
 	std::multimap<std::string, UploadedFile>	uploadedFiles;
 };
-
-
 
 struct HttpRequest {
 	int									error;
 
 	std::string							uri;
 	std::string							req;
-	std::string							body;	
+	std::string							body;
 	std::string							method;
 	std::string							version;
 	std::map<std::string, std::string>	headers;
-	
 
-	//Multipart
 	Multipart							mp;
 	bool								isMultipart;
 	std::string							boundary;

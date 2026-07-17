@@ -9,8 +9,6 @@ MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req,
 
     std::multimap<std::string, UploadedFile>::const_iterator i;
     for (i = _req->mp.uploadedFiles.begin(); i != _req->mp.uploadedFiles.end(); i++) {
-        // ne garder que le nom de fichier : un filename client contenant
-        // "../../x" permettait d'écrire hors du dossier d'upload
 		std::string fname = i->second.filename;
         size_t slash = fname.rfind('/');
         if (slash != std::string::npos)
@@ -22,7 +20,6 @@ MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req,
         bool			exist = fileFound(path);
 		std::ofstream	file(path.c_str(), std::ios::binary);
         if (!file.is_open()) {
-			// dossier absent ou non inscriptible
             _ncode = 500;
             body += "<li>" + fname + " failed</li>";
             continue ;
@@ -38,7 +35,6 @@ MultipartHandler::MultipartHandler(const Location& loc, const HttpRequest& req,
 
     setErrorPage(loc);
 }
-
 
 void    MultipartHandler::setBody(const std::string& b) {
     _body += "<!DOCTYPE html>\n";

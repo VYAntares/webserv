@@ -11,8 +11,6 @@ struct Part {
     std::string name;
 };
 
-
-
 class MultipartParser {
     public:
         MultipartParser(std::string& boundary, std::string& body): _boundary(boundary), _body(body) {}

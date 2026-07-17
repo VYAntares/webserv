@@ -11,7 +11,6 @@ class ARequestHandler {
 		std::string			buildResponse();
 		virtual				~ARequestHandler() {}
 
-		// devrait etre que dans staticHandler.hpp et errorHandler.hpp
 		void				getErrorPage();
 		void				setErrorPage(const BaseBlock& b);
 		void 				handleReturn(const std::pair<int, std::string>& return_path);
@@ -20,7 +19,7 @@ class ARequestHandler {
 		void				stripBody() { _body.clear(); _noBody = true; }
 		void				setType(std::string& type) { _type = type; }
 		void				setCookie(std::string& cookie) { _cookie = cookie; }
-		
+
 	protected:
 		int					_ncode;
 		std::string			_type;
@@ -29,7 +28,6 @@ class ARequestHandler {
 		bool				_keepAlive;
 		bool				_noBody;
 
-		// devrait etre que dans staticHandler.hpp et errorHandler.hpp
 		std::string			_location;
 		std::string			_errorpage;
 };

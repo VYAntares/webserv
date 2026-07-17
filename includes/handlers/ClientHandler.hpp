@@ -27,15 +27,15 @@ class ClientHandler : public IEventHandler, public IResponseSink {
 		size_t				_sent;
 		Server				_server;
 		HttpParser			_parser;
-		ARequestHandler*	_rh;        // owned — deleted after response is sent
-		std::string			_response;  // cached once per request, avoids re-building on each send
-		std::string			_peerAddr;  // "ip:port" — used for logs and CGI REMOTE_ADDR
+		ARequestHandler*	_rh;
+		std::string			_response;
+		std::string			_peerAddr;
 
-		bool				_keepAlive;   // false → close after send
+		bool				_keepAlive;
 		time_t				_lastActivity;
-		CGIReadHandler*		_cgiRead;   // CGI en cours (NULL sinon) — pour se détacher à la destruction
+		CGIReadHandler*		_cgiRead;
 
-		void				_reset();   // resets per-request state for keep-alive
+		void				_reset();
 		std::string			_buildPeerStr(const struct sockaddr_in& addr) const;
 		void				_handleComplete();
 		void				_handleError();

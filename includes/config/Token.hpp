@@ -4,14 +4,12 @@
 #include <cstddef>
 
 enum TokenType {
-	TOK_WORD,	// listen, GET, 8080, tout ce qui n'est pas un symbole
-	TOK_LBRACE,	// {
-	TOK_RBRACE,	// }
-	TOK_SEMI,	// ;
-	TOK_EOF		// evite de checker _pos < _token.size()
+	TOK_WORD,
+	TOK_LBRACE,
+	TOK_RBRACE,
+	TOK_SEMI,
+	TOK_EOF
 };
-
-
 
 struct Token {
 	TokenType	type;

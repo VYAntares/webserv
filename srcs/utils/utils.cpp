@@ -2,8 +2,6 @@
 
 static std::map<std::string, std::string> mime_types = init_mime_types();
 
-
-
 std::string getReason(int code) {
     
     switch (code) {
@@ -26,8 +24,6 @@ std::string getReason(int code) {
 	}
 }
 
-
-
 std::string getType(const std::string& path) {
 	std::string	ext;
 
@@ -43,8 +39,6 @@ std::string getType(const std::string& path) {
 	return "application/octet-stream";
 }
 
-
-
 bool isDir(const std::string& path) {
 	struct stat st;
 
@@ -53,12 +47,9 @@ bool isDir(const std::string& path) {
 	return S_ISDIR(st.st_mode);
 }
 
-
-
 std::map<std::string, std::string> init_mime_types() {
     std::map<std::string, std::string> ext;
 
-    // Texte
     ext[".html"] = "text/html";
     ext[".css"]  = "text/css";
     ext[".js"]   = "application/javascript";
@@ -66,7 +57,6 @@ std::map<std::string, std::string> init_mime_types() {
     ext[".txt"]  = "text/plain";
     ext[".xml"]  = "application/xml";
 
-    // Images
     ext[".png"]  = "image/png";
     ext[".jpg"]  = "image/jpeg";
     ext[".jpeg"] = "image/jpeg";
@@ -74,12 +64,9 @@ std::map<std::string, std::string> init_mime_types() {
     ext[".svg"]  = "image/svg+xml";
     ext[".ico"]  = "image/x-icon";
 
-    // Application
     ext[".pdf"]  = "application/pdf";
     return ext;
 }
-
-
 
 bool	fileFound(const std::string& path) {
 	struct stat forbuf;
@@ -89,20 +76,12 @@ bool	fileFound(const std::string& path) {
 	return true;
 }
 
-
-
 std::string itos(int n) {
     std::stringstream ss;
     ss << n;
     return ss.str();
 }
 
-
-
-// longest-prefix match : réduit l'URI segment par segment jusqu'à trouver
-// une location dont le path correspond exactement (même logique que le
-// Router — partagée pour que HttpParser applique la limite de body de la
-// bonne location dès la lecture des headers, avant de lire le body)
 const Location* findLocation(const std::string& uri, const Server& server) {
     std::string shorturi = uri;
     const Location *loc = NULL;
@@ -129,8 +108,6 @@ const Location* findLocation(const std::string& uri, const Server& server) {
     return loc;
 }
 
-
-
 std::string getParentDirectory(const std::string& path) {
     size_t pos = path.rfind('/');
     if (pos == std::string::npos)
@@ -139,8 +116,6 @@ std::string getParentDirectory(const std::string& path) {
         return "/";
     return path.substr(0, pos);
 }
-
-
 
 static int hexaToStr(char c) {
     if (c >= '0' && c <= '9')
@@ -151,8 +126,6 @@ static int hexaToStr(char c) {
         return c - 'a' + 10;
     return -1;
 }
-
-
 
 std::string decodeHexa(const std::string& uri, bool plus) {
     std::string newuri;
@@ -176,8 +149,6 @@ std::string decodeHexa(const std::string& uri, bool plus) {
     return newuri;
 }
 
-
-
 bool isEncoded(const std::string& uri) {
     size_t pos = uri.find('%');
     if (pos != std::string::npos)
@@ -185,19 +156,12 @@ bool isEncoded(const std::string& uri) {
     return false;
 }
 
-
-
 bool    isError(int code) {
     if (code >= 400 && code < 600)
         return true;
     return false;
 }
 
-
-
-// Un chemin comme /var/www/../../etc/passwd doit être "résolu" avant d'être comparé à la racine autorisée, 
-// sinon on peut sortir du dossier racine avec des ... L'algo découpe le chemin en segments séparés par /, et pour chaque segment :
-// get ../../../ ca va acceder a des endroit frauduleux
 std::string letNormalize(const std::string& p) {
     std::vector<std::string>    sgmt;
     std::string                 seg;
@@ -228,8 +192,6 @@ std::string letNormalize(const std::string& p) {
 	
     return result;
 }
-
-
 
 std::string normalizePath(const std::string& p, const std::string& root) {
     std::string nroot = letNormalize(root);
