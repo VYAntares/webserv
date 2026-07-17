@@ -4,16 +4,17 @@
 #include <map>
 
 struct UploadedFile {
-	std::string	data;
-	std::string	contentType;
-	std::string	filename;
-	size_t 		size;
+	std::string		data;
+	std::string		contentType;
+	std::string		filename;
+	size_t 			size;
 };
 
 
 
 struct Multipart {
-	std::map<std::string, std::string>	uploadedForm;
+	std::map<std::string, std::string>			uploadedForm;
+
 	// plusieurs fichiers peuvent partager le même nom de champ (input multiple) :
 	// il faut pouvoir garder toutes les entrées avec une clé identique
 	std::multimap<std::string, UploadedFile>	uploadedFiles;

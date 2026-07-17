@@ -13,13 +13,13 @@ class ConfigLoader {
 		void				printConfig() const;
 
 	private:
+		void				startLexer();
+		void				startParser();
+		void				startValidator();
+		
 		Config				_c;
 
 		std::string			_input;
 		std::vector<Token>	_tokens;
-
-		void				startLexer();
-		void				startParser();
-		void				startValidator();
 };
 

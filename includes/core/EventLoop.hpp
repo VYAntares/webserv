@@ -13,8 +13,8 @@
 // pour conserver aussi le type associé et savoir quelle méthode appeler
 // (handle_accept, handle_input, handle_output...).
 struct HandlerEntry {
-	IEventHandler*	handler;
-	EventType		type;
+	IEventHandler*			handler;
+	EventType				type;
 };
 
 
@@ -31,14 +31,14 @@ class EventLoop {
 		// Cela permet à n'importe quel handler (ServerHandler, ClientHandler, CGIWriteHandler...)
 		// de s'enregistrer ou se retirer sans avoir besoin d'un pointeur vers EventLoop.
 		// Ils appellent simplement EventLoop::instance()->register_handler(this, ...).
-		static EventLoop* instance();
-		static void destroy();
+		static EventLoop*	instance();
+		static void			destroy();
 
-		void register_handler(IEventHandler* h, EventType type);
-		void modify_handler(IEventHandler* h, EventType newType);
-		void remove_handler(IEventHandler* h);
-		void handle_events();
-		void checkTimeOut();
+		void				register_handler(IEventHandler* h, EventType type);
+		void				modify_handler(IEventHandler* h, EventType newType);
+		void				remove_handler(IEventHandler* h);
+		void				handle_events();
+		void				checkTimeOut();
 
 	private:
 		EventLoop();

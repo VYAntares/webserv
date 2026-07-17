@@ -16,10 +16,10 @@ class ARequestHandler {
 		void				setErrorPage(const BaseBlock& b);
 		void 				handleReturn(const std::pair<int, std::string>& return_path);
 
-		void				setKeepAlive(bool ka) { _keepAlive = ka; }
-		void				stripBody() { _body.clear(); _noBody = true; }
-		void				setType(std::string& type) { _type = type; }
-		void				setCookie(std::string& cookie) { _cookie = cookie; }
+		void				setKeepAlive(bool ka)			{ _keepAlive = ka; }
+		void				stripBody()						{ _body.clear(); _noBody = true; }
+		void				setType(std::string& type)		{ _type = type; }
+		void				setCookie(std::string& cookie)	{ _cookie = cookie; }
 		
 	protected:
 		int					_ncode;

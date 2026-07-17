@@ -19,8 +19,8 @@ class CGIReadHandler;
 // l'autre garderait un pointeur pendouillant (use-after-free).
 class IResponseSink {
 	public:
-		virtual void onCgiDone(const std::string& rawHttpResp) = 0;
-		virtual void onCgiStart(CGIReadHandler* rd) { (void)rd; }
-		virtual ~IResponseSink() {}
+		virtual void	onCgiDone(const std::string& rawHttpResp) = 0;
+		virtual void	onCgiStart(CGIReadHandler* rd) { (void)rd; }
+		virtual			~IResponseSink() {}
 };
 

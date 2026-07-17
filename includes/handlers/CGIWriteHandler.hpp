@@ -8,8 +8,8 @@ class CGIWriteHandler : public IEventHandler {
 		CGIWriteHandler(int fd, const std::string& body);
 		~CGIWriteHandler();
 
-		int getFd()	const;
-		int handle_output();
+		int					getFd()	const;
+		int					handle_output();
 
 	private:
 		int 				_fd;

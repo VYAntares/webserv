@@ -11,17 +11,17 @@ class Lexer {
 		std::vector<Token>	tokenize();
 
 	private:
-		std::string	_input;
-		size_t		_pos;
-		size_t		_line;	// débogage en ligne et colonne
-		size_t		_col;	// débogage
-
-		bool		atEnd();
-		char		current();
-		void		advance();
-		void		skipWhitespacesAndComments();	
-		Token		readWord();
-		Token		readQuote(char quote);
-		Token		makeToken(TokenType type, const std::string& value);
+		bool				atEnd();
+		char				current();
+		void				advance();
+		void				skipWhitespacesAndComments();	
+		Token				readWord();
+		Token				readQuote(char quote);
+		Token				makeToken(TokenType type, const std::string& value);
+		
+		std::string			_input;
+		size_t				_pos;
+		size_t				_line;	// débogage en ligne et colonne
+		size_t				_col;	// débogage
 };
 

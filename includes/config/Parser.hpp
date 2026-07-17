@@ -10,10 +10,6 @@ class Parser {
 		Config				parse();
 
 	private:
-		size_t				_pos;
-		std::vector<Token>	_tokens;
-		Config				_c;
-
 		void 				parseServerBlock();
 		void				parseLocationBlock(Server& s);
 
@@ -32,5 +28,9 @@ class Parser {
 		Token				current();
 		Token				consume();
 		Token				expect(TokenType type);
+		
+		size_t				_pos;
+		Config				_c;
+		std::vector<Token>	_tokens;
 };
 

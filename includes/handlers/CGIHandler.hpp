@@ -6,11 +6,8 @@
 
 class CGIHandler {
 	public:
-		CGIHandler(const HttpRequest& req, std::string& path,
-					std::string& interpreter,
-					const std::string& peerAddr,
-					const Location* loc,
-					IResponseSink* sink);
+		CGIHandler(const HttpRequest& req, std::string& path, std::string& interpreter,
+					const std::string& peerAddr, const Location* loc, IResponseSink* sink);
 		~CGIHandler();
 
 	private:

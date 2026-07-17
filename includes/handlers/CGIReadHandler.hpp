@@ -3,29 +3,22 @@
 #include "../core/IEventHandler.hpp"
 #include "../handlers/ClientHandler.hpp"
 
-// struct output {
-// 	int			status;
-// 	std::string	contentT;
-// 	std::string	header;
-// 	std::string body;
-
-// 	output() : status(200), contentT(""), header(""), body("") {}
-// };
-
 class CGIReadHandler : public IEventHandler {
 	public:
 		CGIReadHandler(int fd, pid_t pid, const Location* loc, IResponseSink* sink);
 		~CGIReadHandler();
 
-		int 			getFd()		 const { return _fd; }
+		int 			getFd()				const { return _fd; }
 		int 			handle_input();
+		
 		// le CGI participe au timeout de la boucle : un script qui ne répond
 		// jamais est tué au bout de CLIENT_TIMEOUT au lieu de pendre à vie
-		time_t			getLastActivity() const { return _lastActivity; }
+		time_t			getLastActivity()	const { return _lastActivity; }
 		
 		// appelé par ~ClientHandler si le client meurt avant le CGI :
 		// on ne doit plus jamais toucher au sink après ça
-		void			detachSink() { _sink = NULL; }
+		void			detachSink()			  { _sink = NULL; }
+		
 		void			reapChild(int& status);
 		std::string		parseCgi();
 
