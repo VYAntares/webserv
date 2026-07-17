@@ -1,55 +1,139 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>webserv</title>
-	<link rel="stylesheet" href="/default/assets/style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/default/assets/style.css">
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow-x: hidden;
+  }
+
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 4rem 2rem;
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    z-index: 1;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(255,107,74,0.08) 0%, transparent 70%);
+    top: -200px; right: -100px;
+    pointer-events: none;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(74,224,255,0.06) 0%, transparent 70%);
+    bottom: -150px; left: -100px;
+    pointer-events: none;
+  }
+  .hero-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.35em;
+    color: var(--accent-2);
+    margin-bottom: 2rem;
+  }
+  .hero h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(3.5rem, 9vw, 7rem);
+    font-weight: 400;
+    line-height: 1.05;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    margin: 0 0 1rem;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent-4);
+  }
+  .hero-sub {
+    font-family: 'DM Sans', sans-serif;
+    font-size: clamp(0.95rem, 2vw, 1.15rem);
+    color: var(--text-dim);
+    max-width: 560px;
+    line-height: 1.7;
+    margin: 0 auto 3rem;
+  }
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.9rem 2.2rem;
+    border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 500;
+    text-decoration: none;
+    color: var(--accent-2);
+    background: rgba(74,224,255,0.08);
+    border: 1px solid rgba(74,224,255,0.25);
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  }
+  .hero-cta:hover {
+    background: rgba(74,224,255,0.16);
+    border-color: rgba(74,224,255,0.45);
+    transform: translateY(-2px);
+    text-decoration: none;
+  }
+  .hero-cta .arrow { font-size: 1.2rem; }
+
+  .footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding: 1.2rem;
+    z-index: 2;
+  }
+  .footer p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+    opacity: 0.5;
+  }
+  .footer a { color: var(--accent-2); }
+</style>
 </head>
 <body>
-<main>
-	<h1>webserv</h1>
-	<p class="desc">
-		Serveur HTTP en C++98, non-bloquant, un seul <code>epoll()</code> pour toutes les I/O.
-		Racine servie : <code>www</code>, port <code>8080</code>.
-	</p>
 
-	<div class="note info">
-		Pour la démonstration complète (tests automatisés couvrant tout le sujet), aller sur
-		<a href="/default/"><strong>/default/</strong></a> — lancer le serveur avec
-		<code>./webserv conf/demo.conf</code> pour débloquer tous les scénarios (413, 403, redirection,
-		second port, etc.).
-	</div>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
 
-	<h2>Racine du site (<code>default.conf</code>)</h2>
-	<div class="grid2">
-		<div class="card">
-			<h3><a href="/default/">Suite de tests</a></h3>
-			<p class="desc">Pages de démonstration interactives : GET/HEAD, POST, upload, DELETE, CGI, erreurs, stress.</p>
-		</div>
-		<div class="card">
-			<h3><a href="/files/">/files/</a></h3>
-			<p class="desc">Autoindex : listing de répertoire généré par le serveur.</p>
-		</div>
-		<div class="card">
-			<h3><a href="/cgi-bin/hello.py">/cgi-bin/hello.py</a></h3>
-			<p class="desc">Script CGI exécuté par le serveur (Python).</p>
-		</div>
-		<div class="card">
-			<h3><a href="/old-page">/old-page</a></h3>
-			<p class="desc">Redirection 301 configurée côté serveur.</p>
-		</div>
-	</div>
+<section class="hero">
+  <span class="hero-label">42 Project — Serveur HTTP en C++98</span>
+  <h1>Webserv<br><em>en production</em></h1>
+  <p class="hero-sub">
+    Serveur HTTP non-bloquant construit from scratch — sockets TCP, epoll,
+    parsing HTTP/1.1, CGI, uploads, configuration nginx-like.
+  </p>
+  <a href="/default/" class="hero-cta">
+    Suite de tests
+    <span class="arrow">→</span>
+  </a>
+</section>
 
-	<h2>Upload rapide (multipart)</h2>
-	<div class="card">
-		<form action="/upload" method="post" enctype="multipart/form-data">
-			<input type="file" name="file">
-			<button type="submit" class="btn primary">Envoyer</button>
-		</form>
-	</div>
-</main>
+<footer class="footer">
+  <p>webserv · <a href="/studies/webserv-mindmap.html">Notes d'étude</a> · <a href="/default/">Tests</a> · <a href="/files/">Files</a></p>
+</footer>
+
 </body>
 </html>
-</content>
-</invoke>
