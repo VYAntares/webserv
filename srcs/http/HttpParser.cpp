@@ -60,7 +60,6 @@ void HttpParser::treatHeader() {
 
 void HttpParser::treatBody() {
 	size_t left = _bodyExcepted - _bodyReceived;
-	// size_t acceptable = std::min(left, _buffer.size());
 	size_t acceptable = std::min(left, _buffer.size());
 	if (_errorCode == 413) {
 		// corps trop gros : jeter les données au lieu de les

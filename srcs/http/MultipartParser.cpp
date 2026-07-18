@@ -28,6 +28,8 @@ std::vector<Part> MultipartParser::parseMultiPart() {
     if (pos == std::string::npos)
         return parts;
 
+    // saute "--boundary" pour arriver juste avant le \r\n qui
+    // separe le boundary des headers de la premiere part
     pos += _boundary.length() + 2;
     while (pos < _body.length()) {
         size_t next = _body.find("\r\n--" + _boundary, pos);
@@ -39,12 +41,15 @@ std::vector<Part> MultipartParser::parseMultiPart() {
             datapart = _body.substr(pos, next - pos);
 
         Part p = parsePart(datapart);
+        // une part sans "name" est ignoree
         if (!p.name.empty())
             parts.push_back(p);
 
         if (next == std::string::npos)
             break ;
 
+        // saute "\r\n--boundary" (4 = "\r\n" + "--") pour repartir juste
+        // avant les headers de la part suivante
         pos = next + 4 + _boundary.length();
         if (pos > _body.length())
             break;

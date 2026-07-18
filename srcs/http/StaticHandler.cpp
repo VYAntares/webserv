@@ -16,6 +16,9 @@ StaticHandler::StaticHandler(const HttpRequest& req, const Location& loc, const 
 	if (isDir(path) && req.method != "POST") {
 		std::string uriPath = req.uri.substr(0, req.uri.find('?'));
 		if (uriPath[uriPath.length() - 1] != '/') {
+			// sans le slash final, les liens relatifs de l'index/autoindex
+			// pointeraient au mauvais niveau (ex: /dir/img.png au lieu de
+			// /dir/img.png depuis /dir) : on force le redirect avant de servir
 			const std::pair<int, std::string> toreturn(301, uriPath + '/');
 			handleReturn(toreturn);
 		} else if (loc.autoindex == 1)
@@ -74,6 +77,8 @@ void	StaticHandler::handlePost() {
 		return ;
 	}
 
+	// pas de Content-Type fiable pour distinguer urlencoded d'un body brut :
+	// on suppose que la presence de '+' ou '%' signale un encodage a decoder
 	size_t pos  = _req->body.find('+');
 	size_t pos2 = _req->body.find('%');
 
@@ -102,8 +107,6 @@ void	StaticHandler::handleDelete() {
 void	StaticHandler::throwList() {
 	_type = getType(".html");
 	std::string path = _loc->root + _req->uri;
-	// if (path[path.length() - 1] != '/')
-	// 	path = path + '/';
 
 	std::string html;
 	DIR* dir = opendir(path.c_str());

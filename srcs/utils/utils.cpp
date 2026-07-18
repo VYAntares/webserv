@@ -195,9 +195,11 @@ bool    isError(int code) {
 
 
 
-// Un chemin comme /var/www/../../etc/passwd doit être "résolu" avant d'être comparé à la racine autorisée, 
-// sinon on peut sortir du dossier racine avec des ... L'algo découpe le chemin en segments séparés par /, et pour chaque segment :
-// get ../../../ ca va acceder a des endroit frauduleux
+// un chemin comme /var/www/../../etc/passwd doit être "résolu" avant d'être
+// comparé à la racine autorisée, sinon "../.." permet de sortir du dossier
+// root. Le chemin est découpé en segments séparés par '/' : un ".."
+// dépile le dernier segment résolu, ou s'accumule si on est déjà hors racine
+// (pour que normalizePath() puisse détecter et rejeter le chemin)
 std::string letNormalize(const std::string& p) {
     std::vector<std::string>    sgmt;
     std::string                 seg;
@@ -238,6 +240,8 @@ std::string normalizePath(const std::string& p, const std::string& root) {
     if (res.compare(0, nroot.size(), nroot) != 0)
 		return "";
 
+	// verifie que nroot match jusqu-au slash : sans ca,
+	// un root "/var/www" matcherait aussi "/var/www2/..."
     if (res.size() > nroot.size() && res[nroot.size()] != '/')
         return "";
     return res;

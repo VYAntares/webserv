@@ -44,7 +44,9 @@ void	ARequestHandler::getErrorPage() {
 	file.close();
 }
 
-
+// fonction reprise par Multipart, Static, et Error Handler
+// on ne fabrique un body d'erreur generique que si rien n'a ete rempli
+// avant (ex: handleReturn a deja mis _body/_location pour une redirection)
 std::string ARequestHandler::buildResponse() {
     if (!_noBody && isError(_ncode) && _location.empty() && _body.empty()) {
 		if (_errorpage.length() > 0)

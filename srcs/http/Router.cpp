@@ -55,6 +55,9 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 
 	std::string interpreter = isCgi(uriPath, loc);
 	if (!interpreter.empty() && (req.method == "GET" || req.method == "POST")) {
+		// pas d'ARequestHandler ici : le CGI est asynchrone et enverra la
+		// reponse plus tard via sink (avec ClientHandler::onCgiDone) ; le NULL
+		// indique a l'appelant que la reponse n'est pas prete tout de suite
 		CGIHandler cgi(req, path, interpreter, peerAddr, loc, sink);
 		return NULL;
 	}
@@ -66,7 +69,7 @@ ARequestHandler*	Router::route(const HttpRequest& req, const Server& server,
 }
 
 
-
+// on regarde si l'extension du fichier correspond a une des extensions cgi_pass definies dans la location
 std::string Router::isCgi(const std::string& uri, const Location* loc) {
 	size_t pos = uri.rfind('.');
 	std::string ext;
@@ -80,7 +83,8 @@ std::string Router::isCgi(const std::string& uri, const Location* loc) {
 }
 
 
-
+// on memorise si l'uri se terminait par un slash avant normalizePath (qui le supprime), pour le remettre ensuite
+// retourne "" quand il faut passer par l'index ou l'autoindex de StaticHandler
 const std::string Router::resolvePath(const Location *loc, const std::string& uri) {
 	bool    	slash = (uri[uri.length() - 1] == '/');
 	std::string path  = normalizePath(loc->root + uri, loc->root);
@@ -101,7 +105,7 @@ const std::string Router::resolvePath(const Location *loc, const std::string& ur
 }
 
 
-
+// verifie si le fichier existe ; pour POST on laisse passer meme s'il n'existe pas encore (il sera cree)
 int Router::fileExist(const std::string& path, const std::string& method) {
 	if (fileFound(path) == false && method != "POST")
 		return 0;
@@ -109,7 +113,8 @@ int Router::fileExist(const std::string& path, const std::string& method) {
 }
 
 
-
+// verifie les droits avec access() selon le mode requis par la methode (R_OK/W_OK)
+// pour POST le fichier n'existe pas encore, donc on teste les droits du dossier parent
 int Router::forbiddenAccess(const std::string& uri, const std::string& method) {
 	int			mode = 0;
 	std::string	pathtoaccess = uri;
@@ -138,7 +143,7 @@ bool Router::methodImplemented(const std::string& method) {
 }
 
 
-
+// si aucune methode n'est definie dans la location, toutes sont autorisees
 int Router::methodAllowed(const std::string& method, const Location *loc) {
 	if (loc->allowed_methods.size() == 0)
 		return 1;
