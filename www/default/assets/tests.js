@@ -148,7 +148,7 @@ window.T = (function () {
 		["bonus.html",  "Bonus"],
 	];
 	const external = [
-		["/studies/webserv-mindmap.html", "Études"],
+		["/webserv-studies/webserv-mindmap.html", "Études"],
 	];
 	const here = location.pathname.split("/").pop() || "index.html";
 	const nav = document.createElement("nav");

@@ -54,7 +54,7 @@
 			<a href="/default/errors/403.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 403</a>
 			<button class="trigger-btn" data-url="/private/" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/private/</pre>
+			<pre class="curl-cmd">curl -i http://localhost:8080/private/</pre>
 		</div>
 
 		<!-- 404 -->
@@ -64,7 +64,7 @@
 			<a href="/default/errors/404.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 404</a>
 			<button class="trigger-btn" data-url="/nexiste-pas" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/nexiste-pas</pre>
+			<pre class="curl-cmd">curl -i http://localhost:8080/nexiste-pas</pre>
 		</div>
 
 		<!-- 405 -->
@@ -74,7 +74,7 @@
 			<a href="/default/errors/405.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 405</a>
 			<button class="trigger-btn" data-method="POST" data-url="/" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i -X POST http://100.124.128.83:8080/</pre>
+			<pre class="curl-cmd">curl -i -X POST http://localhost:8080/</pre>
 		</div>
 
 		<!-- 413 -->
@@ -84,7 +84,7 @@
 			<a href="/default/errors/413.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 413</a>
 			<button class="trigger-btn" data-method="POST" data-url="/tiny/limit.txt" data-body="200" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i -X POST -d "$(python3 -c "print('x'*200)")" http://100.124.128.83:8080/tiny/limit.txt</pre>
+			<pre class="curl-cmd">curl -i -X POST -d "$(python3 -c "print('x'*200)")" http://localhost:8080/tiny/limit.txt</pre>
 		</div>
 
 		<!-- 431 -->
@@ -94,7 +94,7 @@
 			<a href="/default/errors/431.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 431</a>
 			<button class="trigger-btn" data-url="/" data-bigheader="1" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i -H "X-Big: $(python3 -c "print('A'*40000)")" http://100.124.128.83:8080/</pre>
+			<pre class="curl-cmd">curl -i -H "X-Big: $(python3 -c "print('A'*40000)")" http://localhost:8080/</pre>
 		</div>
 
 		<!-- 500 -->
@@ -104,7 +104,7 @@
 			<a href="/default/errors/500.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 500</a>
 			<button class="trigger-btn" data-url="/cgi-bin/crash.py" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/cgi-bin/crash.py</pre>
+			<pre class="curl-cmd">curl -i http://localhost:8080/cgi-bin/crash.py</pre>
 		</div>
 
 		<!-- 501 -->
@@ -114,7 +114,7 @@
 			<a href="/default/errors/501.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 501</a>
 			<button class="trigger-btn" data-method="PATCH" data-url="/" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i -X PATCH http://100.124.128.83:8080/</pre>
+			<pre class="curl-cmd">curl -i -X PATCH http://localhost:8080/</pre>
 		</div>
 
 		<!-- 502 -->
@@ -124,7 +124,7 @@
 			<a href="/default/errors/502.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 502</a>
 			<button class="trigger-btn" data-url="/cgi-bin/sigsegv.py" data-target="1">🚀 Déclencher</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/cgi-bin/sigsegv.py</pre>
+			<pre class="curl-cmd">curl -i http://localhost:8080/cgi-bin/sigsegv.py</pre>
 		</div>
 
 		<!-- 504 -->
@@ -134,7 +134,7 @@
 			<a href="/default/errors/504.html" target="_blank" class="btn" style="display:inline-block;margin:.2rem;">📄 Page 504</a>
 			<button class="trigger-btn" data-url="/cgi-bin/slow.py" data-target="1">🚀 Déclencher (~30s)</button>
 			<p style="font-size:.68rem;color:var(--text-muted);margin:.4rem 0 .2rem;">curl :</p>
-			<pre class="curl-cmd">curl -i http://100.124.128.83:8080/cgi-bin/slow.py</pre>
+			<pre class="curl-cmd">curl -i http://localhost:8080/cgi-bin/slow.py</pre>
 		</div>
 	</div>
 
@@ -259,7 +259,8 @@
 			btn.disabled = true;
 
 			// Pour GET : ouvrir direct dans un nouvel onglet (1 seule requête)
-			if (openTarget && method === "GET") {
+			// sauf si on doit injecter un header custom (bigHeader), impossible via window.open
+			if (openTarget && method === "GET" && !bigHeader) {
 				window.open(url, "_blank");
 				btn.textContent = "onglet ✔";
 				btn.style.background = "rgba(74,222,128,0.15)";
