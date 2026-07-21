@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bonus — Plusieurs interpréteurs CGI dans notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#config" class="step-pill active" id="nav-config"><span class="step-dot"></span>Config</a>
+    <div class="step-connector"></div>
+    <a href="#detection" class="step-pill" id="nav-detection"><span class="step-dot"></span>D&eacute;tection</a>
+    <div class="step-connector"></div>
+    <a href="#execution" class="step-pill" id="nav-execution"><span class="step-dot"></span>Ex&eacute;cution</a>
+    <div class="step-connector"></div>
+    <a href="#exemple" class="step-pill" id="nav-exemple"><span class="step-dot"></span>Exemple</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Bonus &mdash; CGI multiples, dans notre code</div>
+  <h1>Plusieurs <em>interpr&eacute;teurs</em> CGI<br>&mdash; une <code>map</code> extension &rarr; binaire</h1>
+  <p class="header-desc">
+    Le bonus demande de supporter plus d'un langage CGI. Chez nous, ce n'est m&ecirc;me pas une
+    fonctionnalit&eacute; &agrave; part : le serveur ne conna&icirc;t <strong>aucun langage en dur</strong>.
+    Chaque <code>location</code> d&eacute;clare des paires <code>extension &rarr; interpr&eacute;teur</code> dans la config ;
+    au routing, on lit l'extension de l'URI et on lance le binaire correspondant. Ajouter PHP, Perl
+    ou Ruby, c'est <strong>une ligne de config</strong>, z&eacute;ro ligne de C++.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : LA CONFIG                  -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="config" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">cgi_pass &rarr; Location::cgi_pass</div>
+        <div class="step-subtitle">La config déclare les couples extension / binaire</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Une map par location</div>
+      <p>
+        Tout part du fichier de configuration. Une directive <code>cgi_pass .ext /chemin/interpr&eacute;teur;</code>
+        associe une extension &agrave; un ex&eacute;cutable. Le parser les range dans
+        <code>Location::cgi_pass</code>, une <code>std::map&lt;extension, interpr&eacute;teur&gt;</code>. Rien ne limite
+        &agrave; Python : n'importe quel binaire ex&eacute;cutable fait l'affaire, et on peut en d&eacute;clarer
+        autant qu'on veut dans la m&ecirc;me location.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">includes/config/ConfigStruct.hpp &mdash; la structure</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">struct</span> <span class="type">Location</span> : <span class="kw">public</span> <span class="type">BaseBlock</span> {
+<span class="highlight-line">    <span class="type">std::map</span>&lt;<span class="type">str</span>, <span class="type">str</span>&gt;   <span class="var">cgi_pass</span>;        <span class="cmt">// ".py" → "/usr/bin/python3", ".sh" → "/usr/bin/bash" ...</span></span>
+    <span class="type">std::vector</span>&lt;<span class="type">str</span>&gt;      <span class="var">allowed_methods</span>;
+    <span class="type">std::string</span>            <span class="var">upload_store</span>;
+    <span class="type">std::string</span>            <span class="var">path</span>;
+};</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/config/Parser.cpp &mdash; lecture de la directive</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">else if</span> (<span class="var">key</span> == <span class="str">"cgi_pass"</span>) {
+    <span class="type">std::string</span> <span class="var">ext</span> = <span class="fn-name">expect</span>(<span class="macro">TOK_WORD</span>).<span class="var">value</span>;      <span class="cmt">// ".py"</span>
+<span class="highlight-line">    <span class="var">l</span>.<span class="var">cgi_pass</span>[<span class="var">ext</span>] = <span class="fn-name">expect</span>(<span class="macro">TOK_WORD</span>).<span class="var">value</span>;   <span class="cmt">// "/usr/bin/python3"</span></span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Le Validator v&eacute;rifie chaque couple.</strong> Avant de d&eacute;marrer, il contr&ocirc;le que
+        chaque extension commence par un <code>.</code> et que l'interpr&eacute;teur point&eacute; est bien
+        <strong>ex&eacute;cutable</strong>. Une config qui pointe vers un binaire inexistant est refus&eacute;e
+        au lancement, pas d&eacute;couverte &agrave; la premi&egrave;re requ&ecirc;te.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : LA DÉTECTION AU ROUTING    -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="detection" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">Router::isCgi()</div>
+        <div class="step-subtitle">L'extension de l'URI choisit l'interpréteur</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Regarder l'URI, interroger la map</div>
+      <p>
+        Une fois la <code>location</code> match&eacute;e, <code>Router::isCgi()</code> extrait l'extension du chemin
+        demand&eacute; (tout ce qui suit le dernier <code>.</code>) et regarde si la map <code>cgi_pass</code> de cette
+        location la conna&icirc;t. Si oui, il renvoie le chemin de l'interpr&eacute;teur ; sinon une cha&icirc;ne vide &mdash;
+        et la requ&ecirc;te repart dans le circuit statique classique.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/Router.cpp &mdash; isCgi()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="fn-name">Router::isCgi</span>(<span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">uri</span>, <span class="kw">const</span> <span class="type">Location</span>* <span class="var">loc</span>) {
+    <span class="type">size_t</span> <span class="var">pos</span> = <span class="var">uri</span>.<span class="fn-name">rfind</span>(<span class="str">'.'</span>);
+    <span class="type">std::string</span> <span class="var">ext</span>;
+    <span class="kw">if</span> (<span class="var">pos</span> == <span class="type">std::string</span>::<span class="var">npos</span>)
+        <span class="kw">return</span> <span class="str">""</span>;
+    <span class="kw">else</span>
+        <span class="var">ext</span> = <span class="var">uri</span>.<span class="fn-name">substr</span>(<span class="var">pos</span>);            <span class="cmt">// ".py", ".sh", ".php" ...</span>
+<span class="highlight-line">    <span class="kw">if</span> (<span class="var">loc</span>-&gt;<span class="var">cgi_pass</span>.<span class="fn-name">find</span>(<span class="var">ext</span>) != <span class="var">loc</span>-&gt;<span class="var">cgi_pass</span>.<span class="fn-name">end</span>())</span>
+<span class="highlight-line">        <span class="kw">return</span> <span class="var">loc</span>-&gt;<span class="var">cgi_pass</span>.<span class="fn-name">find</span>(<span class="var">ext</span>)-&gt;<span class="var">second</span>;  <span class="cmt">// ← l'interpréteur choisi</span></span>
+    <span class="kw">return</span> <span class="str">""</span>;
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/Router.cpp &mdash; dans route()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Le déclencheur</span>
+      </div>
+      <pre><span class="type">std::string</span> <span class="var">interpreter</span> = <span class="fn-name">isCgi</span>(<span class="var">uriPath</span>, <span class="var">loc</span>);
+<span class="kw">if</span> (!<span class="var">interpreter</span>.<span class="fn-name">empty</span>() &amp;&amp; (<span class="var">req</span>.<span class="var">method</span> == <span class="str">"GET"</span> || <span class="var">req</span>.<span class="var">method</span> == <span class="str">"POST"</span>)) {
+<span class="highlight-new">    <span class="type">CGIHandler</span> <span class="fn-name">cgi</span>(<span class="var">req</span>, <span class="var">path</span>, <span class="var">interpreter</span>, <span class="var">peerAddr</span>, <span class="var">loc</span>, <span class="var">sink</span>);</span>
+    <span class="kw">return</span> <span class="macro">NULL</span>;   <span class="cmt">// asynchrone : réponse plus tard via onCgiDone()</span>
+}</pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>La d&eacute;cision tient dans la valeur de retour.</strong> <code>isCgi()</code> renvoie soit un chemin
+        d'interpr&eacute;teur, soit <code>""</code>. Ce simple <code>std::string</code> non vide est ce qui bascule
+        la requ&ecirc;te du monde &laquo; fichier statique &raquo; vers le monde &laquo; ex&eacute;cuter un programme &raquo;.
+        Pour en savoir plus sur la suite asynchrone, voir
+        <a href="../05-CGI/cgi-mecanisme.html">la fiche CGIProcess</a>.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : L'EXÉCUTION GÉNÉRIQUE      -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="execution" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">execve(interpreter, ...)</div>
+        <div class="step-subtitle">Le même mécanisme pour tous les langages</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">Pourquoi &ccedil;a marche pour n'importe quel langage</div>
+      <p>
+        Le c&oelig;ur de l'astuce : le serveur ne sait pas ce qu'est &laquo; Python &raquo; ou &laquo; bash &raquo;.
+        Il re&ccedil;oit une <strong>cha&icirc;ne</strong> (le chemin de l'interpr&eacute;teur) et la passe telle quelle &agrave;
+        <code>execve()</code>. Le contrat CGI est universel : l'enfant lit le body sur <code>stdin</code>,
+        &eacute;crit sa r&eacute;ponse sur <code>stdout</code>. Que ce soit <code>python3 script.py</code> ou
+        <code>bash script.sh</code>, le serveur s'en moque totalement.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; bloc enfant</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// interpreter vient de la config, file est le nom du script.</span>
+<span class="cmt">// execve les lance ensemble : "python3 hello.py", "bash calc.sh", ...</span>
+<span class="type">char</span>* <span class="var">av</span>[] = { (<span class="type">char</span>*)<span class="var">interpreter</span>.<span class="fn-name">c_str</span>(), (<span class="type">char</span>*)<span class="var">file</span>.<span class="fn-name">c_str</span>(), <span class="macro">NULL</span> };
+<span class="highlight-line"><span class="fn-name">execve</span>(<span class="var">interpreter</span>.<span class="fn-name">c_str</span>(), <span class="var">av</span>, <span class="var">envp</span>);</span>
+<span class="fn-name">exit</span>(<span class="num">1</span>);   <span class="cmt">// seulement si execve échoue → 500 côté serveur</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="analogy-panel" style="border-color: rgba(255,209,102,0.3);">
+        <div class="analogy-icon">&#128257;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-5);">Le serveur est agnostique</div>
+          <p>
+            Aucune condition <code>if (langage == "python")</code> nulle part. Le serveur manipule
+            uniquement des chemins et des flux. C'est la config qui apporte toute la connaissance
+            des langages &mdash; le code C++ reste identique quel que soit le CGI.
+          </p>
+        </div>
+      </div>
+      <div class="analogy-panel" style="border-color: rgba(74,224,255,0.3);">
+        <div class="analogy-icon">&#10133;</div>
+        <div class="analogy-text">
+          <div class="analogy-label" style="color: var(--accent-2);">Ajouter un langage = 1 ligne</div>
+          <p>
+            Pour supporter PHP, il suffit d'ajouter <code>cgi_pass .php /usr/bin/php-cgi;</code>
+            dans la location. Pas de recompilation, pas de nouveau code : la map grandit,
+            <code>isCgi()</code> trouve la nouvelle extension, <code>execve()</code> lance php-cgi.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : EXEMPLE CONCRET            -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="exemple" style="--step-color: var(--accent-4)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">default.conf</div>
+        <div class="step-subtitle">Python et Bash dans la même location</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-4); margin-bottom: 1.5rem;">
+      <div class="panel-label">Notre configuration r&eacute;elle</div>
+      <p>
+        Dans <code>conf/default.conf</code>, la location <code>/cgi-bin</code> d&eacute;clare deux interpr&eacute;teurs
+        c&ocirc;te &agrave; c&ocirc;te. Un <code>GET /cgi-bin/hello.py</code> part vers <code>python3</code>,
+        un <code>GET /cgi-bin/sysinfo.sh</code> part vers <code>bash</code> &mdash; m&ecirc;me serveur, m&ecirc;me
+        location, deux langages, choisis uniquement par l'extension.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-4)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">conf/default.conf</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Notre config</span>
+      </div>
+      <pre><span class="type">location</span> /cgi-bin {
+    <span class="var">root</span>       www;
+<span class="highlight-line">    <span class="var">cgi_pass</span>   .py /usr/bin/python3;   <span class="cmt"># *.py  → interpréteur Python</span></span>
+<span class="highlight-line">    <span class="var">cgi_pass</span>   .sh /usr/bin/bash;      <span class="cmt"># *.sh  → interpréteur Bash</span></span>
+}</pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-top: 1.5rem;">
+      <div class="panel-label">Le parcours de deux requ&ecirc;tes</div>
+      <table class="compare-table">
+        <tr><td><code>GET /cgi-bin/hello.py</code></td><td>ext <code>.py</code> &rarr; <code>/usr/bin/python3</code> &rarr; <code>execve</code></td></tr>
+        <tr><td><code>GET /cgi-bin/sysinfo.sh</code></td><td>ext <code>.sh</code> &rarr; <code>/usr/bin/bash</code> &rarr; <code>execve</code></td></tr>
+        <tr><td><code>GET /cgi-bin/page.html</code></td><td>ext <code>.html</code> inconnue &rarr; <code>""</code> &rarr; fichier statique</td></tr>
+      </table>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>L'extension d&eacute;cide, pas le nom.</strong> Comme <code>isCgi()</code> se base sur le
+        dernier <code>.</code> de l'URI, un fichier <code>rapport.py.txt</code> serait trait&eacute; comme
+        <code>.txt</code> (statique), et un <code>archive.tar.py</code> comme <code>.py</code> (CGI).
+        C'est toujours la <strong>derni&egrave;re</strong> extension qui compte.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; plusieurs CGI en <em>3 maillons</em></div>
+    <div class="summary-subtitle">config (map) &rarr; routing (extension) &rarr; execve (interpréteur générique)</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128221;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">La config porte la connaissance</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem;">cgi_pass .ext /bin</code> remplit une <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">map&lt;extension, interpréteur&gt;</code> par location, validée au démarrage.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128269;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Le routing choisit par extension</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem;">isCgi()</code> lit la dernière extension de l'URI et renvoie l'interpréteur, ou <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">""</code> pour rester en statique.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#9881;&#65039;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">L'exécution est agnostique</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem;">execve(interpreter, ...)</code> lance n'importe quel binaire ; le contrat stdin/stdout est le même pour tous. Nouveau langage = 1 ligne de config.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="cookies-sessions.html" class="back-link">&larr; Fiche pr&eacute;c&eacute;dente : Cookies &amp; Sessions</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Bonus : CGI multiples. eahmeti &amp; avarrett</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['config','detection','execution','exemple'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

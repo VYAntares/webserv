@@ -1059,21 +1059,29 @@
       <h2 class="section-title">Bonus <em>optionnels</em></h2>
     </div>
     <div class="concepts-grid">
-      <div class="card" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim);">
+      <div class="card" data-page="08-bonus/cookies-sessions.html" style="--card-accent: var(--accent-5); --card-accent-dim: var(--accent-5-dim); cursor: pointer;">
         <span class="card-tag">Bonus</span>
-        <h3>Cookies & Sessions</h3>
+        <h3><a href="08-bonus/cookies-sessions.html" style="text-decoration: none;">Cookies & Sessions</a></h3>
         <p>
-          Implémenter le header <code>Set-Cookie</code> côté serveur et lire le header <code>Cookie</code> 
-          des requêtes clientes. Gérer des sessions avec un identifiant unique stocké côté serveur.
+          Le header <code>Cookie</code> voyage dans la <code>std::map</code> de la requête, ressort par le
+          champ générique de <code>buildResponse()</code>, et l'état de session vit côté serveur dans un
+          <code>sessions/&lt;sid&gt;.json</code>. Notre implémentation, sans machinerie dédiée.
         </p>
+        <div class="card-links">
+          <a class="card-link" href="08-bonus/cookies-sessions.html">Voir le cours →</a>
+        </div>
       </div>
-      <div class="card" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim);">
+      <div class="card" data-page="08-bonus/multiple-cgi.html" style="--card-accent: var(--accent-6); --card-accent-dim: var(--accent-6-dim); cursor: pointer;">
         <span class="card-tag">Bonus</span>
-        <h3>Multiple CGI types</h3>
+        <h3><a href="08-bonus/multiple-cgi.html" style="text-decoration: none;">Multiple CGI types</a></h3>
         <p>
-          Supporter plusieurs interpréteurs CGI : Python et PHP par exemple, 
-          configurés par extension de fichier dans le fichier de configuration.
+          Une <code>map&lt;extension, interpréteur&gt;</code> par location, remplie par <code>cgi_pass</code> dans
+          la config. Le routing choisit le binaire d'après l'extension de l'URI, <code>execve()</code> reste
+          agnostique. Ajouter un langage = une ligne de config, zéro C++.
         </p>
+        <div class="card-links">
+          <a class="card-link" href="08-bonus/multiple-cgi.html">Voir le cours →</a>
+        </div>
       </div>
     </div>
     <div class="warning-box">

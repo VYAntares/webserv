@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bonus — Cookies &amp; Sessions dans notre webserv</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/webserv-shared.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="progress-bar">
+  <div class="progress-inner">
+    <a href="../webserv-mindmap.html" class="back-link" id="back-btn">&larr; Retour &agrave; la cartographie</a>
+    <div class="progress-back-divider"></div>
+    <a href="#requete" class="step-pill active" id="nav-requete"><span class="step-dot"></span>Cookie entrant</a>
+    <div class="step-connector"></div>
+    <a href="#cgi" class="step-pill" id="nav-cgi"><span class="step-dot"></span>HTTP_COOKIE</a>
+    <div class="step-connector"></div>
+    <a href="#session" class="step-pill" id="nav-session"><span class="step-dot"></span>&Eacute;tat serveur</a>
+    <div class="step-connector"></div>
+    <a href="#reponse" class="step-pill" id="nav-reponse"><span class="step-dot"></span>Set-Cookie</a>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-tag">Bonus &mdash; Cookies &amp; Sessions, dans notre code</div>
+  <h1><em>Cookies</em> &amp; <em>Sessions</em><br>&mdash; un aller-retour sans machinerie d&eacute;di&eacute;e</h1>
+  <p class="header-desc">
+    L'&eacute;l&eacute;gance de notre impl&eacute;mentation : un cookie n'est <strong>rien de sp&eacute;cial</strong>.
+    &Agrave; l'aller, il voyage comme n'importe quel header dans la <code>std::map</code> de la requ&ecirc;te ;
+    au retour, il ressort par le champ <code>_cookie</code> g&eacute;n&eacute;rique de <code>buildResponse()</code>.
+    L'&eacute;tat de session, lui, vit c&ocirc;t&eacute; serveur dans un fichier JSON identifi&eacute; par un cookie <code>sid</code>.
+  </p>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 1 : LE COOKIE ENTRANT          -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="requete" style="--step-color: var(--accent-2)">
+    <div class="step-header">
+      <div class="step-number-badge">01</div>
+      <div>
+        <div class="step-fn">HttpParser &rarr; _req.headers</div>
+        <div class="step-subtitle">Le cookie arrive comme un header ordinaire</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-2); margin-bottom: 1.5rem;">
+      <div class="panel-label">Aucun traitement particulier</div>
+      <p>
+        Quand un navigateur a d&eacute;j&agrave; un cookie, il l'envoie dans un header
+        <code>Cookie: sid=8f3a...</code>. Chez nous il n'y a <strong>aucun code sp&eacute;cifique aux cookies</strong>
+        &agrave; l'entr&eacute;e : le parser HTTP range <em>chaque</em> header dans la m&ecirc;me
+        <code>std::map&lt;std::string, std::string&gt;</code> &mdash; <code>Host</code>, <code>User-Agent</code>,
+        <code>Cookie</code>&hellip; tous logent au m&ecirc;me endroit. Le cookie est d&eacute;j&agrave; l&agrave;, pr&ecirc;t
+        &agrave; &ecirc;tre lu, d&egrave;s la fin du parsing.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-2)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/HttpParser.cpp &mdash; parsing des headers</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-2); background:rgba(74,224,255,0.08)">Notre code</span>
+      </div>
+      <pre><span class="cmt">// une seule ligne stocke TOUS les headers, cookie compris :</span>
+<span class="cmt">// "Cookie: sid=8f3a...\r\n"  →  headers["Cookie"] = "sid=8f3a..."</span>
+<span class="highlight-line"><span class="var">_req</span>.<span class="var">headers</span>[<span class="var">line</span>.<span class="fn-name">substr</span>(<span class="num">0</span>, <span class="var">sep</span>)] = <span class="var">line</span>.<span class="fn-name">substr</span>(<span class="var">sep</span> + <span class="num">2</span>);</span></pre>
+    </div>
+
+    <div class="info-box">
+      <span>&#128161;</span>
+      <div>
+        <strong>Un cookie = une cha&icirc;ne de texte.</strong> C&ocirc;t&eacute; HTTP, un cookie n'est qu'une
+        paire <code>cl&eacute;=valeur</code> transport&eacute;e dans un header. Toute la logique
+        (&laquo; qui est ce client ? &raquo;, &laquo; quel est son panier ? &raquo;) est d&eacute;cid&eacute;e <strong>ailleurs</strong> &mdash;
+        ici, par le script CGI de session. Le serveur ne fait que transporter la cha&icirc;ne.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 2 : HTTP_COOKIE VERS LE CGI    -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="cgi" style="--step-color: var(--accent-3)">
+    <div class="step-header">
+      <div class="step-number-badge">02</div>
+      <div>
+        <div class="step-fn">CGIProcess::addHeaders()</div>
+        <div class="step-subtitle">Cookie &rarr; HTTP_COOKIE dans l'environnement</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin-bottom: 1.5rem;">
+      <div class="panel-label">La convention CGI/1.1 (RFC 3875)</div>
+      <p>
+        Le script de session ne lit pas la requ&ecirc;te HTTP : il lit des <strong>variables d'environnement</strong>.
+        Avant l'<code>execve()</code>, <code>addHeaders()</code> transforme <em>chaque</em> header en
+        <code>HTTP_&lt;NOM&gt;</code> (majuscules, tirets &rarr; underscores). Le header <code>Cookie</code>
+        devient donc <code>HTTP_COOKIE</code> &mdash; encore une fois, aucune ligne d&eacute;di&eacute;e aux cookies :
+        ils profitent de la r&egrave;gle g&eacute;n&eacute;rale.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/cgi/CGIProcess.cpp &mdash; addHeaders()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">for</span> (<span class="var">it</span> = <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">begin</span>(); <span class="var">it</span> != <span class="var">_req</span>.<span class="var">headers</span>.<span class="fn-name">end</span>(); ++<span class="var">it</span>) {
+    <span class="kw">const</span> <span class="type">std::string</span>&amp; <span class="var">key</span> = <span class="var">it</span>-&gt;<span class="var">first</span>;
+    <span class="kw">if</span> (<span class="var">key</span> == <span class="str">"Content-Type"</span> || <span class="var">key</span> == <span class="str">"Content-Length"</span>)
+        <span class="kw">continue</span>;                       <span class="cmt">// eux ont déjà leur variable dédiée</span>
+
+    <span class="type">std::string</span> <span class="var">name</span> = <span class="str">"HTTP_"</span>;
+    <span class="kw">for</span> (<span class="type">size_t</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">key</span>.<span class="fn-name">size</span>(); <span class="var">i</span>++) {
+        <span class="kw">if</span> (<span class="var">key</span>[<span class="var">i</span>] == <span class="str">'-'</span>) <span class="var">name</span> += <span class="str">'_'</span>;
+        <span class="kw">else</span>              <span class="var">name</span> += <span class="fn-name">std::toupper</span>((<span class="type">unsigned char</span>)<span class="var">key</span>[<span class="var">i</span>]);
+    }
+<span class="highlight-line">    <span class="var">envp</span>-&gt;<span class="fn-name">push_back</span>(<span class="var">name</span> + <span class="str">"="</span> + <span class="var">it</span>-&gt;<span class="var">second</span>);  <span class="cmt">// Cookie → HTTP_COOKIE=sid=8f3a...</span></span>
+}</pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">www/cgi-bin/session.py &mdash; côté script</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Le CGI lit l'env</span>
+      </div>
+      <pre><span class="cmt"># le script récupère le cookie dans l'environnement, pas dans la requête HTTP</span>
+<span class="highlight-new"><span class="var">cookies</span> = <span class="fn-name">parse_cookies</span>(<span class="var">os</span>.<span class="var">environ</span>.<span class="fn-name">get</span>(<span class="str">"HTTP_COOKIE"</span>, <span class="str">""</span>))</span>
+<span class="var">sid</span>     = <span class="var">cookies</span>.<span class="fn-name">get</span>(<span class="str">"sid"</span>, <span class="str">""</span>)</pre>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 3 : L'ÉTAT CÔTÉ SERVEUR        -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="session" style="--step-color: var(--accent-5)">
+    <div class="step-header">
+      <div class="step-number-badge">03</div>
+      <div>
+        <div class="step-fn">Session = fichier serveur</div>
+        <div class="step-subtitle">Le cookie identifie, le serveur se souvient</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-5); margin-bottom: 1.5rem;">
+      <div class="panel-label">Cookie &ne; Session</div>
+      <p>
+        Un <strong>cookie</strong> est c&ocirc;t&eacute; client : une petite cha&icirc;ne que le navigateur renvoie &agrave; chaque requ&ecirc;te.
+        Une <strong>session</strong> est c&ocirc;t&eacute; serveur : l'&eacute;tat r&eacute;el (visites, pr&eacute;f&eacute;rences&hellip;), trop gros
+        ou trop sensible pour vivre dans le cookie. Le cookie ne contient qu'un <strong>identifiant</strong>
+        (<code>sid</code>) ; le serveur s'en sert pour retrouver le bon fichier.
+      </p>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-step-num">1</div>
+          <div>Pas de <code>sid</code> valide ? On en g&eacute;n&egrave;re un (<code>uuid4().hex</code>, 32 hex) et on marque la session comme neuve.</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">2</div>
+          <div>On charge <code>sessions/&lt;sid&gt;.json</code> (ou on cr&eacute;e un &eacute;tat vide) &mdash; chemin relatif possible gr&acirc;ce au <code>chdir()</code> du serveur dans le dossier du script.</div>
+        </div>
+        <div class="flow-arrow">&darr;</div>
+        <div class="flow-step">
+          <div class="flow-step-num">3</div>
+          <div>On applique l'action (<code>visit</code> incr&eacute;mente le compteur, <code>set</code> stocke une cl&eacute;, <code>logout</code> d&eacute;truit tout), puis on r&eacute;&eacute;crit le JSON.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-5)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">www/cgi-bin/session.py &mdash; identification + état</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-5); background:rgba(255,209,102,0.08)">Notre CGI de session</span>
+      </div>
+      <pre><span class="cmt"># sid invalide ou absent → nouvelle session</span>
+<span class="kw">if</span> <span class="kw">not</span> <span class="var">re</span>.<span class="fn-name">match</span>(<span class="str">r"^[0-9a-f]{32}$"</span>, <span class="var">sid</span>):
+    <span class="var">sid</span> = <span class="str">""</span>
+<span class="kw">if</span> <span class="kw">not</span> <span class="var">sid</span>:
+<span class="highlight-new">    <span class="var">sid</span> = <span class="var">uuid</span>.<span class="fn-name">uuid4</span>().<span class="var">hex</span>          <span class="cmt"># identifiant unique</span></span>
+    <span class="var">new_session</span> = <span class="kw">True</span>
+
+<span class="cmt"># l'état vit dans un fichier serveur, indexé par le sid</span>
+<span class="highlight-line"><span class="var">session</span> = <span class="fn-name">load</span>(<span class="var">sid</span>) <span class="kw">or</span> {<span class="str">"created_at"</span>: <span class="var">now</span>, <span class="str">"visits"</span>: <span class="num">0</span>}</span>
+
+<span class="kw">if</span> <span class="var">action</span> == <span class="str">"visit"</span>:
+    <span class="var">session</span>[<span class="str">"visits"</span>] += <span class="num">1</span>
+    <span class="fn-name">save</span>(<span class="var">sid</span>, <span class="var">session</span>)          <span class="cmt"># → sessions/&lt;sid&gt;.json</span></pre>
+    </div>
+
+    <div class="warning">
+      <span>&#9888;&#65039;</span>
+      <div>
+        <strong>Nettoyage automatique (TTL 1h).</strong> &Agrave; chaque appel, <code>cleanup()</code> supprime
+        les fichiers de session dont la derni&egrave;re modification remonte &agrave; plus de <code>SESS_TTL = 3600</code>&nbsp;s.
+        Sans &ccedil;a, le dossier <code>sessions/</code> gonflerait ind&eacute;finiment &agrave; chaque nouveau visiteur.
+      </div>
+    </div>
+  </section>
+
+  <div class="step-divider"></div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- SECTION 4 : SET-COOKIE SORTANT         -->
+  <!-- ══════════════════════════════════════ -->
+  <section class="step-section" id="reponse" style="--step-color: var(--accent-1)">
+    <div class="step-header">
+      <div class="step-number-badge">04</div>
+      <div>
+        <div class="step-fn">buildResponse() &rarr; Set-Cookie</div>
+        <div class="step-subtitle">Le cookie repart par le champ générique de la réponse</div>
+      </div>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-1); margin-bottom: 1.5rem;">
+      <div class="panel-label">Un seul champ, un seul point d'insertion</div>
+      <p>
+        C&ocirc;t&eacute; r&eacute;ponse, m&ecirc;me philosophie qu'&agrave; l'aller : pas de sous-syst&egrave;me cookie.
+        La classe de base <code>ARequestHandler</code> poss&egrave;de un champ <code>_cookie</code>
+        et un setter <code>setCookie()</code>. <code>buildResponse()</code> &mdash; la seule fonction qui
+        s&eacute;rialise la r&eacute;ponse HTTP &mdash; ins&egrave;re la ligne <code>Set-Cookie:</code> si ce champ est rempli.
+        Tout handler (statique, erreur, CGI) en h&eacute;rite gratuitement.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/http/ARequestHandler.cpp &mdash; buildResponse()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-1); background:rgba(255,107,74,0.08)">Notre code</span>
+      </div>
+      <pre><span class="var">oss</span> &lt;&lt; <span class="str">"HTTP/1.1 "</span> &lt;&lt; <span class="var">_ncode</span> &lt;&lt; <span class="str">" "</span> &lt;&lt; <span class="fn-name">getReason</span>(<span class="var">_ncode</span>) &lt;&lt; <span class="str">"\r\n"</span>;
+<span class="kw">if</span> (!<span class="var">_location</span>.<span class="fn-name">empty</span>())
+    <span class="var">oss</span> &lt;&lt; <span class="str">"Location: "</span> &lt;&lt; <span class="var">_location</span> &lt;&lt; <span class="str">"\r\n"</span>;
+<span class="kw">if</span> (!<span class="var">_type</span>.<span class="fn-name">empty</span>())
+    <span class="var">oss</span> &lt;&lt; <span class="str">"Content-Type: "</span> &lt;&lt; <span class="var">_type</span> &lt;&lt; <span class="str">"\r\n"</span>;
+<span class="highlight-line"><span class="kw">if</span> (!<span class="var">_cookie</span>.<span class="fn-name">empty</span>())                              <span class="cmt">// ← le seul endroit</span></span>
+<span class="highlight-line">    <span class="var">oss</span> &lt;&lt; <span class="str">"Set-Cookie: "</span> &lt;&lt; <span class="var">_cookie</span> &lt;&lt; <span class="str">"\r\n"</span>;</span></pre>
+    </div>
+
+    <div class="panel" style="--step-color: var(--accent-3); margin: 1.5rem 0;">
+      <div class="panel-label">Le cas CGI : relayer le Set-Cookie du script</div>
+      <p>
+        Quand la r&eacute;ponse vient d'un CGI, le script &eacute;met lui-m&ecirc;me un header <code>Set-Cookie:</code>.
+        <code>CGIReadHandler::parseCgi()</code> lit la sortie du script, rep&egrave;re cette ligne,
+        et la r&eacute;injecte dans le champ g&eacute;n&eacute;rique via <code>setCookie()</code> &mdash; on retombe
+        exactement sur le m&ecirc;me chemin que ci-dessus.
+      </p>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-3)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">srcs/handlers/CGIReadHandler.cpp &mdash; parseCgi()</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-3); background:rgba(192,132,252,0.08)">Notre code</span>
+      </div>
+      <pre><span class="kw">else if</span> (<span class="var">line</span>.<span class="fn-name">compare</span>(<span class="num">0</span>, <span class="num">11</span>, <span class="str">"Set-Cookie:"</span>) == <span class="num">0</span>) {
+    <span class="type">size_t</span> <span class="var">v</span> = <span class="num">11</span>;
+    <span class="kw">while</span> (<span class="var">v</span> &lt; <span class="var">line</span>.<span class="fn-name">size</span>() &amp;&amp; <span class="var">line</span>[<span class="var">v</span>] == <span class="str">' '</span>) <span class="var">v</span>++;
+    <span class="var">cookie</span> = <span class="var">line</span>.<span class="fn-name">substr</span>(<span class="var">v</span>);
+}
+<span class="cmt">// ... plus bas, on le passe au StaticHandler qui bâtira la réponse :</span>
+<span class="kw">if</span> (!<span class="var">cookie</span>.<span class="fn-name">empty</span>())
+<span class="highlight-new">    <span class="var">st</span>.<span class="fn-name">setCookie</span>(<span class="var">cookie</span>);   <span class="cmt">// → buildResponse() émettra Set-Cookie</span></span></pre>
+    </div>
+
+    <div class="code-panel" style="--step-color: var(--accent-1)">
+      <div class="code-header">
+        <div class="code-header-left">
+          <div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <span class="code-filename">www/cgi-bin/session.py &mdash; émission du cookie</span>
+        </div>
+        <span class="code-tag" style="color:var(--accent-4); background:rgba(74,222,128,0.08)">Le CGI pose le cookie</span>
+      </div>
+      <pre><span class="kw">if</span> <span class="var">new_session</span>:
+    <span class="var">set_cookie</span> = <span class="str">"sid=%s; Path=/"</span> % <span class="var">sid</span>
+<span class="cmt"># ... logout expire le cookie : "sid=deleted; Expires=Thu, 01 Jan 1970 ..."</span>
+
+<span class="var">sys</span>.<span class="var">stdout</span>.<span class="fn-name">write</span>(<span class="str">"Content-Type: application/json\r\n"</span>)
+<span class="kw">if</span> <span class="var">set_cookie</span>:
+<span class="highlight-new">    <span class="var">sys</span>.<span class="var">stdout</span>.<span class="fn-name">write</span>(<span class="str">"Set-Cookie: %s\r\n"</span> % <span class="var">set_cookie</span>)</span>
+<span class="var">sys</span>.<span class="var">stdout</span>.<span class="fn-name">write</span>(<span class="str">"\r\n"</span>)</pre>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- RÉSUMÉ                                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="summary-section">
+    <div class="summary-title">R&eacute;sum&eacute; &mdash; le cycle d'un cookie en <em>4 temps</em></div>
+    <div class="summary-subtitle">header entrant &rarr; HTTP_COOKIE &rarr; fichier de session &rarr; Set-Cookie sortant</div>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128229;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-2); margin-bottom:0.2rem;">Aller &mdash; le cookie est un header comme les autres</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Le parser range <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">Cookie</code> dans <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">_req.headers</code>, puis <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">addHeaders()</code> le passe au CGI en <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">HTTP_COOKIE</code>. Zéro code dédié aux cookies.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128190;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-5); margin-bottom:0.2rem;">&Eacute;tat &mdash; la session vit c&ocirc;t&eacute; serveur</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">Le cookie ne porte qu'un <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">sid</code> ; l'état réel est dans <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">sessions/&lt;sid&gt;.json</code>, nettoyé après 1&nbsp;h.</div>
+        </div>
+      </div>
+      <div style="padding:1.2rem; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; display:flex; gap:1rem; align-items:flex-start;">
+        <div style="font-size:1.5rem; flex-shrink:0;">&#128228;</div>
+        <div>
+          <div style="font-family:'Space Mono',monospace; font-size:0.78rem; color:var(--accent-1); margin-bottom:0.2rem;">Retour &mdash; un seul point d'insertion</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);"><code style="font-family:'Space Mono',monospace; font-size:0.75rem;">setCookie()</code> remplit <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">_cookie</code>, <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">buildResponse()</code> émet <code style="font-family:'Space Mono',monospace; font-size:0.75rem;">Set-Cookie</code>. Le CGI relaie son propre header par le même chemin.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-divider"></div>
+  <div style="text-align:center; padding: 1rem 0 2rem;">
+    <a href="multiple-cgi.html" class="back-link">Fiche suivante : plusieurs interpr&eacute;teurs CGI &rarr;</a>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <p>&larr; <a href="../webserv-mindmap.html">Retour &agrave; la cartographie Webserv</a></p>
+  <p style="margin-top:0.5rem; opacity:0.4">42 Project &mdash; Document d'&eacute;tude &mdash; Bonus : Cookies &amp; Sessions. eahmeti &amp; avarrett</p>
+</footer>
+
+<script>
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.14s ease';
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+  });
+  function navigateTo(href) {
+    document.body.style.opacity = '0';
+    setTimeout(() => { window.location.href = href; }, 140);
+  }
+  document.querySelectorAll('a[href="../webserv-mindmap.html"]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.href); });
+  });
+  const sections = document.querySelectorAll('.step-section');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+  sections.forEach(s => observer.observe(s));
+  const navIds = ['requete','cgi','session','reponse'];
+  const sectionEls = navIds.map(id => document.getElementById(id));
+  const navEls = navIds.map(id => document.getElementById('nav-' + id));
+  const navObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navEls.forEach(n => n && n.classList.remove('active'));
+        const idx = sectionEls.indexOf(entry.target);
+        if (idx !== -1 && navEls[idx]) navEls[idx].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sectionEls.forEach(s => s && navObserver.observe(s));
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>
