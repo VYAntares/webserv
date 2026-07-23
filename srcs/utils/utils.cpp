@@ -119,7 +119,7 @@ const Location* findLocation(const std::string& uri, const Server& server) {
         }
         if (len != -1)
             break;
-        if (shorturi.empty())
+        if (shorturi == "/")
             break;
         size_t i = shorturi.rfind('/');
         shorturi.erase(i);
